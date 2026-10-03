@@ -183,7 +183,7 @@ A render takes about 25 to 50 s on Krea 2 turbo.
 `--box` crops the 1024x1024 original before the reduction; keep it square and
 tight around the face (the shipped boxes are in the table below). The tool
 boosts contrast by 1.25, reduces with Lanczos to 64x64, and writes
-`face.rgb` and `face-preview.png`. Look at the preview: if the features are
+`face.rgb` and `face-preview.png`, sharpened after the reduction (`--sharpen 90`, an unsharp mask; 0 turns it off). Look at the preview: if the features are
 mush, crop tighter or re-render with more contrast.
 
 | id | box |

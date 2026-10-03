@@ -309,7 +309,7 @@ export const register: Register = (on, options) => {
     // The tube, by the persona's crt (0 to 1): scanlines, a soft band rolling
     // down every few seconds, darker corners, a faint irregular flicker.
     const crt = who?.look?.crt ?? 0.5
-    let k = oy % 2 === 1 ? 1 - 0.3 * (0.5 + crt) : 1
+    let k = oy % 2 === 1 ? 0.94 - 0.18 * crt : 1
     const band = ((frame * FRAME_MS) / 1000 / BAND_SECONDS) * size * 1.5
     k *= 1 + 0.35 * crt * Math.exp(-(((oy - (band % (size * 1.5))) / 2) ** 2))
     const vx = ((ox + 0.5) / size) * 2 - 1
