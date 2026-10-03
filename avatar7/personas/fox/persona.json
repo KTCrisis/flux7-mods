@@ -3,6 +3,7 @@
   "voice": "Microsoft David Desktop",
   "rate": 2,
   "pitch": 1,
+  "piper": { "voice": "en_US-ryan-high", "lengthScale": 0.9 },
   "color": "#ff8c1a",
   "eyes": [
     { "x": 21, "y": 34, "rx": 3, "ry": 1 },

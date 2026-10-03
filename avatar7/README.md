@@ -114,6 +114,11 @@ changes those messages, update `MESH_DENY`.
   from `fallback[mood]`.
 - The line goes to the `line` atom (survives reloads), typed out two
   characters per frame.
+- Piper, for the personas that name a `piper` voice, sits outside the repo:
+  `uv venv ~/.local/share/piper/.venv && uv pip install --python
+  ~/.local/share/piper/.venv/bin/python piper-tts`, then `python -m
+  piper.download_voices --download-dir ~/.local/share/piper/voices <name>`.
+  A line takes one to two seconds to synthesize on the CPU, no GPU, no account.
 - The voice is Windows SAPI, run from WSL: `powershell.exe` with the text on
   stdin in UTF-8, the persona's `voice` and `rate`.
 
@@ -210,6 +215,7 @@ is the grid enlarged x8):
 | `voice` | an installed SAPI voice: `Microsoft Hortense Desktop` (fr), `Microsoft David Desktop`, `Microsoft Zira Desktop` (en) |
 | `rate` | SAPI rate, -10 to 10 |
 | `pitch` | optional: SAPI pitch, -10 to 10; set, the voice goes through the SAPI COM object, which takes it as XML (duck7: 10) |
+| `piper` | optional: `{ "voice": "en_GB-alan-medium", "lengthScale": 0.95 }`, a [Piper](https://github.com/OHF-Voice/piper1-gpl) neural voice run on the CPU in WSL, its WAV played by Windows; SAPI speaks when Piper or the model is missing (fox: `en_US-ryan-high`, adjutant: `en_GB-jenny_dioco-medium`, morte: `en_GB-alan-medium`) |
 | `color` | color of the line under the face |
 | `greeting` | spoken on `/avatar <id>` |
 | `nobody` | optional: the name used for `{, user}` when `user_name` is empty |

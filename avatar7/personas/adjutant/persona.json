@@ -3,6 +3,7 @@
   "voice": "Microsoft Zira Desktop",
   "rate": -1,
   "pitch": -2,
+  "piper": { "voice": "en_GB-jenny_dioco-medium", "lengthScale": 1 },
   "color": "#4fc3ff",
   "eyes": [
     { "x": 20, "y": 27, "rx": 3, "ry": 1 },

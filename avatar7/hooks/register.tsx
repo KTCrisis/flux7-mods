@@ -65,6 +65,33 @@ const speakScript = (who: { voice: string; rate: number; pitch?: number }, vol: 
       `$v.Rate=${who.rate}; $v.Volume=${vol}; ` +
       `[void]$v.Speak("<pitch absmiddle=" + $q + "${who.pitch}" + $q + ">" + [Security.SecurityElement]::Escape($t) + "</pitch>", 8)`)
 
+// A persona with a `piper` voice speaks through Piper (local neural TTS, on
+// the CPU, in WSL), its WAV played by Windows like SAPI; SAPI stays the voice
+// when Piper or the model is missing. Piper lives in ~/.local/share/piper:
+// .venv with piper-tts, voices/<name>.onnx.
+const PIPER = '$HOME/.local/share/piper'
+export const speakArgv = (who: Persona, vol: number): string[] => [
+  'bash',
+  '-c',
+  [
+    't=$(cat)',
+    `m="${PIPER}/voices/$1.onnx"`,
+    `if [ -n "$1" ] && [ -f "$m" ] && [ -x "${PIPER}/.venv/bin/python" ]; then`,
+    '  w=$(mktemp --suffix=.wav)',
+    `  printf %s "$t" | "${PIPER}/.venv/bin/python" -m piper -m "$m" -f "$w" --volume "$2" --length-scale "$3" 2>/dev/null &&`,
+    `  "${POWERSHELL}" -NoProfile -Command "(New-Object System.Media.SoundPlayer '$(wslpath -w "$w")').PlaySync()"`,
+    '  rm -f "$w"',
+    'else',
+    `  printf %s "$t" | "${POWERSHELL}" -NoProfile -Command "$4"`,
+    'fi',
+  ].join('\n'),
+  'avatar7-speak',
+  who.piper?.voice ?? '',
+  String(Math.max(0, Math.min(100, vol)) / 100),
+  String(who.piper?.lengthScale ?? 1),
+  speakScript(who, vol),
+]
+
 const STYLE = ' No quotes, no emoji, no em dash.'
 
 // How much of the user's last prompt the avatar reads, so it judges a call
@@ -89,6 +116,8 @@ type Persona = {
   voice: string
   rate: number
   pitch?: number
+  // Piper voice name and pace (length-scale, under 1 is faster).
+  piper?: { voice: string; lengthScale?: number }
   color: string
   eyes: { x: number; y: number; rx: number; ry: number }[]
   mouth: { x: number; y: number; half: number } | null
@@ -299,7 +328,7 @@ export const register: Register = (on, options) => {
           if (!(await read($, isMuted))) {
             const voice = who
             $.clock.after(1, async () => {
-              await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice, await read($, volume))], {
+              await $.process.run(speakArgv(voice, await read($, volume)), {
                 stdin: text,
                 timeoutMs: 30_000,
               })
@@ -386,7 +415,7 @@ export const register: Register = (on, options) => {
           speakUntil = frame + Math.ceil(text.length / 2) + 10
           await update($, line, () => ({ text, at: frame }) satisfies Line)
           if (!(await read($, isMuted))) {
-            await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice, await read($, volume))], {
+            await $.process.run(speakArgv(voice, await read($, volume)), {
               stdin: text,
               timeoutMs: 30_000,
             })
