@@ -82,6 +82,7 @@ changes those messages, update `MESH_DENY`.
 ### Drawing
 
 - `personas/<id>/face.rgb` is 64x64 raw RGB (3 bytes per pixel, row-major).
+- The face follows the pane: `fit()` takes the pane body width (`e.props.bodyColumns`) and the surface height, and `sample()` averages the portrait blocks each output pixel covers (64 down to 16 pixels a side). The scanlines are drawn at the output size.
 - `pixel(x, y)` reads the portrait and applies, in order: eye glow and blink
   (or, with no mouth, eyes that pulse while speaking), the mouth opening while
   speaking, the mood tint by luminance, scanlines, a rolling bar, and the

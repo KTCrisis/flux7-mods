@@ -13,8 +13,15 @@ const AVATARS = ['shodan', 'hal', 'glados', 'ada']
 // is an upper half block, so two pixel rows per cell row.
 const W = 64
 const H = 64
-const COLS = W
-const ROWS = H / 2
+const MIN_SIZE = 16
+
+// The face's side in pixels for a pane body: as wide as the body, as tall as
+// the surface leaves (two pixels per row, a few rows kept for the text), even,
+// never past the baked portrait.
+const fit = (columns: number, rows: number): number => {
+  const side = Math.min(W, columns, Math.max(MIN_SIZE / 2, rows - 6) * 2)
+  return Math.max(MIN_SIZE, side - (side % 2))
+}
 
 const line = atom({ plugin: 'avatar7', key: 'line' } as const, { text: '', at: 0 })
 const isMuted = atom({ plugin: 'avatar7', key: 'isMuted' } as const, false)
@@ -79,6 +86,7 @@ export const register: Register = (on, options) => {
   let isSpeaking = false
   let face: Uint8Array | null = null
   let who: Persona | null = null
+  let size = W
 
   const pixel = (x: number, y: number): number => {
     const t = frame * (FRAME_MS / 1000)
@@ -123,23 +131,47 @@ export const register: Register = (on, options) => {
       b = b * (1 - mix) + (tint & 0xff) * lum * 1.3 * mix
     }
 
-    // CRT: scanlines, a rolling bar, and snow when glitching.
-    if (y % 2 === 1) k *= 0.7
-    if (y === Math.floor((frame * 0.8) % H)) k *= 1.35
+    // Snow when glitching; the scanlines are drawn at the output size.
     if (isGlitch && noise(x, y + frame) < 0.04) return 0xffffff
 
     const c = (v: number) => Math.min(255, Math.round(v * k))
     return (c(r) << 16) | (c(g) << 8) | c(b)
   }
 
+  // One output pixel averages the block of portrait pixels it covers, so the
+  // face shrinks with the pane and keeps its features.
+  const sample = (ox: number, oy: number): number => {
+    const x0 = Math.floor((ox * W) / size)
+    const x1 = Math.max(x0 + 1, Math.floor(((ox + 1) * W) / size))
+    const y0 = Math.floor((oy * H) / size)
+    const y1 = Math.max(y0 + 1, Math.floor(((oy + 1) * H) / size))
+    let r = 0
+    let g = 0
+    let b = 0
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const p = pixel(x, y)
+        r += (p >> 16) & 0xff
+        g += (p >> 8) & 0xff
+        b += p & 0xff
+      }
+    }
+    const n = (x1 - x0) * (y1 - y0)
+    let k = oy % 2 === 1 ? 0.7 : 1
+    if (oy === Math.floor((frame * 0.8 * size) / H) % size) k *= 1.35
+    const c = (v: number) => Math.min(255, Math.round((v / n) * k))
+    return (c(r) << 16) | (c(g) << 8) | c(b)
+  }
+
   const cells = (): string => {
-    const words = new Uint32Array(COLS * ROWS * 3)
-    for (let row = 0; row < ROWS; row++) {
-      for (let x = 0; x < COLS; x++) {
-        const i = (row * COLS + x) * 3
+    const rows = size / 2
+    const words = new Uint32Array(size * rows * 3)
+    for (let row = 0; row < rows; row++) {
+      for (let x = 0; x < size; x++) {
+        const i = (row * size + x) * 3
         words[i] = 0x2580
-        words[i + 1] = pixel(x, row * 2)
-        words[i + 2] = pixel(x, row * 2 + 1)
+        words[i + 1] = sample(x, row * 2)
+        words[i + 2] = sample(x, row * 2 + 1)
       }
     }
     return new Uint8Array(words.buffer).toBase64()
@@ -175,7 +207,7 @@ export const register: Register = (on, options) => {
     $.clock.every(FRAME_MS, () => {
       frame += 1
       if (frame > moodUntil && mood !== 'idle') mood = 'idle'
-      void $.ui.blit({ requestId: PANE, key: FACE, cells: cells() })
+      void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (typed < lineLength) {
         typed = Math.min(lineLength, typed + 2)
         $.ui.invalidate('ui.render')
@@ -304,10 +336,11 @@ export const register: Register = (on, options) => {
     }
 
     const { Box, Text, Raster } = $.ui.resolve(e)
+    size = fit(e.props.bodyColumns, e.viewport?.rows ?? H / 2 + 6)
     return (
       // viewport.rows is the whole surface: taller than the pane, which clips the rest.
-      <Box flexDirection="column" flexGrow={1} width="100%" height={e.viewport?.rows ?? ROWS + 2} backgroundColor="#000000">
-        <Raster key={FACE} columns={COLS} rows={ROWS} cells={cells()} />
+      <Box flexDirection="column" flexGrow={1} width="100%" height={e.viewport?.rows ?? H / 2 + 2} backgroundColor="#000000">
+        <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />
         <Text color={color} backgroundColor="#000000">
           {shown.length > 0 ? `> ${shown}` : '> ...'}
         </Text>
