@@ -42,7 +42,16 @@ type Persona = {
   greeting: string
   persona: string
   fallback: Record<Mood, string[]>
+  nobody?: string
 }
+
+// `{, user}` in a persona's text becomes ", <name>": the user_name option,
+// else the persona's `nobody`, else nothing (the braces and their text drop).
+const personalize = (text: string, name: string, nobody: string | undefined): string =>
+  text.replace(/\{([^{}]*)user([^{}]*)\}/g, (_, before: string, after: string) => {
+    const who = name !== '' ? name : (nobody ?? '')
+    return who === '' ? '' : `${before}${who}${after}`
+  })
 
 const TINT: Record<Mood, number> = {
   idle: 0x000000,
@@ -58,7 +67,8 @@ const noise = (a: number, b: number): number => {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  const userName = typeof options.user_name === 'string' ? options.user_name.trim() : ''
   let frame = 0
   let mood: Mood = 'idle'
   let moodUntil = 0
@@ -192,7 +202,7 @@ export const register: Register = on => {
     await $.store.set('avatar', id)
     await $.ui.open({ id: PANE, title: who.name })
 
-    const text = who.greeting
+    const text = personalize(who.greeting, userName, who.nobody)
     lineLength = text.length
     typed = 0
     speakUntil = frame + Math.ceil(text.length / 2) + 10
@@ -248,13 +258,15 @@ export const register: Register = on => {
         try {
           const r = await $.model.complete({
             model: 'haiku',
-            system: voice.persona + STYLE,
+            system: personalize(voice.persona, userName, voice.nobody) + STYLE,
             prompt: `Event: ${event}`,
             maxTokens: 80,
             timeoutMs: 15_000,
           })
           const pool = voice.fallback[now]
-          const text = r.isAnswered ? r.text.trim().split('\n')[0] : pool[frame % pool.length]
+          const text = r.isAnswered
+            ? r.text.trim().split('\n')[0]
+            : personalize(pool[frame % pool.length], userName, voice.nobody)
           lineLength = text.length
           typed = 0
           speakUntil = frame + Math.ceil(text.length / 2) + 10

@@ -24,3 +24,8 @@ The folder is watched: saving a file reloads the mod.
 ## Checking
 
     claude plugin validate ~/flux7-mods/avatar7
+
+## License
+
+MIT, see [LICENSE](LICENSE). Character names referenced by avatar7 belong to
+their owners; see the credits in [avatar7/README.md](avatar7/README.md).

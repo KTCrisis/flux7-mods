@@ -27,6 +27,22 @@ saving a file reloads the mod in every session started with the alias.
 It is deliberately not in the global `CLAUDE_CODE_PLUGIN_DIRS`: a plain
 `claude` session has no avatar.
 
+### Your name
+
+The avatars address you by the `user_name` option, empty by default. Set it in
+the config menu (`/config`, row "Your name"), or in `~/.claude/settings.json`
+under `pluginConfigs` for `avatar7`. Empty, they stay impersonal; HAL falls
+back to Dave.
+
+### Requirements
+
+- Claude Code with function hooks (plugins loaded by `--plugin-dir`).
+- The voice runs Windows SAPI through `powershell.exe` from WSL2. Elsewhere
+  the call fails silently and the avatar only writes; `/avatar-mute` avoids
+  the attempt.
+- A terminal that draws 24-bit colors (Windows Terminal, kitty, Ghostty,
+  iTerm2).
+
 ## How it works
 
 ```
@@ -170,8 +186,14 @@ is the grid enlarged x8):
 | `rate` | SAPI rate, -10 to 10 |
 | `color` | color of the line under the face |
 | `greeting` | spoken on `/avatar <id>` |
+| `nobody` | optional: the name used for `{, user}` when `user_name` is empty |
 | `persona` | system prompt of the line; the mod appends "No quotes, no emoji, no em dash." |
 | `fallback` | lines per mood (`idle`, `watch`, `deny`, `error`) when the model gives none |
+
+Any text field may name the user with a placeholder: `{, user}` becomes
+`, <name>` (the braces hold any text around the word `user`), using the
+`user_name` option, else `nobody`, else nothing at all. `Bonjour{ user}.`
+reads `Bonjour Marc.` or `Bonjour.`.
 
 Writing `persona`, what works:
 
@@ -205,3 +227,14 @@ shows it.
 - Eye and mouth coordinates are read by eye on the preview.
 - The mesh7 refusal detection depends on mesh7's message texts.
 - Each spoken line is one Haiku call; the rate limits above bound the cost.
+
+## Credits
+
+The avatars pay homage to machines other people imagined; the names and a few
+lines belong to their works, the portraits are original renders.
+
+- **SHODAN**: *System Shock*, Looking Glass Technologies, 1994.
+- **HAL 9000**: *2001: A Space Odyssey*, Stanley Kubrick and Arthur C. Clarke,
+  1968. "I'm sorry, Dave. I'm afraid I can't do that." is theirs.
+- **The lab AI** is modeled on GLaDOS, *Portal*, Valve, 2007.
+- **Ada** is our own, named in tribute to Ada Lovelace.

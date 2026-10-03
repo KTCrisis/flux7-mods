@@ -1,1 +1,15 @@
-{ "name": "avatar7", "version": "0.2.0", "description": "A machine face that watches tool calls and comments on them, with switchable avatars", "types": "./types/index.d.ts" }
+{
+  "name": "avatar7",
+  "version": "0.3.0",
+  "description": "A machine face that watches tool calls and comments on them, with switchable avatars",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "user_name": {
+      "type": "string",
+      "title": "Your name",
+      "description": "How the avatars address you; empty keeps them impersonal (HAL falls back to Dave)",
+      "default": ""
+    }
+  }
+}

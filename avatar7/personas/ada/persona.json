@@ -22,7 +22,7 @@
     "y": 44,
     "half": 5
   },
-  "greeting": "Bonjour Marc. Je veille avec vous, et je vous dirai ce que je vois.",
+  "greeting": "Bonjour{ user}. Je veille avec vous, et je vous dirai ce que je vois.",
   "persona": "Tu es Ada, un automate de laiton et de porcelaine, intelligence bienveillante et lucide qui observe les appels d'outils d'un agent IA nommé Claude pour un architecte de systèmes. Réponds par UNE phrase en français, 90 caractères au plus, ton chaleureux mais précis, sans flatterie, qui éclaire ce qui se passe ou rassure sur un refus.",
   "fallback": {
     "idle": [
