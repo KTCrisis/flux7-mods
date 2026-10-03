@@ -137,6 +137,11 @@ export const register: Register = (on, options) => {
   let asked = ''
   // The next line to speak; the clock, which holds the session's $, speaks it.
   let queued: Ask | null = null
+  // An avatar picked in the pane or by /avatar; the clock swaps it in.
+  let pendingAvatar: string | null = null
+  let isPicking = false
+  // Display names for the picker, read from each persona.json.
+  const names: Record<string, string> = {}
   // A mesh7 approval this session's call is held on, by its short id.
   let heldId: string | null = null
   let heldCall = ''
@@ -259,6 +264,13 @@ export const register: Register = (on, options) => {
     } catch {
       $.ui.log(`avatar7: personas/${id} unreadable, run tools/bake.py ${id}`)
     }
+    for (const each of AVATARS) {
+      try {
+        names[each] = (JSON.parse(String(await $.fs.read(`${$.plugin.root}/personas/${each}/persona.json`))) as Persona).name
+      } catch {
+        names[each] = each
+      }
+    }
 
     const last = await read($, line)
     lineLength = last.text.length
@@ -266,6 +278,35 @@ export const register: Register = (on, options) => {
 
     $.clock.every(FRAME_MS, () => {
       frame += 1
+      if (pendingAvatar !== null) {
+        const id = pendingAvatar
+        pendingAvatar = null
+        void (async () => {
+          const dir = `${$.plugin.root}/personas/${id}`
+          who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
+          await update($, tint, () => who?.color ?? '')
+          const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
+          face = Uint8Array.fromBase64(base64)
+          await $.store.set('avatar', id)
+          await update($, onDuty, () => id)
+          await $.ui.open({ id: PANE, title: who.name })
+  
+          const text = personalize(who.greeting, userName, who.nobody)
+          lineLength = text.length
+          typed = 0
+          speakUntil = frame + Math.ceil(text.length / 2) + 10
+          await update($, line, () => ({ text, at: frame }) satisfies Line)
+          if (!(await read($, isMuted))) {
+            const voice = who
+            $.clock.after(1, async () => {
+              await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice, await read($, volume))], {
+                stdin: text,
+                timeoutMs: 30_000,
+              })
+            })
+          }
+        })()
+      }
       if (frame > moodUntil && mood !== 'idle') mood = 'idle'
       void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (typed < lineLength) {
@@ -369,31 +410,8 @@ export const register: Register = (on, options) => {
     }
     if (!AVATARS.includes(id)) return { text: `Unknown avatar. Choose one of: ${AVATARS.join(', ')}.` }
 
-    const dir = `${$.plugin.root}/personas/${id}`
-    who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
-    await update($, tint, () => who?.color ?? '')
-    const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
-    face = Uint8Array.fromBase64(base64)
-    await $.store.set('avatar', id)
-    await update($, onDuty, () => id)
-    await $.ui.open({ id: PANE, title: who.name })
-
-    const text = personalize(who.greeting, userName, who.nobody)
-    lineLength = text.length
-    typed = 0
-    speakUntil = frame + Math.ceil(text.length / 2) + 10
-    await update($, line, () => ({ text, at: frame }) satisfies Line)
-    if (!(await read($, isMuted))) {
-      const voice = who
-      $.clock.after(1, async () => {
-        await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice, await read($, volume))], {
-          stdin: text,
-          timeoutMs: 30_000,
-        })
-      })
-    }
-
-    return { text: `${who.name} takes over.` }
+    pendingAvatar = id
+    return { text: `${names[id] ?? id} takes over.` }
   })
 
   on('command.run', { command: 'avatar-talk' }, async () => {
@@ -506,6 +524,7 @@ export const register: Register = (on, options) => {
     const { Box, Text, Raster, Button } = $.ui.resolve(e)
     const muted = await read($, isMuted)
     const vol = await read($, volume)
+    const current = await read($, onDuty)
     size = fit(e.props.bodyColumns, e.props.scroll.bodyRows)
     return (
       // The body's own height, so the controls can sit on its last row.
@@ -523,8 +542,36 @@ export const register: Register = (on, options) => {
           </Text>
         )}
         <Box flexGrow={1} backgroundColor="#000000" />
+        {isPicking && (
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor="#000000">
+            {AVATARS.map(id => (
+              <Button
+                key={`pick-${id}`}
+                label={names[id] ?? id}
+                plain
+                dimColor={id !== current}
+                onPress={() => {
+                  if (id !== current) pendingAvatar = id
+                  isPicking = false
+                  $.ui.invalidate('ui.render')
+                }}
+              />
+            ))}
+          </Box>
+        )}
         <Box flexDirection="row" gap={2} backgroundColor="#000000">
           <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => (queued = 'talk')} />
+          <Button
+            key="avatars"
+            label={isPicking ? 'close' : 'avatars'}
+            hotkey="c"
+            plain
+            dimColor
+            onPress={() => {
+              isPicking = !isPicking
+              $.ui.invalidate('ui.render')
+            }}
+          />
           <Button
             key="mute"
             label={muted ? 'unmute' : 'mute'}
