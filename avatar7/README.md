@@ -220,6 +220,7 @@ is the grid enlarged x8):
 | `rate` | SAPI rate, -10 to 10 |
 | `pitch` | optional: SAPI pitch, -10 to 10; set, the voice goes through the SAPI COM object, which takes it as XML (duck7: 10) |
 | `piper` | optional: `{ "voice": "en_GB-alan-medium", "lengthScale": 0.95, "fx": "…" }`, a [Piper](https://github.com/OHF-Voice/piper1-gpl) neural voice run on the CPU in WSL, its WAV played by Windows; `fx` is an ffmpeg audio filter (GLaDOS's metal, SHODAN's glitch, duck7's pitch). Every persona names one; SAPI speaks when Piper or the model is missing |
+| `look` | optional: `crt` 0 to 1 (scanlines, a band rolling down every 4 s, darker corners, flicker; 0.5 by default), `wind` `{ x, y, rx, ry, amp }` (what lies outside that face ellipse sways: hair, cables), `aura` `{ color, radius, width }` (a flickering ring of light on the dark around the figure) |
 | `color` | color of the line under the face |
 | `greeting` | spoken on `/avatar <id>` |
 | `nobody` | optional: the name used for `{, user}` when `user_name` is empty |

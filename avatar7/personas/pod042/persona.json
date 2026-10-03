@@ -4,6 +4,7 @@
   "rate": 0,
   "pitch": -2,
   "piper": { "voice": "en_US-bryce-medium", "lengthScale": 1.05, "fx": "aresample=22050,aecho=0.8:0.6:5:0.3,highpass=f=150,treble=g=2" },
+  "look": {"crt": 0.9},
   "color": "#f2e8c9",
   "eyes": [
     {

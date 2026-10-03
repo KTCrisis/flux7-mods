@@ -4,6 +4,7 @@
   "rate": 2,
   "pitch": 4,
   "piper": { "voice": "en_GB-alan-medium", "lengthScale": 0.95 },
+  "look": {"crt": 0.4, "aura": {"color": "#b48cff", "radius": 27, "width": 5}},
   "color": "#b48cff",
   "eyes": [
     { "x": 21, "y": 28, "rx": 4, "ry": 3 },

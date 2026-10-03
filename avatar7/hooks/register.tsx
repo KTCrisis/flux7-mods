@@ -12,6 +12,8 @@ const AVATARS = ['shodan', 'hal', 'glados', 'ada', 'duck7', 'pod042', 'kaneda', 
 // Portraits are baked by tools/bake.py into W x H raw RGB pixels; each cell
 // is an upper half block, so two pixel rows per cell row.
 const W = 64
+// Seconds the rolling band takes to cross the face once.
+const BAND_SECONDS = 4
 const H = 64
 const MIN_SIZE = 16
 
@@ -131,6 +133,8 @@ type Persona = {
   // fx: an ffmpeg audio filter run on the WAV, from aresample=22050 so pitch
   // shifts by asetrate hold whatever the voice's own rate.
   piper?: { voice: string; lengthScale?: number; fx?: string }
+  // Motion beyond the eyes: hair in the wind, an aura in the dark.
+  look?: { wind?: Wind; aura?: Aura; crt?: number }
   color: string
   eyes: { x: number; y: number; rx: number; ry: number }[]
   mouth: { x: number; y: number; half: number } | null
@@ -161,6 +165,32 @@ const noise = (a: number, b: number): number => {
   let n = (a * 374761393 + b * 668265263) | 0
   n = Math.imul(n ^ (n >>> 13), 1274126177)
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296
+}
+
+// Wind: what lies outside the face's ellipse (hair, cables) sways, more the
+// farther out, a wave running down the portrait. Returns a horizontal shift
+// in portrait pixels, fractional.
+export type Wind = { x: number; y: number; rx: number; ry: number; amp: number }
+export const windShift = (w: Wind, x: number, y: number, t: number): number => {
+  const dx = (x - w.x) / w.rx
+  const dy = (y - w.y) / w.ry
+  const d = Math.sqrt(dx * dx + dy * dy)
+  if (d <= 1) return 0
+  const reach = Math.min(1, (d - 1) / 0.5)
+  return w.amp * reach * (Math.sin(t * 2.1 - y * 0.22) + 0.35 * Math.sin(t * 3.7 + y * 0.5 + x * 0.1))
+}
+
+// Aura: a ring of light in the dark around the figure, flickering by angle
+// like a flame. Returns its strength, 0 to 1.
+export type Aura = { color: string; radius: number; width: number; y?: number }
+export const auraGlow = (a: Aura, x: number, y: number, t: number): number => {
+  const dx = x - W / 2
+  const dy = y - (a.y ?? H / 2)
+  const d = Math.sqrt(dx * dx + dy * dy)
+  const angle = Math.atan2(dy, dx)
+  const band = Math.exp(-(((d - a.radius) / a.width) ** 2))
+  const flame = 0.5 + 0.5 * Math.sin(t * 2.6 + angle * 5 + 1.5 * Math.sin(t * 1.1 + angle * 3))
+  return band * (0.35 + 0.65 * flame)
 }
 
 export const register: Register = (on, options) => {
@@ -199,11 +229,29 @@ export const register: Register = (on, options) => {
 
     if (face === null || who === null) return noise(x * 7 + frame, y) < 0.3 ? 0x1a2a22 : 0x020806
 
-    const i = (y * W + gx) * 3
-    let r = face[i]
-    let g = face[i + 1]
-    let b = face[i + 2]
+    // The wind blends the two portrait pixels the shifted point falls between.
+    const sx = who.look?.wind === undefined ? gx : Math.min(W - 1, Math.max(0, gx + windShift(who.look.wind, x, y, t)))
+    const x0 = Math.floor(sx)
+    const x1 = Math.min(W - 1, x0 + 1)
+    const f = sx - x0
+    const i = (y * W + x0) * 3
+    const j = (y * W + x1) * 3
+    let r = face[i] * (1 - f) + face[j] * f
+    let g = face[i + 1] * (1 - f) + face[j + 1] * f
+    let b = face[i + 2] * (1 - f) + face[j + 2] * f
     let k = 1
+
+    // The aura shows on the dark only, so the face keeps its own colors.
+    if (who.look?.aura !== undefined) {
+      const lum = (0.3 * r + 0.59 * g + 0.11 * b) / 255
+      if (lum < 0.22) {
+        const glow = auraGlow(who.look.aura, x, y, t) * (1 - lum / 0.22)
+        const c = parseInt(who.look.aura.color.slice(1), 16)
+        r += ((c >> 16) & 0xff) * glow * 0.8
+        g += ((c >> 8) & 0xff) * glow * 0.8
+        b += (c & 0xff) * glow * 0.8
+      }
+    }
 
     // Eyes: a slow glow; a face (one with a mouth) blinks now and then, the
     // mouth itself stays still; a lens (no mouth) pulses while it speaks.
@@ -258,8 +306,16 @@ export const register: Register = (on, options) => {
       }
     }
     const n = (x1 - x0) * (y1 - y0)
-    let k = oy % 2 === 1 ? 0.7 : 1
-    if (oy === Math.floor((frame * 0.8 * size) / H) % size) k *= 1.35
+    // The tube, by the persona's crt (0 to 1): scanlines, a soft band rolling
+    // down every few seconds, darker corners, a faint irregular flicker.
+    const crt = who?.look?.crt ?? 0.5
+    let k = oy % 2 === 1 ? 1 - 0.3 * (0.5 + crt) : 1
+    const band = ((frame * FRAME_MS) / 1000 / BAND_SECONDS) * size * 1.5
+    k *= 1 + 0.35 * crt * Math.exp(-(((oy - (band % (size * 1.5))) / 2) ** 2))
+    const vx = ((ox + 0.5) / size) * 2 - 1
+    const vy = ((oy + 0.5) / size) * 2 - 1
+    k *= 1 - 0.55 * crt * Math.max(0, vx * vx + vy * vy - 0.35)
+    k *= 1 - 0.08 * crt * noise(frame, 7)
     const c = (v: number) => Math.min(255, Math.round((v / n) * k))
     return (c(r) << 16) | (c(g) << 8) | c(b)
   }

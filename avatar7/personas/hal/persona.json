@@ -3,6 +3,7 @@
   "voice": "Microsoft David Desktop",
   "rate": -3,
   "piper": { "voice": "en_US-norman-medium", "lengthScale": 1.15 },
+  "look": {"crt": 0.7},
   "color": "#ff3b30",
   "eyes": [
     {
