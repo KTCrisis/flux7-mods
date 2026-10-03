@@ -73,7 +73,7 @@ const speakScript = (who: { voice: string; rate: number; pitch?: number }, vol: 
       `[void]$v.Speak("<pitch absmiddle=" + $q + "${who.pitch}" + $q + ">" + [Security.SecurityElement]::Escape($t) + "</pitch>", 8)`)
 
 // A persona with a `piper` voice speaks through Piper (local neural TTS, on
-// the CPU, in WSL), its WAV played by Windows like SAPI; SAPI stays the voice
+// the CPU, in WSL), its WAV played by Windows through SAPI; SAPI stays the voice
 // when Piper or the model is missing. Piper lives in ~/.local/share/piper:
 // .venv with piper-tts, voices/<name>.onnx. A private voice at
 // custom/<avatar id>.onnx wins over the persona's (its own pace, no filter
@@ -95,7 +95,9 @@ export const speakArgv = (id: string, who: Persona, vol: number): string[] => [
     '    f=$(mktemp --suffix=.wav)',
     '    ffmpeg -loglevel error -y -i "$w" -af "$5" "$f" && mv "$f" "$w"',
     '  fi',
-    `  "${POWERSHELL}" -NoProfile -Command "\\$p=New-Object System.Media.SoundPlayer '$(wslpath -w "$w")'; \\$p.Load(); \\$p.PlaySync()"`,
+    // SAPI plays the WAV: SoundPlayer on a \\wsl.localhost path can fall
+    // silent (returns at once, no error) while SAPI still reads it.
+    `  "${POWERSHELL}" -NoProfile -Command "\\$v=New-Object -ComObject SAPI.SpVoice; \\$s=New-Object -ComObject SAPI.SpFileStream; \\$s.Open('$(wslpath -w "$w")'); [void]\\$v.SpeakStream(\\$s); \\$s.Close()"`,
     '  rm -f "$w"',
     'else',
     `  printf %s "$t" | "${POWERSHELL}" -NoProfile -Command "$4"`,
