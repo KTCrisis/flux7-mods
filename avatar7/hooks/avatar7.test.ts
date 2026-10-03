@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
+import { synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -175,4 +175,11 @@ test('a friend is three times as likely a guest as anyone else', () => {
   expect(pickGuest(all, 'hal', 0.59, ['glados'])).toBe('glados')
   expect(pickGuest(all, 'hal', 0.61, ['glados'])).toBe('shodan')
   expect(pickGuest(all, 'hal', 0.99, ['glados'])).toBe('duck7')
+})
+
+test('a multi-speaker Piper voice passes its speaker as the last argument; a single voice passes none', () => {
+  const lain = { voice: 'Zira', rate: 0, piper: { voice: 'en_GB-vctk-medium', speaker: 86 } } as never
+  expect(synthArgv('lain', lain, 100).at(-1)).toBe('86')
+  const hal = { voice: 'David', rate: 0, piper: { voice: 'en_US-norman-medium' } } as never
+  expect(synthArgv('hal', hal, 100).at(-1)).toBe('')
 })

@@ -306,7 +306,7 @@ blink and pulse were dropped, like the wind and the auras before them).
 | `voice` | an installed SAPI voice: `Microsoft Hortense Desktop` (fr), `Microsoft David Desktop`, `Microsoft Zira Desktop` (en) |
 | `rate` | SAPI rate, -10 to 10 |
 | `pitch` | optional: SAPI pitch, -10 to 10; set, the voice goes through the SAPI COM object, which takes it as XML (duck7: 10) |
-| `piper` | optional: `{ "voice": "en_GB-alan-medium", "lengthScale": 0.95, "fx": "…" }`, a [Piper](https://github.com/OHF-Voice/piper1-gpl) neural voice run on the CPU in WSL, its WAV played by Windows; `fx` is an ffmpeg audio filter (GLaDOS's metal, SHODAN's glitch, duck7's pitch). Every persona names one; SAPI speaks when Piper or the model is missing |
+| `piper` | optional: `{ "voice": "en_GB-alan-medium", "lengthScale": 0.95, "fx": "…" }`, a [Piper](https://github.com/OHF-Voice/piper1-gpl) neural voice run on the CPU in WSL, its WAV played by Windows; `fx` is an ffmpeg audio filter (GLaDOS's metal, SHODAN's glitch, duck7's pitch). `speaker` picks one voice in a multi-speaker model by its id in the model's `speaker_id_map` (Lain is VCTK speaker p240, id 86, in `en_GB-vctk-medium`). Every persona names one; SAPI speaks when Piper or the model is missing |
 | `color` | color of the line under the face |
 | `station` | optional: artists this persona would put on; avatar7 publishes them in its `station` state and jukebox7's `a` plays them |
 | `greeting` | spoken on `/avatar <id>` |

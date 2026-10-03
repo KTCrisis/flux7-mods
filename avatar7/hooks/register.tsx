@@ -89,10 +89,11 @@ export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
     't=$(cat)',
     `m="${PIPER}/voices/$1.onnx"`,
     `c="${PIPER}/custom/$6"`,
-    'if [ -n "$6" ] && [ -f "$c.onnx" ]; then m="$c.onnx"; set -- "$c" "$2" 1 "$4" "$(cat "$c.fx" 2>/dev/null)" "$6"; fi',
+    'if [ -n "$6" ] && [ -f "$c.onnx" ]; then m="$c.onnx"; set -- "$c" "$2" 1 "$4" "$(cat "$c.fx" 2>/dev/null)" "$6" ""; fi',
     `if [ -n "$1" ] && [ -f "$m" ] && [ -x "${PIPER}/.venv/bin/python" ]; then`,
     '  w=$(mktemp --suffix=.wav)',
-    `  printf %s "$t" | "${PIPER}/.venv/bin/python" -m piper -m "$m" -f "$w" --volume "$2" --length-scale "$3" 2>/dev/null || exit 1`,
+    // $7: a speaker of a multi-speaker model (vctk, libritts_r), by its id.
+    `  printf %s "$t" | "${PIPER}/.venv/bin/python" -m piper -m "$m" \${7:+-s "$7"} -f "$w" --volume "$2" --length-scale "$3" 2>/dev/null || exit 1`,
     // The persona's ffmpeg filter (pitch, metal, glitch), skipped without ffmpeg.
     '  if [ -n "$5" ] && command -v ffmpeg >/dev/null; then',
     '    f=$(mktemp --suffix=.wav)',
@@ -110,6 +111,7 @@ export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
   speakScript(who, vol),
   who.piper?.fx ?? '',
   id,
+  who.piper?.speaker === undefined ? '' : String(who.piper.speaker),
 ]
 
 // SAPI plays the WAV: SoundPlayer on a \\wsl.localhost path can fall silent
@@ -286,7 +288,8 @@ type Persona = {
   // Piper voice name and pace (length-scale, under 1 is faster).
   // fx: an ffmpeg audio filter run on the WAV, from aresample=22050 so pitch
   // shifts by asetrate hold whatever the voice's own rate.
-  piper?: { voice: string; lengthScale?: number; fx?: string }
+  // speaker: for a multi-speaker model, the speaker's id (speaker_id_map).
+  piper?: { voice: string; lengthScale?: number; fx?: string; speaker?: number }
   color: string
   eyes: { x: number; y: number; rx: number; ry: number }[]
   mouth: { x: number; y: number; half: number } | null
