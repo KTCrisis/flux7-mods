@@ -126,6 +126,13 @@ take the last place in the queue; a question with no model answer is not
 asked. `/avatar event` makes one happen now, `/avatar events off` stops
 them (kept in `$.store`). Every persona has three stories and a bent.
 
+One event in three is a visit: another persona drops in and the two trade
+four lines, host first, about the work in the session or where their two
+stories cross. Each speaks with its own voice, the face on screen follows
+the speaker, and the line reads `GLaDOS: …`. A turn the model leaves empty
+ends the visit; so does a turn that waited too long behind other lines.
+`/avatar duo glados` brings one now, `/avatar duo` a guest at random.
+
 ### Moods
 
 | Outcome | Mood | Look |

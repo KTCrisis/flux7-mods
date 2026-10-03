@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, rankOf, recentNote, streakNote } from './register'
+import { enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -158,4 +158,12 @@ test('the persona\'s own events wait behind everything; the user\'s answer goes 
   expect(q[0]?.ask).toEqual({ mood: 'watch', event: 'render ready' })
   q = enqueue([], { question: 'q', answer: 'a' }, 0)
   expect(fresh(q, 10_000)).toHaveLength(1)
+})
+
+test('a guest is any avatar but the one on duty; a dialogue turn waits behind everything', () => {
+  const all = ['hal', 'glados', 'shodan']
+  expect(pickGuest(all, 'hal', 0)).toBe('glados')
+  expect(pickGuest(all, 'hal', 0.99)).toBe('shodan')
+  expect(pickGuest(['hal'], 'hal', 0.5)).toBeUndefined()
+  expect(rankOf({ duo: 'glados', turn: 1, topic: 'stories', history: [] })).toBe(0)
 })

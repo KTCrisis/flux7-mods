@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { Engine, Register } from 'claude-code'
 
 import type { Announce, Line, Say, Station } from '../types'
 
@@ -203,6 +203,18 @@ type Ask =
   | { story: string; mood: Mood }
   | 'question'
   | { question: string; answer: string }
+  | Duo
+
+// One turn of a dialogue with a visiting persona: even turns are the host's,
+// odd ones the guest's; `history` holds the lines said so far, by name.
+export type Duo = { duo: string; turn: number; topic: 'session' | 'stories'; history: string[] }
+export const DUO_TURNS = 4
+
+// A guest for the persona on duty: any other avatar, picked by `roll` in [0, 1).
+export const pickGuest = (avatars: string[], current: string, roll: number): string | undefined => {
+  const others = avatars.filter(a => a !== current)
+  return others[Math.floor(roll * others.length)]
+}
 
 export type Story = { story: string; mood: Exclude<Mood, 'idle'> }
 
@@ -233,6 +245,7 @@ const STALE_FRAMES = 300
 export const rankOf = (ask: Ask): number => {
   if (ask === 'talk') return 4
   if (ask === 'question') return 0
+  if ('duo' in ask) return 0
   if ('answer' in ask) return 4
   if ('story' in ask) return 0
   return ask.mood === 'deny' ? 3 : ask.mood === 'error' || ask.mood === 'wait' ? 2 : 1
@@ -268,6 +281,20 @@ type Persona = {
   // questions it asks the user; either may be absent.
   events?: Story[]
   asks?: string
+}
+
+// A visiting persona: its text and its face, read from its folder.
+type Guest = { id: string; persona: Persona; face: Uint8Array }
+
+async function loadGuest($: Engine, id: string): Promise<Guest | null> {
+  try {
+    const dir = `${$.plugin.root}/personas/${id}`
+    const persona = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
+    const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
+    return { id, persona, face: Uint8Array.fromBase64(base64) }
+  } catch {
+    return null
+  }
 }
 
 // `{, user}` in a persona's text becomes ", <name>": the user_name option,
@@ -312,6 +339,13 @@ export const register: Register = (on, options) => {
   const nextGap = (): number => EVENT_MIN_FRAMES + Math.random() * EVENT_SPAN_FRAMES
   // A question the avatar put to the user, until answered or five minutes pass.
   let openQuestion: { text: string; at: number } | null = null
+  // A visit: the guest read (loadGuest), then the host opens.
+  const startDuo = (g: Guest, topic: Duo['topic']): void => {
+    guest = g
+    mood = 'watch'
+    moodUntil = frame + 30
+    speakLater({ duo: g.id, turn: 0, topic, history: [] })
+  }
   const startEvent = (ask: Ask): void => {
     if (typeof ask === 'object' && 'story' in ask) {
       mood = ask.mood
@@ -322,6 +356,9 @@ export const register: Register = (on, options) => {
   const recentLines: string[] = []
   let isSpeaking = false
   let face: Uint8Array | null = null
+  // A visiting persona during a dialogue, and whether its face is on screen.
+  let guest: Guest | null = null
+  let isGuestShown = false
   let who: Persona | null = null
   // The avatar `who` was read from, so a line keeps its voice through a switch.
   let whoId = ''
@@ -375,12 +412,13 @@ export const register: Register = (on, options) => {
     const isGlitch = mood === 'deny' && noise(frame, y >> 2) < 0.35
     const gx = isGlitch ? Math.min(W - 1, Math.max(0, x + Math.round((noise(y, frame) - 0.5) * 10))) : x
 
-    if (face === null || who === null) return noise(x * 7 + frame, y) < 0.3 ? 0x1a2a22 : 0x020806
+    const img = isGuestShown && guest !== null ? guest.face : face
+    if (img === null || who === null) return noise(x * 7 + frame, y) < 0.3 ? 0x1a2a22 : 0x020806
 
     const i = (y * W + gx) * 3
-    let r = face[i]
-    let g = face[i + 1]
-    let b = face[i + 2]
+    let r = img[i]
+    let g = img[i + 1]
+    let b = img[i + 2]
     // No eye glow, blink or pulse for now: on several portraits the ellipses
     // missed the eyes and read as smudges. `eyes` and `mouth` stay in each
     // persona.json for a better effect.
@@ -458,7 +496,7 @@ export const register: Register = (on, options) => {
 
     await $.command.register({
       name: 'avatar',
-      description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar events on|off`,
+      description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar duo [id], /avatar events on|off`,
     })
     await $.command.register({ name: 'avatar-mute', description: 'Toggle the avatar voice' })
     await $.command.register({ name: 'avatar-talk', description: 'Ask the avatar what it thinks of the conversation' })
@@ -577,8 +615,16 @@ export const register: Register = (on, options) => {
         frame - lastSpoke > EVENT_QUIET_FRAMES
       ) {
         nextEventAt = frame + nextGap()
-        const ev = pickEvent(who.events ?? [], who.asks !== undefined, Math.random(), Math.random())
-        if (ev !== undefined) startEvent(ev)
+        // One event in three is a visit from another persona.
+        const gid = Math.random() < 1 / 3 ? pickGuest(AVATARS, whoId, Math.random()) : undefined
+        if (gid !== undefined) {
+          void loadGuest($, gid).then(g => {
+            if (g !== null) startDuo(g, Math.random() < 0.5 ? 'session' : 'stories')
+          })
+        } else {
+          const ev = pickEvent(who.events ?? [], who.asks !== undefined, Math.random(), Math.random())
+          if (ev !== undefined) startEvent(ev)
+        }
       }
       if (openQuestion !== null && frame - openQuestion.at > QUESTION_FRAMES) {
         openQuestion = null
@@ -592,8 +638,11 @@ export const register: Register = (on, options) => {
       const ask = first.ask
       isSpeaking = true
       lastSpoke = frame
-      const voice = who
-      const voiceId = whoId
+      // In a dialogue the guest speaks the odd turns, with its own voice and face.
+      const isGuestTurn = typeof ask === 'object' && 'duo' in ask && ask.turn % 2 === 1 && guest !== null
+      const voice = isGuestTurn && guest !== null ? guest.persona : who
+      const voiceId = isGuestTurn && guest !== null ? guest.id : whoId
+      isGuestShown = isGuestTurn
       $.clock.after(1, async () => {
         try {
           let prompt: string
@@ -614,6 +663,17 @@ export const register: Register = (on, options) => {
               `Last messages, oldest first:\n${await conversation()}`
           } else if ('story' in ask) {
             prompt = `A moment of your own story happens now, unrelated to the tool calls: ${ask.story}. Say what you live or feel in it.`
+          } else if ('duo' in ask) {
+            const other = isGuestTurn ? (who?.name ?? 'the host') : (guest?.persona.name ?? 'a visitor')
+            const about =
+              ask.topic === 'session'
+                ? `the work going on in this terminal session. Last messages, oldest first:\n${await conversation()}`
+                : 'where your two stories cross'
+            prompt =
+              ask.turn === 0
+                ? `${other} visits your terminal. Open a short exchange with them, speaking to them directly, about ${about}`
+                : `You are talking with ${other}. The exchange so far:\n${ask.history.join('\n')}\n` +
+                  (ask.turn === DUO_TURNS - 1 ? 'Close the exchange in one sentence, to them.' : 'Answer them in one sentence.')
           } else if ('answer' in ask) {
             prompt =
               `You asked the user: ${ask.question}\nThe user answered: ${ask.answer}\n` +
@@ -631,7 +691,7 @@ export const register: Register = (on, options) => {
           })
           // A question with no model answer is simply not asked.
           const pool =
-            ask === 'question'
+            ask === 'question' || 'duo' in ask
               ? []
               : ask === 'talk' || 'story' in ask || 'answer' in ask
                 ? voice.fallback.idle
@@ -650,21 +710,31 @@ export const register: Register = (on, options) => {
             recentLines.push(text)
             if (recentLines.length > RECENT_LINES) recentLines.shift()
           }
+          const isDuo = typeof ask === 'object' && 'duo' in ask
+          const shown = isDuo ? `${voice.name}: ${text}` : text
           const isQuiet = await read($, isMuted)
-          const seq = startLine(text, isQuiet)
-          await update($, line, () => ({ text, at: frame }) satisfies Line)
+          const seq = startLine(shown, isQuiet)
+          await update($, line, () => ({ text: shown, at: frame }) satisfies Line)
           if (!isQuiet) {
             const made = await $.process.run(synthArgv(voiceId, voice, await read($, volume)), {
               stdin: text,
               timeoutMs: 30_000,
             })
-            const wav = voiced(seq, made.stdout, text.length)
+            const wav = voiced(seq, made.stdout, shown.length)
             if (wav !== '') {
               await update($, isVoicing, () => true)
               await $.process.run(playArgv(wav), { timeoutMs: 60_000 })
             }
           }
+          if (typeof ask === 'object' && 'duo' in ask && ask.turn < DUO_TURNS - 1) {
+            speakLater({ ...ask, turn: ask.turn + 1, history: [...ask.history, `${voice.name}: ${text}`] })
+          }
         } finally {
+          // A dialogue ends on its last turn, or on a turn that said nothing.
+          if (typeof ask === 'object' && 'duo' in ask && !queue.some(q => typeof q.ask === 'object' && 'duo' in q.ask)) {
+            isGuestShown = false
+            guest = null
+          }
           isSpeaking = false
           if (await read($, isVoicing)) await update($, isVoicing, () => false)
         }
@@ -689,6 +759,18 @@ export const register: Register = (on, options) => {
       if (ev === undefined) return { text: `${who?.name ?? 'avatar7'} has no events of its own yet.` }
       startEvent(ev)
       return { text: ev === 'question' ? `${who?.name} has a question.` : `Something happens to ${who?.name}.` }
+    }
+    // A visit now: /avatar duo <id>, or a guest picked at random.
+    if (id === 'duo' || id.startsWith('duo ')) {
+      const want = id.slice(3).trim()
+      const gid = want !== '' ? want : pickGuest(AVATARS, whoId, Math.random())
+      if (gid === undefined || !AVATARS.includes(gid) || gid === whoId) {
+        return { text: `Pick another avatar: ${AVATARS.filter(a => a !== whoId).join(', ')}.` }
+      }
+      const g = await loadGuest($, gid)
+      if (g === null) return { text: `personas/${gid} is unreadable.` }
+      startDuo(g, Math.random() < 0.5 ? 'session' : 'stories')
+      return { text: `${g.persona.name} visits ${who?.name ?? 'avatar7'}.` }
     }
     if (id === 'events on' || id === 'events off') {
       eventsOn = id === 'events on'
