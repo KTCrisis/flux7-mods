@@ -82,6 +82,9 @@ export const STATIONS: Record<string, { name: string; artists: string[] }> = {
   duck7: { name: 'duck7', artists: ['Venetian Snares', 'Pixies', 'Modest Mouse', 'The Unicorns', 'Sewerslvt', 'Machine Girl', 'Of Montreal', 'Eels'] },
   kaneda: { name: 'Kaneda', artists: ['Geinoh Yamashirogumi Akira', 'Carpenter Brut', 'Danger', 'Fixions', 'Pixies', 'Atari Teenage Riot', 'Perturbator', 'Mega Drive'] },
   pod042: { name: 'Pod 042', artists: ['NieR Automata soundtrack Keiichi Okabe', 'NieR Replicant soundtrack', 'Mega Drive', 'Dan Terminus', 'Plaid', 'Boards of Canada', 'Fixions'] },
+  fox: { name: 'Fox McCloud', artists: ['Hajime Wakai Star Fox 64', 'Star Fox SNES soundtrack', 'Mega Drive', 'Daft Punk', 'Kavinsky', 'Danger', 'Lazerhawk', 'Gunship'] },
+  adjutant: { name: 'Adjutant', artists: ['Glenn Stafford StarCraft', 'Derek Duke StarCraft', 'Kenji Kawai Ghost in the Shell', 'Front Line Assembly', 'Autechre', 'Deus Ex soundtrack', 'Loscil', 'Perturbator'] },
+  morte: { name: 'Morte', artists: ['Mark Morgan Planescape Torment', 'Mark Morgan Fallout', 'Dead Can Dance', 'Tom Waits', 'Agalloch', 'Danny Elfman', 'Arcturus', 'Ulver'] },
 }
 // A genre's artists, or an avatar's station by its id.
 const pool = (label: string): string[] => GENRES.find(g => g.label === label)?.artists ?? STATIONS[label]?.artists ?? []
