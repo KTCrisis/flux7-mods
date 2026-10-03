@@ -293,9 +293,11 @@ export const register: Register = on => {
 
     const { Box, Text, Raster } = $.ui.resolve(e)
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" flexGrow={1} width="100%" height="100%" backgroundColor="#000000">
         <Raster key={FACE} columns={COLS} rows={ROWS} cells={cells()} />
-        <Text color={color}>{shown.length > 0 ? `> ${shown}` : '> ...'}</Text>
+        <Text color={color} backgroundColor="#000000">
+          {shown.length > 0 ? `> ${shown}` : '> ...'}
+        </Text>
       </Box>
     )
   })
