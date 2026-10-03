@@ -26,6 +26,11 @@ ambient, lofi, black metal, darksynth, idm, indie rock, video games. A genre
 is a radio: a random artist from its list, a random song of theirs; next and
 the end of a song roll again.
 
+On the terminal the pane is black down to its last row, framed in the
+avatar's color, and the room left under the player fills with a green code
+rain in the manner of Ghost in the Shell: half-width katakana and digits,
+falling five frames a second while a song plays, frozen on pause.
+
 With avatar7 loaded, `a` plays the pick of the avatar on duty: a station per
 face, read from avatar7's `avatar` state, and avatar7 announces each song in
 its own voice.

@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, clampVolume } from './register'
+import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, clampVolume, rain } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -131,4 +131,15 @@ test('louder and quieter move the volume by steps, kept within 0 and 125', async
   expect((await $.command.run({ command: 'music', args: 'vol -130' })).text).toBe('Volume 0%.')
   expect(volumeArgv(125).at(-1)).toContain('val=320')
   expect(clampVolume(-5)).toBe(0)
+})
+
+test('the code rain fills the given size, one glyph per cell, every other column blank', () => {
+  const grid = rain(20, 8, 5)
+  expect(grid).toHaveLength(8)
+  for (const runs of grid) {
+    const line = runs.map(r => r.text).join('')
+    expect([...line]).toHaveLength(20)
+    expect([...line].filter((_, c) => c % 2 === 1).every(ch => ch === ' ')).toBe(true)
+  }
+  expect(grid.flat().some(r => r.level === 2)).toBe(true)
 })

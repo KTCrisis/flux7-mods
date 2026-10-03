@@ -310,6 +310,37 @@ export const progress = (p: Player, now: number, seconds: number | null): { done
   return { done: '▰'.repeat(filled), left: '▱'.repeat(BAR - filled), time: `${clock(Math.min(elapsed, seconds))} / ${clock(seconds)}` }
 }
 
+// Ghost in the Shell's green code rain under the player: half-width katakana
+// and digits falling per column, moving only while a song plays.
+const GLYPHS = 'ｦｧｨｩｪｫｬｭｮｯｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789'
+const TRAIL = 6
+const RAIN_MS = 200
+let frame = 0
+const hash = (n: number): number => {
+  let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b)
+  h ^= h >>> 13
+  h = Math.imul(h, 0xc2b2ae35)
+  return (h ^ (h >>> 16)) >>> 0
+}
+
+// One row is a list of runs: 0 blank, 1 trail (dim), 2 head (bright).
+export const rain = (columns: number, rows: number, tick: number): { level: 0 | 1 | 2; text: string }[][] =>
+  Array.from({ length: rows }, (_, r) => {
+    const runs: { level: 0 | 1 | 2; text: string }[] = []
+    for (let c = 0; c < columns; c++) {
+      const span = rows + TRAIL + (hash(c * 7 + 1) % rows || 1)
+      const speed = 1 + (hash(c * 13 + 5) % 2)
+      const head = (Math.floor((tick * speed) / 2) + hash(c * 29 + 3)) % span
+      const behind = head - r
+      const level: 0 | 1 | 2 = c % 2 === 1 || behind < 0 || behind > TRAIL ? 0 : behind === 0 ? 2 : 1
+      const ch = level === 0 ? ' ' : GLYPHS[hash(c * 131 + r * 17 + Math.floor(tick / 3)) % GLYPHS.length]
+      const last = runs[runs.length - 1]
+      if (last !== undefined && last.level === level) last.text += ch
+      else runs.push({ level, text: ch })
+    }
+    return runs
+  })
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -329,6 +360,14 @@ export const register: Register = on => {
           return
         }
         await skip($, 1)
+      })()
+    })
+
+    $.clock.every(RAIN_MS, () => {
+      void (async () => {
+        if (!(await read($, player)).isPlaying) return
+        frame += 1
+        $.ui.invalidate('ui.render')
       })()
     })
 
@@ -488,23 +527,43 @@ export const register: Register = on => {
     const { value: color } = await $.state.get(tint)
     const accent = typeof color === 'string' && color !== '' ? color : PHOSPHOR
     const bar = progress(p, await $.clock.now(), now?.seconds ?? null)
+    const rows = e.props.scroll?.bodyRows ?? 0
+    // The frame, the title, the bar, the controls and the stations; the rain
+    // takes what is left of the pane's height.
+    const rainRows = Math.max(0, rows - (now === undefined ? 5 : 7))
+    const rainColumns = Math.max(0, (e.props.bodyColumns ?? 40) - 2)
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor={accent} backgroundColor={BLACK} paddingX={1}>
-        <Text color={accent} backgroundColor={BLACK} dimColor={now === undefined || !p.isPlaying}>
-          {now === undefined ? '■ ' : p.isPlaying ? '▶ ' : '❚❚ '}
-          {title}
-        </Text>
-        {now !== undefined && (
-          <Box flexDirection="row" gap={2} backgroundColor={BLACK}>
+      <Box flexDirection="column" width="100%" height={rows > 0 ? rows : undefined} backgroundColor={BLACK}>
+        <Box flexDirection="column" borderStyle="round" borderColor={accent} backgroundColor={BLACK} paddingX={1}>
+          <Text color={accent} backgroundColor={BLACK} dimColor={now === undefined || !p.isPlaying}>
+            {now === undefined ? '■ ' : p.isPlaying ? '▶ ' : '❚❚ '}
+            {title}
+          </Text>
+          {now !== undefined && (
             <Text backgroundColor={BLACK}>
               <Text color={accent}>{bar.done}</Text>
               <Text dimColor>{bar.left}</Text>
               <Text dimColor>{` ${bar.time}  ${where}  vol ${level}%`}</Text>
             </Text>
-            {controls}
-          </Box>
-        )}
-        {stations}
+          )}
+          {now !== undefined && (
+            <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor={BLACK}>
+              {controls}
+            </Box>
+          )}
+          {stations}
+        </Box>
+        <Box flexDirection="column" flexGrow={1} paddingX={1} backgroundColor={BLACK}>
+          {rain(rainColumns, rainRows, frame).map((runs, r) => (
+            <Text key={r} backgroundColor={BLACK}>
+              {runs.map((run, i) => (
+                <Text key={i} color={run.level === 2 ? '#e8fff4' : accent} dimColor={run.level === 1}>
+                  {run.text}
+                </Text>
+              ))}
+            </Text>
+          ))}
+        </Box>
       </Box>
     )
   })
