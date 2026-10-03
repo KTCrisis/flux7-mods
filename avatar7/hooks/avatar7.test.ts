@@ -41,3 +41,31 @@ test('a session someone watches registers /avatar and opens the pane', async ($,
   expect(commands).toContain('avatar')
   expect(panes).toContain('avatar7')
 })
+
+test('rules in the persona color frame the face, the line and the controls', async ($, on) => {
+  engine(on, '')
+  on('ui.blit', () => ({ value: undefined }) as never)
+  await $.session.start({ cwd: '/home/u' } as never)
+  const ui = await $.ui.mount({
+    plugin: 'avatar7',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'avatar7',
+    props: { bodyColumns: 48, scroll: { bodyRows: 40 } } as never,
+  })
+  // The drawn tree keeps no key on a Text: a rule is a truncated line of spans.
+  type Node = { type: string; props: Record<string, unknown>; children?: (Node | string)[] }
+  const all = (n: Node | string): Node[] => (typeof n === 'string' ? [] : [n, ...(n.children ?? []).flatMap(all)])
+  const text = (n: Node | string): string => (typeof n === 'string' ? n : (n.children ?? []).map(text).join(''))
+  const rules = all((await ui.drawn()) as unknown as Node)
+    .filter(n => n.type === 'Text' && n.props.wrap === 'truncate')
+    .map(text)
+  expect(rules).toHaveLength(2)
+  const [face = '', controls = ''] = rules
+  expect(face).toContain('┤ AVATAR7 ├')
+  expect(face).toContain('[IDLE] █')
+  expect(controls).toContain('┤ CTRL ├')
+  expect(controls).toContain('UP 00:00:00')
+  expect([...face]).toHaveLength(48)
+  expect([...controls]).toHaveLength(48)
+})

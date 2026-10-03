@@ -16,8 +16,8 @@ const H = 64
 const MIN_SIZE = 16
 
 // Rows kept under the face for the line, which may wrap once, the pending
-// approval and the buttons.
-const TEXT_ROWS = 4
+// approval, the buttons and the two rules between them.
+const TEXT_ROWS = 6
 
 // The engine redraws on a change of width, never on a change of height alone:
 // the clock asks for a render this often so the face follows both.
@@ -627,12 +627,38 @@ export const register: Register = (on, options) => {
     const vol = await read($, volume)
     const current = await read($, onDuty)
     size = fit(e.props.bodyColumns, e.props.scroll.bodyRows)
+    // Rules in the persona's color between the face, the line and the
+    // controls, drawn as a terminal's: a label, a status on the right, a
+    // cursor that blinks at each redraw, dashes that glitch on a denial.
+    const cols = Math.max(8, e.props.bodyColumns)
+    const isBlink = Math.floor(frame / REFIT_FRAMES) % 2 === 0
+    const moodColor = mood === 'idle' ? color : `#${TINT[mood].toString(16).padStart(6, '0')}`
+    const seconds = Math.floor((frame * FRAME_MS) / 1000)
+    const clock = [seconds / 3600, (seconds / 60) % 60, seconds % 60].map(n => String(Math.floor(n)).padStart(2, '0')).join(':')
+    const dashes = (n: number, salt: number): string =>
+      Array.from({ length: Math.max(0, n) }, (_, i) =>
+        mood === 'deny' && noise(frame + salt, i) < 0.12 ? '╳▚░'[i % 3] : '─',
+      ).join('')
+    const rule = (key: string, label: string, status: string, statusColor: string, salt: number) => {
+      const left = `╾─┤ ${label} ├`
+      const right = ` ${status} ${isBlink ? '█' : ' '}╼`
+      return (
+        <Text key={key} backgroundColor="#000000" wrap="truncate">
+          <Text color={color} dimColor>{'╾─┤ '}</Text>
+          <Text color={color} bold>{label}</Text>
+          <Text color={color} dimColor>{' ├' + dashes(cols - left.length - right.length, salt) + ' '}</Text>
+          <Text color={statusColor}>{`${status} ${isBlink ? '█' : ' '}`}</Text>
+          <Text color={color} dimColor>{'╼'}</Text>
+        </Text>
+      )
+    }
     return (
       // The body's own height, so the controls can sit on its last row.
       <Box flexDirection="column" flexGrow={1} width="100%" height={e.props.scroll.bodyRows} backgroundColor="#000000">
         <Box flexDirection="row" justifyContent="center" width="100%" backgroundColor="#000000">
           <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />
         </Box>
+        {rule('rule-face', (who?.name ?? 'avatar7').toUpperCase(), `[${mood.toUpperCase()}]`, moodColor, 0)}
         <Text color={color} backgroundColor="#000000">
           {shown.length > 0 ? `> ${shown}` : '> ...'}
           {typed < last.text.length ? '█' : ''}
@@ -643,6 +669,7 @@ export const register: Register = (on, options) => {
           </Text>
         )}
         <Box flexGrow={1} backgroundColor="#000000" />
+        {rule('rule-controls', 'CTRL', `UP ${clock}`, color, 7)}
         {isPicking && (
           <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor="#000000">
             {AVATARS.map(id => (
