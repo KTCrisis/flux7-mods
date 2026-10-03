@@ -209,7 +209,8 @@ Writing `persona`, what works:
 
 - say who the avatar is, that it watches the tool calls of an agent named
   Claude, and for whom;
-- fix the language to match the voice (a French text in an English voice is
+- tell it to answer in English even when the user writes in French, and
+  fix the language to match the voice (a French text in an English voice is
   unintelligible);
 - ask for ONE sentence of 90 characters at most: the line is typed under a
   64-column face and spoken;
@@ -238,7 +239,8 @@ shows it.
 - A mesh7 in supervisor mode blocks the call inside `next(e)`; the waiting
   face does not show then.
 
-- Only three Windows voices are installed; HAL and the lab AI speak English.
+- Only three Windows voices are installed; every avatar speaks English (the
+  French voice mangled English tool names), whatever language the user types.
   A local neural voice (piper) would change the rendition; not done.
 - Eye and mouth coordinates are read by eye on the preview.
 - The mesh7 refusal detection depends on mesh7's message texts.
