@@ -7,10 +7,11 @@ import type { Player, Track } from '../types'
 // session untouched, with no added latency. A command to the jukebox is
 // short; a longer message is talk to the assistant, even about music (one
 // about ducking the music was once taken for a volume change). Common words
-// (son, fort, mets, lance) only count inside a music phrase.
+// (son, fort, mets, lance) only count inside a music phrase; a prompt that
+// opens on joue or play names what to play.
 const MAX_WORDS = 8
 const MUSIC =
-  /\b(musique|music|morceau|chanson|playlist|youtube|ambient|lofi|radio|volume|pause|stop|coupe|arr[eê]te|reprends|resume|suivant|next|skip|louder|quieter|similar|similaire|pareil)\b|\b(monte|baisse|coupe)[sz]?\s+(le\s+)?son\b|\b(plus|moins)\s+fort\b|\b(joue|jouer|mets|lance|play)\b.*\b(du|de\s+la|un\s+peu\s+de|some)\b/i
+  /\b(musique|music|morceau|chanson|playlist|youtube|ambient|lofi|radio|volume|pause|stop|coupe|arr[eê]te|reprends|resume|suivant|next|skip|louder|quieter|similar|similaire|pareil)\b|\b(monte|baisse|coupe)[sz]?\s+(le\s+)?son\b|\b(plus|moins)\s+fort\b|\b(joue|jouer|mets|lance|play)\b.*\b(du|des|de\s+la|un\s+peu\s+de|some)\b|^\s*(joue|play)\b/i
 export const isCandidate = (text: string): boolean => text.trim().split(/\s+/).length <= MAX_WORDS && MUSIC.test(text)
 
 const INTENT = [
@@ -180,6 +181,17 @@ export const musicSearch = (query: string): string[] => [
   `https://music.youtube.com/search?q=${encodeURIComponent(query)}#songs`,
 ]
 
+// YouTube Music's search lists no duration (NA): the one playing is asked
+// for its own, so the progress bar has something to fill.
+export const durationArgv = (id: string): string[] => [
+  'yt-dlp',
+  '--no-warnings',
+  '--skip-download',
+  '--print',
+  '%(duration)s',
+  `https://www.youtube.com/watch?v=${id}`,
+]
+
 // YouTube Music's radio from a song: its first entry is the song itself.
 // The radio lingers on the same artist, so other artists come first; covers,
 // tributes and hour-long loops (the drift of a niche radio) are dropped.
@@ -295,6 +307,22 @@ async function halt($: Engine, pgid: number | null) {
   await $.process.run(killVlcArgv)
 }
 
+// Fills in the duration of the track playing, if it still plays when the
+// answer comes; the play never waits on it.
+async function fillDuration($: Engine, id: string): Promise<void> {
+  try {
+    const r = await $.process.run(durationArgv(id), { timeoutMs: 20_000 })
+    const [found] = parseTracks(`${id}\t\t${r.stdout.trim()}`)
+    if (r.exitCode !== 0 || found?.seconds == null) return
+    const seconds = found.seconds
+    await update($, player, p =>
+      p.tracks[p.index]?.id === id ? { ...p, tracks: p.tracks.map((t, i) => (i === p.index ? { ...t, seconds } : t)) } : p,
+    )
+  } catch {
+    // No duration (yt-dlp failed, the session ended): the bar stays a clock.
+  }
+}
+
 async function playAt($: Engine, tracks: Track[], index: number, genre: string | null = null): Promise<Track | undefined> {
   const before = await read($, player)
   if (before.pgid !== null) await halt($, before.pgid)
@@ -317,6 +345,7 @@ async function playAt($: Engine, tracks: Track[], index: number, genre: string |
   }
   await update($, player, () => p)
   if (p.pgid !== null) await $.process.run(detached(volumeArgv(await read($, volume), true)))
+  if (track.seconds === null) void fillDuration($, track.id)
   $.ui.status(show(p))
   void $.ui.open({ id: PANE, title: 'jukebox7', rows: 6 })
   return track

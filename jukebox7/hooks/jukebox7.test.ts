@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, clampVolume, rain, musicSearch, parseTracks, parseRadio } from './register'
+import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -195,7 +195,7 @@ test('the controls wrap on a narrow pane, and the rows they take are counted', (
 })
 
 test('the sieve keeps short music commands and lets talk through', () => {
-  for (const cmd of ['joue moi un peu de musique ambient', 'pause', 'next', 'monte le son', 'baisse le son', 'plus fort', 'mets du lofi', 'stop the music', 'volume 40']) {
+  for (const cmd of ['joue moi un peu de musique ambient', 'pause', 'next', 'monte le son', 'baisse le son', 'plus fort', 'mets du lofi', 'stop the music', 'volume 40', 'joue I Was Born des Unicorns', 'mets des Daft Punk']) {
     expect(isCandidate(cmd)).toBe(true)
   }
   for (const talk of [
@@ -208,4 +208,23 @@ test('the sieve keeps short music commands and lets talk through', () => {
   ]) {
     expect(isCandidate(talk)).toBe(false)
   }
+})
+
+test('a track listed without duration asks yt-dlp for its own, for the progress bar', async ($, on) => {
+  const argv: string[][] = []
+  on('model.complete', () => ({ value: { isAnswered: true, text: '{"action":"play","query":"I Was Born","long":false}', usage: {} } }) as never)
+  on('process.run', ($, e) => {
+    const a = [...(e as { argv: string[] }).argv]
+    argv.push(a)
+    const stdout =
+      a[0] !== 'yt-dlp' ? (a[0] === 'bash' ? '4242\n' : '') : a.includes('--skip-download') ? '245\n' : 'e9OLLTKryiA\tI Was Born (A Unicorn)\tNA'
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
+  })
+  on('clock.now', () => ({ value: 1_000_000 }) as never)
+  on('ui.status', () => undefined)
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  on('ui.toast', () => undefined)
+  on('prompt.submit', ($, e) => ({ text: e.text }))
+  await $.prompt.submit(typed('joue I Was Born des Unicorns'))
+  expect(argv).toContainEqual(durationArgv('e9OLLTKryiA'))
 })
