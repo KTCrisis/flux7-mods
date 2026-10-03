@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, clampVolume, rain, musicSearch, parseTracks } from './register'
+import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -148,4 +148,23 @@ test('a station pick searches the songs tab of YouTube Music, query encoded', ()
   const argv = musicSearch('Mark Morgan Planescape Torment')
   expect(argv.at(-1)).toBe('https://music.youtube.com/search?q=Mark%20Morgan%20Planescape%20Torment#songs')
   expect(parseTracks('q_0Rgrl0zLw\tDeionarra\'s Theme\tNA')).toEqual([{ id: 'q_0Rgrl0zLw', title: "Deionarra's Theme", seconds: null }])
+})
+
+test('the radio puts other artists first and drops the song itself and the covers', () => {
+  const out = [
+    '68qcaxPr68A\tSpirit Warrior\t319\tFixions - Topic',
+    'Ss2JVFHlZRU\tSacrifice\t258\tFixions - Topic',
+    'HRsC2g79V3Y\tFuture Club\t290\tPerturbator',
+    'aaaaaaaaaaa\tThe Streets of Whiterun\t200\tCelestial Aeon Project celtic music & epic music',
+    'bbbbbbbbbbb\tNightcall (Piano Cover)\t240\tSomeone',
+    'ccccccccccc\tCity Forgotten\t282\tStraplocked - Topic',
+  ].join('\n')
+  expect(parseRadio(out).map(t => t.title)).toEqual(['Perturbator - Future Club', 'Straplocked - City Forgotten', 'Fixions - Sacrifice'])
+})
+
+test('every genre carries discoveries, none of them already in its own list', () => {
+  for (const g of GENRES) {
+    expect((g.discover ?? []).length).toBeGreaterThan(0)
+    expect((g.discover ?? []).filter(a => g.artists.includes(a))).toEqual([])
+  }
 })

@@ -20,7 +20,7 @@ the model call altogether.
   its `--meta-title=jukebox7` tag, so a VLC opened by hand is never touched.
 
 The **pane** (`/music`, or opened on the first song) shows the title, its
-state and volume, `p` pause, `n` next, `s` stop, `d` and `u` the volume by
+state and volume, `p` pause, `n` next, `r` similar, `s` stop, `d` and `u` the volume by
 10 %, and the genre buttons `1` to `7`:
 ambient, lofi, black metal, darksynth, idm, indie rock, video games. A genre
 is a radio: a random artist from its list, a random song of theirs; next and
@@ -30,6 +30,18 @@ A pick searches YouTube Music's songs tab, which holds tracks only: no
 interview, gameplay or full OST. Its listing gives no length, so the bar
 shows the elapsed time alone; plain YouTube, kept to two to twenty minutes,
 is the fallback when it finds nothing.
+
+**Discoveries.** Each genre also holds a few artists beyond the listener's
+own, drawn from the lists' neighbors (Grouper and Tim Hecker by Loscil and
+Brian Eno, Deathspell Omega and Panopticon by Blut Aus Nord and Agalloch,
+Sewerslvt and Machine Girl by Venetian Snares, Car Seat Headrest and Alex G
+by Modest Mouse and Elliott Smith). One pick in three comes from there and
+its title wears a ✦; strike a name from `discover` to drop it.
+
+**similar** (`r`, `/music similar`, or in words, `plus comme ça`) plays the
+YouTube Music radio of the song on: other artists first (the radio lingers
+on the same one), covers, tributes and hour-long loops dropped; next walks
+that list.
 
 On the terminal the pane is black down to its last row, framed in the
 avatar's color, and the room left under the player fills with a green code

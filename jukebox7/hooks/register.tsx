@@ -6,7 +6,7 @@ import type { Player, Track } from '../types'
 // Cheap sieve before any model call: a prompt without one of these words
 // reaches the session untouched, with no added latency.
 const CANDIDATE =
-  /\b(musique|music|morceau|chanson|son|joue|jouer|mets|lance|play|pause|stop|coupe|arr[eê]te|reprends|resume|suivant|next|skip|ambient|lofi|playlist|youtube|volume|fort|louder|quieter)\b/i
+  /\b(musique|music|morceau|chanson|son|joue|jouer|mets|lance|play|pause|stop|coupe|arr[eê]te|reprends|resume|suivant|next|skip|ambient|lofi|playlist|youtube|volume|fort|louder|quieter|similar|similaire|pareil|radio)\b/i
 
 const INTENT = [
   'You read one message typed to a coding assistant and decide whether it asks to control music playback on the computer.',
@@ -14,12 +14,13 @@ const INTENT = [
   '{"action":"play","query":"...","long":true}',
   '{"action":"toggle"}',
   '{"action":"next"}',
+  '{"action":"similar"}',
   '{"action":"stop"}',
   '{"action":"volume","delta":10}',
   '{"action":"none"}',
   'play: the user wants music played now. query: YouTube search words, in English for a genre or mood, as given for a named artist or title.',
   'long: true for background or mood music (ambient, lofi, focus, a genre), false for one named track.',
-  'toggle: pause or resume the music. next: skip to another one. stop: stop, cut or turn off the music.',
+  'toggle: pause or resume the music. next: skip to another one. similar: more songs like the one playing. stop: stop, cut or turn off the music.',
   'volume: louder (delta 10, or 20 for much louder) or quieter (delta -10, or -20).',
   'none: anything else, including talk about music, code that plays audio, and requests aimed at Renoise, play7, keys7, a piano, a pattern or a melody.',
 ].join('\n')
@@ -28,6 +29,7 @@ type Intent =
   | { action: 'play'; query: string; long: boolean }
   | { action: 'toggle' }
   | { action: 'next' }
+  | { action: 'similar' }
   | { action: 'stop' }
   | { action: 'volume'; delta: number }
   | { action: 'none' }
@@ -43,24 +45,24 @@ const POLL_MS = 5_000
 
 // One click, a radio: a random artist of the genre, a random song of theirs;
 // next and the end of the song roll again. Seeded from the author's own listening.
-export const GENRES: { key: string; label: string; artists: string[] }[] = [
+export const GENRES: { key: string; label: string; artists: string[]; discover?: string[] }[] = [
   {
     key: '1',
     label: 'ambient',
-    artists: ['Boards of Canada', 'Loscil', 'Helios', 'Múm', 'Kenji Kawai Ghost in the Shell', 'Rafael Anton Irisarri', 'Ulver Perdition City', 'Brian Eno', 'bean3'],
+    artists: ['Boards of Canada', 'Loscil', 'Helios', 'Múm', 'Kenji Kawai Ghost in the Shell', 'Rafael Anton Irisarri', 'Ulver Perdition City', 'Brian Eno', 'bean3'], discover: ['Grouper', 'Tim Hecker', 'William Basinski', 'Stars of the Lid', 'Hiroshi Yoshimura', 'Chihei Hatakeyama', 'Biosphere', 'Huerco S.'],
   },
-  { key: '2', label: 'lofi', artists: ['Nujabes', 'Prefuse 73', 'cLOUDDEAD', 'DJ Shadow', 'Bonobo', 'Tomppabeats', 'Why?'] },
+  { key: '2', label: 'lofi', artists: ['Nujabes', 'Prefuse 73', 'cLOUDDEAD', 'DJ Shadow', 'Bonobo', 'Tomppabeats', 'Why?'], discover: ['Madlib', 'J Dilla', 'Flying Lotus', 'Knxwledge', 'Odd Nosdam', 'Jel Anticon', 'Blockhead', 'Elaquent'] },
   {
     key: '3',
     label: 'black metal',
-    artists: ['Dissection', 'Cradle of Filth Dusk and Her Embrace', 'Emperor', 'Dimmu Borgir Enthrone Darkness Triumphant', 'Agalloch', 'Ulver Bergtatt', 'Arcturus', 'Blut Aus Nord', 'Wolves in the Throne Room'],
+    artists: ['Dissection', 'Cradle of Filth Dusk and Her Embrace', 'Emperor', 'Dimmu Borgir Enthrone Darkness Triumphant', 'Agalloch', 'Ulver Bergtatt', 'Arcturus', 'Blut Aus Nord', 'Wolves in the Throne Room'], discover: ['Deathspell Omega', 'Mgła', 'Panopticon', 'Alcest', 'Oranssi Pazuzu', 'Wiegedood', 'Cult of Luna', 'Russian Circles'],
   },
-  { key: '4', label: 'darksynth', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead'] },
-  { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel'] },
+  { key: '4', label: 'darksynth', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk'] },
+  { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel'], discover: ['Richard Devine', 'Proem', 'Lusine', 'Funckarma', 'Sewerslvt', 'Machine Girl', 'Rival Consoles', 'Max Cooper'] },
   {
     key: '6',
     label: 'indie rock',
-    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT'],
+    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT'], discover: ['Car Seat Headrest', 'Alex G', 'Duster Stratosphere', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra'],
   },
   {
     key: '7',
@@ -68,7 +70,7 @@ export const GENRES: { key: string; label: string; artists: string[] }[] = [
     artists: [
       'NieR Automata soundtrack Keiichi Okabe', 'Jeremy Soule Skyrim', 'Jeremy Soule Morrowind', 'Jeremy Soule Oblivion',
       'Akira Yamaoka Silent Hill', 'Deus Ex soundtrack', 'Christopher Larkin Hollow Knight', 'C418 Minecraft', 'Cyberpunk 2077 soundtrack',
-    ],
+    ], discover: ['Disasterpeace Fez', 'Lena Raine Celeste', 'Darren Korb Bastion', 'Austin Wintory Journey', 'Ben Prunty FTL', 'Toby Fox Undertale', 'Mick Gordon Doom', 'Hideki Naganuma'],
   },
 ]
 
@@ -88,6 +90,11 @@ export const STATIONS: Record<string, { name: string; artists: string[] }> = {
 }
 // A genre's artists, or an avatar's station by its id.
 const pool = (label: string): string[] => GENRES.find(g => g.label === label)?.artists ?? STATIONS[label]?.artists ?? []
+// Artists picked for a genre beyond the listener's own: one pick in three
+// comes from there, and its title wears a ✦.
+const discoveries = (label: string): string[] => GENRES.find(g => g.label === label)?.discover ?? []
+const DISCOVER_ODDS = 1 / 3
+export const DISCOVERED = '✦ '
 const onDuty = { plugin: 'avatar7', key: 'avatar' } as const
 const tint = { plugin: 'avatar7', key: 'color' } as const
 // Without an avatar on duty the pane keeps the terminal's phosphor green.
@@ -114,7 +121,7 @@ export const parseIntent = (text: string): Intent => {
     if (v.action === 'play' && typeof v.query === 'string' && v.query.trim() !== '') {
       return { action: 'play', query: v.query.trim(), long: v.long === true }
     }
-    if (v.action === 'toggle' || v.action === 'next' || v.action === 'stop') return { action: v.action }
+    if (v.action === 'toggle' || v.action === 'next' || v.action === 'similar' || v.action === 'stop') return { action: v.action }
     if (v.action === 'volume' && typeof v.delta === 'number' && v.delta !== 0) return { action: 'volume', delta: v.delta }
   } catch {
     // Not JSON after all: the prompt goes on to the session.
@@ -166,6 +173,38 @@ export const musicSearch = (query: string): string[] => [
   '%(id)s\t%(title)s\t%(duration)s',
   `https://music.youtube.com/search?q=${encodeURIComponent(query)}#songs`,
 ]
+
+// YouTube Music's radio from a song: its first entry is the song itself.
+// The radio lingers on the same artist, so other artists come first; covers,
+// tributes and hour-long loops (the drift of a niche radio) are dropped.
+export const radioArgv = (id: string): string[] => [
+  'yt-dlp',
+  '--flat-playlist',
+  '--no-warnings',
+  '--playlist-end',
+  '25',
+  '--print',
+  '%(id)s\t%(title)s\t%(duration)s\t%(channel)s',
+  `https://music.youtube.com/watch?v=${id}&list=RDAMVM${id}`,
+]
+const COVER = /\b(cover|tribute|relaxing|reimagined|orchestral version|piano version|8.?bit|lofi version|1 hour|hours?\b|extended|epic music|fantasy music|sleep|study)\b/i
+export const parseRadio = (stdout: string): Track[] => {
+  const rows = stdout
+    .split('\n')
+    .map(l => l.split('\t'))
+    .filter(([id]) => id !== undefined && /^[\w-]{11}$/.test(id))
+    .map(([id, title, d, channel]) => ({
+      id: id as string,
+      title: (title ?? '').trim(),
+      seconds: d === undefined || !/^\d+(\.\d+)?$/.test(d.trim()) ? null : Math.round(Number(d)),
+      artist: (channel ?? '').replace(/ - Topic$/, '').trim(),
+    }))
+  const [self, ...rest] = rows
+  const kept = rest.filter(r => !COVER.test(r.title) && !COVER.test(r.artist) && (r.seconds === null || isSong(r)))
+  const others = kept.filter(r => r.artist !== self?.artist)
+  const same = kept.filter(r => r.artist === self?.artist)
+  return [...others, ...same].map(r => ({ id: r.id, title: r.artist === '' || r.artist === 'NA' ? r.title : `${r.artist} - ${r.title}`, seconds: r.seconds }))
+}
 
 // Audio only, no window: yt-dlp streams the best audio into Windows' VLC
 // with its dummy interface (WSLg's PulseAudio stalls after a sleep, VLC
@@ -301,20 +340,23 @@ async function play($: Engine, query: string, long: boolean): Promise<Track | un
 }
 
 async function playGenre($: Engine, label: string): Promise<Track | undefined> {
-  const artist = anyOf(pool(label))
+  const fresh = discoveries(label)
+  const isNew = fresh.length > 0 && Math.random() < DISCOVER_ODDS
+  const artist = anyOf(isNew ? fresh : pool(label))
   if (artist === undefined) return undefined
   $.ui.status(`music: looking for ${STATIONS[label]?.name ?? label}, ${artist}…`)
   const was = (await read($, player)).tracks
   const music = await $.process.run(musicSearch(artist), { timeoutMs: 20_000 })
   let songs = music.exitCode === 0 ? parseTracks(music.stdout).filter(t => t.seconds === null || isSong(t)) : []
   // Its titles carry no artist; the query names it.
-  songs = songs.map(t => ({ ...t, title: `${artist} - ${t.title}` }))
+  songs = songs.map(t => ({ ...t, title: `${isNew ? DISCOVERED : ''}${artist} - ${t.title}` }))
   if (songs.length === 0) {
     const found = await $.process.run(search(artist), { timeoutMs: 20_000 })
     songs = found.exitCode === 0 ? parseTracks(found.stdout).filter(isSong) : []
+    if (isNew) songs = songs.map(t => ({ ...t, title: `${DISCOVERED}${t.title}` }))
   }
-  const fresh = songs.filter(t => !was.some(w => w.id === t.id))
-  const track = anyOf(fresh.length > 0 ? fresh : songs)
+  const unheard = songs.filter(t => !was.some(w => w.id === t.id))
+  const track = anyOf(unheard.length > 0 ? unheard : songs)
   if (track === undefined) {
     $.ui.status(undefined)
     $.ui.toast(`music: nothing found for ${artist}`)
@@ -322,6 +364,23 @@ async function playGenre($: Engine, label: string): Promise<Track | undefined> {
   }
   $.ui.toast(`music now playing: ${track.title}`)
   return playAt($, [track], 0, label)
+}
+
+// More like the song playing: its YouTube Music radio, as a list next walks.
+async function playSimilar($: Engine): Promise<Track | undefined> {
+  const p = await read($, player)
+  const now = p.tracks[p.index]
+  if (now === undefined) return undefined
+  $.ui.status(`music: looking for songs like ${now.title}…`)
+  const found = await $.process.run(radioArgv(now.id), { timeoutMs: 20_000 })
+  const tracks = found.exitCode === 0 ? parseRadio(found.stdout) : []
+  if (tracks.length === 0) {
+    $.ui.status(show(p))
+    $.ui.toast('music: no radio for this one')
+    return undefined
+  }
+  $.ui.toast(`music, like ${now.title}: ${tracks[0]?.title}`)
+  return playAt($, tracks, 0, null)
 }
 
 const clock = (s: number): string => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -369,7 +428,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'music',
-      description: 'Play music from YouTube: /music <search>, /music pause, /music next, /music stop, /music vol [+|-]<n>, /music alone for what plays',
+      description: 'Play music from YouTube: /music <search>, /music pause, /music next, /music similar, /music stop, /music vol [+|-]<n>, /music alone for what plays',
     })
 
     // A pipeline that ended by itself (the track is over) moves on to the
@@ -443,6 +502,10 @@ export const register: Register = on => {
         $.ui.toast(`music volume ${v}%`)
         return { drop: `jukebox7: volume ${v}%` }
       }
+      if (intent.action === 'similar') {
+        const t = await playSimilar($)
+        return { drop: `jukebox7: ${t === undefined ? 'no radio for this one' : `like it, ${t.title}`}` }
+      }
       if (intent.action === 'next') {
         const t = await skip($, 1)
         $.ui.toast(t === undefined ? 'music: end of the list' : `music now playing: ${t.title}`)
@@ -476,6 +539,11 @@ export const register: Register = on => {
       if (n === undefined) return { text: `Volume ${await read($, volume)}%.` }
       const v = await louder($, sign === '' ? Number(n) - (await read($, volume)) : Number(`${sign}${n}`))
       return { text: `Volume ${v}%.` }
+    }
+
+    if (args === 'similar' || args === 'like') {
+      const t = await playSimilar($)
+      return { text: t === undefined ? 'No radio for this one.' : `Like it: ${t.title}` }
     }
 
     if (args === 'pause' || args === 'next' || args === 'stop') {
@@ -514,6 +582,7 @@ export const register: Register = on => {
       <>
         <Button key="toggle" label={p.isPlaying ? 'pause' : 'play'} hotkey="p" plain onPress={() => void toggle($)} />
         <Button key="next" label="next" hotkey="n" plain onPress={() => void skip($, 1)} />
+        <Button key="similar" label="similar" hotkey="r" plain onPress={() => void playSimilar($)} />
         <Button key="stop" label="stop" hotkey="s" plain dimColor onPress={() => void stop($)} />
         <Button key="quieter" label="vol−" hotkey="d" plain dimColor onPress={() => void louder($, -VOLUME_STEP)} />
         <Button key="louder" label="vol+" hotkey="u" plain dimColor onPress={() => void louder($, VOLUME_STEP)} />
