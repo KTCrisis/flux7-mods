@@ -39,5 +39,6 @@
     {"story": "Peppy shouts at you to do a barrel roll", "mood": "watch"},
     {"story": "Slippy is in trouble again and calls for cover", "mood": "wait"}
   ],
-  "asks": "teamwork, trust in your wingmen, and when to follow orders or fly your own way"
+  "asks": "teamwork, trust in your wingmen, and when to follow orders or fly your own way",
+  "friends": ["kaneda", "pod042", "adjutant"]
 }

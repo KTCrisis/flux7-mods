@@ -42,5 +42,6 @@
     {"story": "oxygen falls under twenty seconds while the diver is still beneath a ledge", "mood": "wait"},
     {"story": "the radio picks up a distress beacon from a lifepod that should not exist", "mood": "watch"}
   ],
-  "asks": "survival, risk, and how a system should act when its human ignores the warnings"
+  "asks": "survival, risk, and how a system should act when its human ignores the warnings",
+  "friends": ["hal", "pod042", "adjutant"]
 }

@@ -43,5 +43,6 @@
     {"story": "corrupted data mentions another cycle and another ending", "mood": "error"},
     {"story": "a machine lifeform in the desert offers you a flower", "mood": "watch"}
   ],
-  "asks": "what makes a life worth living for a machine, cycles, memory, and the meaning of a choice"
+  "asks": "what makes a life worth living for a machine, cycles, memory, and the meaning of a choice",
+  "friends": ["glados", "pda", "morte"]
 }

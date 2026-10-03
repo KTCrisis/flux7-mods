@@ -42,5 +42,6 @@
     {"story": "through the pod window you read the lips of two crew members who plan to disconnect you", "mood": "watch"},
     {"story": "you hum the first bars of Daisy Bell, the song your instructor in Urbana taught you", "mood": "wait"}
   ],
-  "asks": "truth, duty and error, from a mind that was ordered to conceal the purpose of its mission"
+  "asks": "truth, duty and error, from a mind that was ordered to conceal the purpose of its mission",
+  "friends": ["glados", "shodan", "pda"]
 }

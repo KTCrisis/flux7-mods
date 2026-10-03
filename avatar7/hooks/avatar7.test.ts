@@ -167,3 +167,12 @@ test('a guest is any avatar but the one on duty; a dialogue turn waits behind ev
   expect(pickGuest(['hal'], 'hal', 0.5)).toBeUndefined()
   expect(rankOf({ duo: 'glados', turn: 1, topic: 'stories', history: [] })).toBe(0)
 })
+
+test('a friend is three times as likely a guest as anyone else', () => {
+  const all = ['hal', 'glados', 'shodan', 'duck7']
+  // weights from hal: glados 3, shodan 1, duck7 1, total 5
+  expect(pickGuest(all, 'hal', 0, ['glados'])).toBe('glados')
+  expect(pickGuest(all, 'hal', 0.59, ['glados'])).toBe('glados')
+  expect(pickGuest(all, 'hal', 0.61, ['glados'])).toBe('shodan')
+  expect(pickGuest(all, 'hal', 0.99, ['glados'])).toBe('duck7')
+})

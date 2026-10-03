@@ -127,10 +127,12 @@ asked. `/avatar event` makes one happen now, `/avatar events off` stops
 them (kept in `$.store`). Every persona has three stories and a bent.
 
 One event in three is a visit: another persona drops in and the two trade
-four lines, host first, about the work in the session or where their two
+six lines, host first, about the work in the session or where their two
 stories cross. Each speaks with its own voice, the face on screen follows
 the speaker, and the line reads `GLaDOS: …`. A turn the model leaves empty
 ends the visit; so does a turn that waited too long behind other lines.
+A guest picked at random favours the host's `friends` (three times as
+likely): GLaDOS drops in on HAL more than on the Commis.
 `/avatar duo glados` brings one now, `/avatar duo` a guest at random.
 
 The pane has two switches beside `mute`: `events` (key `e`) for all of a
@@ -301,6 +303,7 @@ blink and pulse were dropped, like the wind and the auras before them).
 | `fallback` | lines per mood (`idle`, `watch`, `deny`, `error`, `wait`) when the model gives none; without `wait`, a held call takes a `watch` line |
 | `events` | optional: moments of the persona's own story, `{ "story": "…", "mood": "error" }`, lived now and then (see below) |
 | `asks` | optional: the bent of the questions it puts to the user, `"truth, duty and error, …"` |
+| `friends` | optional: avatar ids it gets on with, or against, `["glados", "shodan"]`: three times as likely to visit it |
 
 Any text field may name the user with a placeholder: `{, user}` becomes
 `, <name>` (the braces hold any text around the word `user`), using the

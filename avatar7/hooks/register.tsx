@@ -208,12 +208,21 @@ type Ask =
 // One turn of a dialogue with a visiting persona: even turns are the host's,
 // odd ones the guest's; `history` holds the lines said so far, by name.
 export type Duo = { duo: string; turn: number; topic: 'session' | 'stories'; history: string[] }
-export const DUO_TURNS = 4
+export const DUO_TURNS = 6
 
-// A guest for the persona on duty: any other avatar, picked by `roll` in [0, 1).
-export const pickGuest = (avatars: string[], current: string, roll: number): string | undefined => {
+// A guest for the persona on duty: any other avatar, its `friends` three
+// times as likely as the rest, picked by `roll` in [0, 1).
+const FRIEND_WEIGHT = 3
+
+export const pickGuest = (avatars: string[], current: string, roll: number, friends: string[] = []): string | undefined => {
   const others = avatars.filter(a => a !== current)
-  return others[Math.floor(roll * others.length)]
+  const weights = others.map(a => (friends.includes(a) ? FRIEND_WEIGHT : 1))
+  let left = roll * weights.reduce((sum, w) => sum + w, 0)
+  for (const [i, a] of others.entries()) {
+    left -= weights[i] ?? 1
+    if (left < 0) return a
+  }
+  return others.at(-1)
 }
 
 export type Story = { story: string; mood: Exclude<Mood, 'idle'> }
@@ -281,6 +290,8 @@ type Persona = {
   // questions it asks the user; either may be absent.
   events?: Story[]
   asks?: string
+  // The avatars it gets on with, or against: they visit it more often.
+  friends?: string[]
 }
 
 // A visiting persona: its text and its face, read from its folder.
@@ -619,7 +630,7 @@ export const register: Register = (on, options) => {
       ) {
         nextEventAt = frame + nextGap()
         // One event in three is a visit from another persona.
-        const gid = visitsOn && Math.random() < 1 / 3 ? pickGuest(AVATARS, whoId, Math.random()) : undefined
+        const gid = visitsOn && Math.random() < 1 / 3 ? pickGuest(AVATARS, whoId, Math.random(), who.friends) : undefined
         if (gid !== undefined) {
           void loadGuest($, gid).then(g => {
             if (g !== null) startDuo(g, Math.random() < 0.5 ? 'session' : 'stories')
@@ -766,7 +777,7 @@ export const register: Register = (on, options) => {
     // A visit now: /avatar duo <id>, or a guest picked at random.
     if (id === 'duo' || id.startsWith('duo ')) {
       const want = id.slice(3).trim()
-      const gid = want !== '' ? want : pickGuest(AVATARS, whoId, Math.random())
+      const gid = want !== '' ? want : pickGuest(AVATARS, whoId, Math.random(), who?.friends)
       if (gid === undefined || !AVATARS.includes(gid) || gid === whoId) {
         return { text: `Pick another avatar: ${AVATARS.filter(a => a !== whoId).join(', ')}.` }
       }

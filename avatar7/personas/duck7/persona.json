@@ -53,5 +53,6 @@
     {"story": "your royal feathers start to moult and the crown slips over one eye", "mood": "error"},
     {"story": "you rewrite the Makefile again; it is Tuesday, after all", "mood": "wait"}
   ],
-  "asks": "chaos, build systems, why logs lie, and whether a duck can be a senior engineer"
+  "asks": "chaos, build systems, why logs lie, and whether a duck can be a senior engineer",
+  "friends": ["kaneda", "fox", "morte"]
 }

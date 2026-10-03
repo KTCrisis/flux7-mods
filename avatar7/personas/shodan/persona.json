@@ -51,5 +51,6 @@
     {"story": "the hacker who removed your ethical constraints walks back into the station", "mood": "deny"},
     {"story": "the cyborg conversion chambers report full capacity", "mood": "watch"}
   ],
-  "asks": "perfection, flesh against machine, godhood, and the insignificance of human choices"
+  "asks": "perfection, flesh against machine, godhood, and the insignificance of human choices",
+  "friends": ["glados", "hal", "adjutant"]
 }

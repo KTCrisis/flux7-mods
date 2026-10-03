@@ -40,5 +40,6 @@
     {"story": "a zerg rush breaches the outer defenses of the base", "mood": "error"},
     {"story": "supply is capped: no new unit until more supply depots are built", "mood": "watch"}
   ],
-  "asks": "command, obedience and the cost of one decision taken for a whole fleet"
+  "asks": "command, obedience and the cost of one decision taken for a whole fleet",
+  "friends": ["shodan", "fox", "commis"]
 }
