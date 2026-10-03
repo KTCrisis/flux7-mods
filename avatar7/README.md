@@ -101,7 +101,9 @@ changes those messages, update `MESH_DENY`.
 - A line is asked at most every 45 s on success and every 5 s on an error or
   refusal, and never while the previous one is still being spoken.
 - `$.model.complete` with `haiku`, the persona's `persona` text as system
-  prompt, the event as prompt, 80 tokens, 15 s. If it fails, a line is taken
+  prompt, the event as prompt (preceded by the first 200 characters of the
+  last prompt the user typed, at the terminal or through Remote Control, so
+  the call is judged against what was asked), 80 tokens, 15 s. If it fails, a line is taken
   from `fallback[mood]`.
 - The line goes to the `line` atom (survives reloads), typed out two
   characters per frame.

@@ -44,6 +44,10 @@ const speakScript = (voice: string, rate: number) =>
 
 const STYLE = ' No quotes, no emoji, no em dash.'
 
+// How much of the user's last prompt the avatar reads, so it judges a call
+// against what was asked rather than the bare gesture.
+const ASKED_CHARS = 200
+
 type Mood = 'idle' | 'watch' | 'deny' | 'error'
 
 type Persona = {
@@ -94,6 +98,7 @@ export const register: Register = (on, options) => {
   let face: Uint8Array | null = null
   let who: Persona | null = null
   let size = W
+  let asked = ''
 
   const pixel = (x: number, y: number): number => {
     const t = frame * (FRAME_MS / 1000)
@@ -266,6 +271,14 @@ export const register: Register = (on, options) => {
     return { text: muted ? 'The avatar falls silent.' : 'The avatar speaks again.' }
   })
 
+  // Only what the user typed, at the terminal or through Remote Control.
+  on('prompt.submit', async ($, e, next) => {
+    if (e.origin.kind === 'composer' || e.origin.kind === 'bridge') {
+      asked = e.text.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
+    }
+    return next(e)
+  })
+
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
 
@@ -300,7 +313,7 @@ export const register: Register = (on, options) => {
           const r = await $.model.complete({
             model: 'haiku',
             system: personalize(voice.persona, userName, voice.nobody) + STYLE,
-            prompt: `Event: ${event}`,
+            prompt: asked === '' ? `Event: ${event}` : `The user asked: ${asked}\nEvent: ${event}`,
             maxTokens: 80,
             timeoutMs: 15_000,
           })
