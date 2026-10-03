@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { heard, landed } from './register'
+import { heard, landed, meshShift } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -86,4 +86,13 @@ test('a write the host answers without isSet still counts; only isSet false does
   expect(landed(undefined)).toBe(true)
   expect(landed({ isSet: true, version: 3 })).toBe(true)
   expect(landed({ isSet: false, version: 4 })).toBe(false)
+})
+
+test('mesh7 falling, halting and coming back each make one line; a steady reading none', () => {
+  const up = { isUp: true, version: '0.19.0', halt: '' }
+  expect(meshShift(up, up)).toBeUndefined()
+  expect(meshShift(up, { ...up, isUp: false })?.mood).toBe('error')
+  expect(meshShift({ ...up, isUp: false }, up)?.mood).toBe('watch')
+  expect(meshShift(up, { ...up, halt: 'global: incident' })).toEqual({ mood: 'deny', event: 'mesh7 EMERGENCY STOP: global: incident' })
+  expect(meshShift({ ...up, halt: 'global: incident' }, up)?.mood).toBe('watch')
 })

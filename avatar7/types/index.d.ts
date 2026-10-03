@@ -7,6 +7,9 @@ export type Line = { text: string; at: number }
 // persona without one.
 export type Station = { name: string; artists: string[] }
 
+// mesh7 as mesh7-pane last saw it: up or down, and an emergency stop's scope.
+export type MeshHealth = { isUp: boolean; version: string; halt: string }
+
 export type Announce = { mood: 'watch' | 'error'; event: string }
 
 declare module 'claude-code' {
@@ -24,5 +27,7 @@ declare module 'claude-code' {
       // The on-duty persona's music, from its persona.json: jukebox7 plays it.
       station: Station
     }
+    // Read only: mesh7-pane owns it, when loaded; avatar7 hears its changes.
+    'mesh7-pane': { health: MeshHealth }
   }
 }

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Announce, Line, Station } from '../types'
+import type { Announce, Line, MeshHealth, Station } from '../types'
 
 const PANE = 'avatar7'
 const FACE = 'face'
@@ -140,6 +140,16 @@ const TALK_MESSAGES = 6
 const TALK_CHARS = 300
 
 type Mood = 'idle' | 'watch' | 'deny' | 'error' | 'wait'
+
+// What changed in mesh7's health between two of mesh7-pane's readings, as a
+// line to speak, or undefined when nothing did (the pane writes every poll).
+export const meshShift = (before: MeshHealth, after: MeshHealth): { mood: 'deny' | 'error' | 'watch'; event: string } | undefined => {
+  if (after.halt !== '' && after.halt !== before.halt) return { mood: 'deny', event: `mesh7 EMERGENCY STOP: ${after.halt}` }
+  if (after.halt === '' && before.halt !== '') return { mood: 'watch', event: 'mesh7 emergency stop lifted, tools run again' }
+  if (!after.isUp && before.isUp) return { mood: 'error', event: 'mesh7 went down, every tool call now fails closed' }
+  if (after.isUp && !before.isUp) return { mood: 'watch', event: 'mesh7 is back up' }
+  return undefined
+}
 
 // Whether a write landed. The host answers a plain write without `isSet`
 // (2.1.288, despite StateSetResult): only a write another one beat says false.
@@ -587,6 +597,22 @@ export const register: Register = (on, options) => {
       } catch (err) {
         $.ui.log(`avatar7 could not keep ${w.plugin}.announce: ${String(err)}`, { to: 'debug' })
       }
+    }
+    return done
+  })
+
+  // mesh7-pane, when loaded, polls mesh7's health: a fall, an emergency stop
+  // and their end reach the face, which otherwise sees only its own calls.
+  let meshWas: MeshHealth | null = null
+  on('state.set', { plugin: 'mesh7-pane', key: 'health' }, async ($, e, next) => {
+    const done = await next(e)
+    const now = e.value
+    const shift = meshWas === null ? undefined : meshShift(meshWas, now)
+    meshWas = now
+    if (shift !== undefined && who !== null) {
+      mood = shift.mood
+      moodUntil = frame + (shift.mood === 'watch' ? 12 : 30)
+      queued = shift
     }
     return done
   })
