@@ -144,7 +144,7 @@ reduction is contrast and a large central subject, so the prompt asks for:
 - a pure black or dark background;
 - high contrast and one dominant glow color.
 
-The five shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
+The eight shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
 random unless given; the actual seed is in the PNG metadata):
 
 | id | style | prompt |
@@ -154,6 +154,9 @@ random unless given; the actual seed is in the PNG metadata):
 | glados | `libre` | giant robotic artificial intelligence hanging from the ceiling, sleek white and black mechanical head seen from the front with a single large glowing yellow eye in the center, articulated robotic neck, cables, sterile laboratory test chamber, head centered and filling the frame, dark background, high contrast, cinematic |
 | ada | `decopunk (Belle Époque futur)` | frontal symmetric portrait of a benevolent automaton woman, face of polished brass and ivory porcelain, gentle kind luminous amber eyes, serene soft smile, ornate brass filigree and whiplash curves framing the head like a halo, face centered and filling the frame, warm golden light, dark background, high contrast |
 | duck7 | none, seed 11 | cartoon mascot portrait of a cheeky mallard duck head facing the viewer, 1990s animated series style, bold thick black outlines, flat cel shading, big round expressive white eyes with black pupils and a mischievous half-lidded look, wide orange-yellow bill with a smug grin, glossy emerald green head, small tilted golden crown, symmetric, head centered and filling the frame, pure black background, high contrast, vivid saturated colors |
+| pod042 | none, seed 42 | frontal symmetric view of a small floating support robot pod, boxy grey metal casing with rounded edges, a single horizontal glowing slit eye in the center, two small mechanical arms folded at its sides, minimalist post-apocalyptic android design, centered and filling the frame, pure black background, high contrast, soft white and pale yellow glow, 2017 video game concept art |
+| kaneda | none, seed 1988 | frontal portrait of a cocky teenage biker gang leader, spiky brown hair, smirking confidently straight at the viewer, red leather biker jacket with a white pill capsule emblem on the chest, neon red city lights behind, 1988 japanese anime cel animation style, bold outlines, face centered and filling the frame, dark background, high contrast, saturated red |
+| commis | none, seed 1769 | frontal symmetric portrait of an 18th century East India Company clerk, a weathered ship log keeper with a powdered wig and round brass spectacles, quill pen behind the ear, teak and rattan background with brass navigation instruments and a faded nautical chart, warm candlelight, face centered and filling the frame, dark surroundings, high contrast, oil painting in the style of a colonial era portrait |
 
 A render takes about 25 to 50 s on Krea 2 turbo.
 
@@ -174,6 +177,9 @@ mush, crop tighter or re-render with more contrast.
 | shodan, ada | `112 100 912 900` |
 | hal | `150 150 874 874` |
 | duck7 | none (full frame) |
+| pod042 | `64 20 960 916` |
+| kaneda | `180 40 860 720` |
+| commis | `192 100 832 740` |
 | glados | `192 150 832 790` |
 
 ### 3. Features
@@ -257,5 +263,10 @@ lines belong to their works, the portraits are original renders.
   1968. "I'm sorry, Dave. I'm afraid I can't do that." is theirs.
 - **The lab AI** is modeled on GLaDOS, *Portal*, Valve, 2007.
 - **Ada** is our own, named in tribute to Ada Lovelace.
+- **Pod 042**: *NieR:Automata*, PlatinumGames and Square Enix, 2017.
+- **Kaneda**: *Akira*, Katsuhiro Otomo, 1982 manga and 1988 film; his
+  fallback name for an unnamed user is Tetsuo.
+- **The Commis** is our own, a trading post clerk keeping the log; he never
+  praises the Company.
 - **duck7** is our own: the crowned mallard of the status line, a claude-buddy
   companion, given a face.
