@@ -197,6 +197,8 @@ export const register: Register = (on, options) => {
   let isSpeaking = false
   let face: Uint8Array | null = null
   let who: Persona | null = null
+  // The avatar `who` was read from, so a line keeps its voice through a switch.
+  let whoId = ''
   let size = W
   let asked = ''
   // The next line to speak; the clock, which holds the session's $, speaks it.
@@ -331,6 +333,11 @@ export const register: Register = (on, options) => {
   }
 
   on('session.start', async ($, e, next) => {
+    // A daemon's background session (a spare kept warm, a `claude --bg`)
+    // inherits the plugin dirs but nobody watches it: no face, no voice.
+    const kind = await $.process.run(['sh', '-c', 'printf %s "$CLAUDE_CODE_SESSION_KIND"'])
+    if (kind.stdout === 'bg') return next(e)
+
     await $.command.register({
       name: 'avatar',
       description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}`,
@@ -347,6 +354,7 @@ export const register: Register = (on, options) => {
     try {
       const dir = `${$.plugin.root}/personas/${id}`
       who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
+      whoId = id
       await update($, tint, () => who?.color ?? '')
       const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
       face = Uint8Array.fromBase64(base64)
@@ -373,6 +381,7 @@ export const register: Register = (on, options) => {
         void (async () => {
           const dir = `${$.plugin.root}/personas/${id}`
           who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
+          whoId = id
           await update($, tint, () => who?.color ?? '')
           const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
           face = Uint8Array.fromBase64(base64)
@@ -439,6 +448,7 @@ export const register: Register = (on, options) => {
       isSpeaking = true
       lastSpoke = frame
       const voice = who
+      const voiceId = whoId
       $.clock.after(1, async () => {
         try {
           let prompt: string
@@ -475,7 +485,7 @@ export const register: Register = (on, options) => {
           const seq = startLine(text, isQuiet)
           await update($, line, () => ({ text, at: frame }) satisfies Line)
           if (!isQuiet) {
-            const made = await $.process.run(synthArgv(await read($, onDuty), voice, await read($, volume)), {
+            const made = await $.process.run(synthArgv(voiceId, voice, await read($, volume)), {
               stdin: text,
               timeoutMs: 30_000,
             })
