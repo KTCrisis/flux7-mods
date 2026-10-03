@@ -15,8 +15,8 @@ const W = 64
 const H = 64
 const MIN_SIZE = 16
 
-// Rows kept under the face for the line, which may wrap once.
-const TEXT_ROWS = 2
+// Rows kept under the face for the line, which may wrap once, and the button.
+const TEXT_ROWS = 3
 
 // The engine redraws on a change of width, never on a change of height alone:
 // the clock asks for a render this often so the face follows both.
@@ -54,6 +54,11 @@ const STYLE = ' No quotes, no emoji, no em dash.'
 // How much of the user's last prompt the avatar reads, so it judges a call
 // against what was asked rather than the bare gesture.
 const ASKED_CHARS = 200
+
+// When poked, the avatar reads the last messages of the conversation, each cut
+// to this many characters.
+const TALK_MESSAGES = 6
+const TALK_CHARS = 300
 
 type Mood = 'idle' | 'watch' | 'deny' | 'error'
 
@@ -107,6 +112,9 @@ export const register: Register = (on, options) => {
   let who: Persona | null = null
   let size = W
   let asked = ''
+  // Set by the button or /avatar-talk; the clock, which holds the session's $,
+  // speaks it.
+  let isPoked = false
 
   const pixel = (x: number, y: number): number => {
     const t = frame * (FRAME_MS / 1000)
@@ -208,6 +216,7 @@ export const register: Register = (on, options) => {
       description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}`,
     })
     await $.command.register({ name: 'avatar-mute', description: 'Toggle the avatar voice' })
+    await $.command.register({ name: 'avatar-talk', description: 'Ask the avatar what it thinks of the conversation' })
 
     const stored = await $.store.get('avatar')
     const id = typeof stored === 'string' && AVATARS.includes(stored) ? stored : DEFAULT
@@ -234,6 +243,47 @@ export const register: Register = (on, options) => {
       } else if (frame % REFIT_FRAMES === 0) {
         $.ui.invalidate('ui.render')
       }
+
+      if (!isPoked || isSpeaking || who === null) return
+      isPoked = false
+      isSpeaking = true
+      lastSpoke = frame
+      const voice = who
+      $.clock.after(1, async () => {
+        try {
+          const messages = await $.session.messages()
+          const recent = messages
+            .filter(m => m.text.trim() !== '')
+            .slice(-TALK_MESSAGES)
+            .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, TALK_CHARS)}`)
+            .join('\n')
+          const r = await $.model.complete({
+            model: 'haiku',
+            system: personalize(voice.persona, userName, voice.nobody) + STYLE,
+            prompt:
+              `The user pokes you and wants your take on where the conversation stands.\n` +
+              `Last messages, oldest first:\n${recent}`,
+            maxTokens: 80,
+            timeoutMs: 15_000,
+          })
+          const pool = voice.fallback.idle
+          const text = r.isAnswered
+            ? (r.text.trim().split('\n')[0] ?? '')
+            : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
+          lineLength = text.length
+          typed = 0
+          speakUntil = frame + Math.ceil(text.length / 2) + 10
+          await update($, line, () => ({ text, at: frame }) satisfies Line)
+          if (!(await read($, isMuted))) {
+            await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice)], {
+              stdin: text,
+              timeoutMs: 30_000,
+            })
+          }
+        } finally {
+          isSpeaking = false
+        }
+      })
     })
 
     void $.ui.open({ id: PANE, title: who?.name ?? 'avatar7' })
@@ -272,6 +322,11 @@ export const register: Register = (on, options) => {
     }
 
     return { text: `${who.name} takes over.` }
+  })
+
+  on('command.run', { command: 'avatar-talk' }, async () => {
+    isPoked = true
+    return { text: `${who?.name ?? 'avatar7'} reads the conversation.` }
   })
 
   on('command.run', { command: 'avatar-mute' }, async $ => {
@@ -327,8 +382,8 @@ export const register: Register = (on, options) => {
           })
           const pool = voice.fallback[now]
           const text = r.isAnswered
-            ? r.text.trim().split('\n')[0]
-            : personalize(pool[frame % pool.length], userName, voice.nobody)
+            ? (r.text.trim().split('\n')[0] ?? '')
+            : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
           lineLength = text.length
           typed = 0
           speakUntil = frame + Math.ceil(text.length / 2) + 10
@@ -365,7 +420,7 @@ export const register: Register = (on, options) => {
       )
     }
 
-    const { Box, Text, Raster } = $.ui.resolve(e)
+    const { Box, Text, Raster, Button } = $.ui.resolve(e)
     size = fit(e.props.bodyColumns, e.props.scroll.bodyRows)
     return (
       // viewport.rows is the whole surface: taller than the pane, which clips the rest.
@@ -374,6 +429,7 @@ export const register: Register = (on, options) => {
         <Text color={color} backgroundColor="#000000">
           {shown.length > 0 ? `> ${shown}` : '> ...'}
         </Text>
+        <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => (isPoked = true)} />
       </Box>
     )
   })

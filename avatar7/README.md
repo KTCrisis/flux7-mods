@@ -18,6 +18,7 @@ sessions.
 | --- | --- |
 | `/avatar` | open the pane |
 | `/avatar <id>` | switch avatar (`shodan`, `hal`, `glados`, `ada`), greet, remember the choice across sessions |
+| `/avatar-talk` | ask the avatar what it thinks of the conversation; the `talk` button under the face (hotkey `t` while the pane has the focus) does the same |
 | `/avatar-mute` | toggle the voice for this session |
 
 The pane opens by itself at session start when the terminal is at least 144
@@ -60,8 +61,9 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 
 | Hook | Role |
 | --- | --- |
-| `session.start` | registers `/avatar` and `/avatar-mute`, loads the stored avatar (`$.store`), starts the frame clock, opens the pane |
+| `session.start` | registers `/avatar`, `/avatar-talk` and `/avatar-mute`, loads the stored avatar (`$.store`), starts the frame clock, opens the pane |
 | `command.run` `avatar` | opens the pane, or loads another persona, stores it, speaks its greeting |
+| `command.run` `avatar-talk`, the `talk` Button | raise a flag; the frame clock, which holds the session's `$`, reads the last 6 messages (`$.session.messages()`, 300 characters each) and asks Haiku for one line, outside the tool-call rate limits |
 | `command.run` `avatar-mute` | flips the `isMuted` state |
 | `tool.call` | lets the call run (`await next(e)`), then classifies the outcome and may ask for a line |
 | `ui.render` `Pane` | draws the Raster and the line under it; a text fallback off the terminal |
