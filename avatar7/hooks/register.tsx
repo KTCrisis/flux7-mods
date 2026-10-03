@@ -7,7 +7,7 @@ const PANE = 'avatar7'
 const FACE = 'face'
 const FRAME_MS = 66
 const DEFAULT = 'shodan'
-const AVATARS = ['shodan', 'hal', 'glados', 'ada']
+const AVATARS = ['shodan', 'hal', 'glados', 'ada', 'duck7']
 
 // Portraits are baked by tools/bake.py into W x H raw RGB pixels; each cell
 // is an upper half block, so two pixel rows per cell row.

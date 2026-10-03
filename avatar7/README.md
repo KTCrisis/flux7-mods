@@ -139,8 +139,8 @@ reduction is contrast and a large central subject, so the prompt asks for:
 - a pure black or dark background;
 - high contrast and one dominant glow color.
 
-The four shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
-random; the actual seed is in the PNG metadata):
+The five shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
+random unless given; the actual seed is in the PNG metadata):
 
 | id | style | prompt |
 | --- | --- | --- |
@@ -148,6 +148,7 @@ random; the actual seed is in the PNG metadata):
 | hal | `libre` | extreme close-up of a single glowing red camera lens eye set in a brushed aluminium panel, deep red glass iris with a bright yellow-white pinpoint center, concentric reflections, perfectly symmetric, centered and filling the frame, 1968 science fiction spaceship computer, pure black surroundings, high contrast |
 | glados | `libre` | giant robotic artificial intelligence hanging from the ceiling, sleek white and black mechanical head seen from the front with a single large glowing yellow eye in the center, articulated robotic neck, cables, sterile laboratory test chamber, head centered and filling the frame, dark background, high contrast, cinematic |
 | ada | `decopunk (Belle Époque futur)` | frontal symmetric portrait of a benevolent automaton woman, face of polished brass and ivory porcelain, gentle kind luminous amber eyes, serene soft smile, ornate brass filigree and whiplash curves framing the head like a halo, face centered and filling the frame, warm golden light, dark background, high contrast |
+| duck7 | none, seed 77 | frontal symmetric portrait of a legendary mallard duck head looking straight at the viewer, iridescent emerald green feathers, bright yellow bill, two glowing amber eyes, small golden crown on its head, faint circuit traces in the feathers, head centered and filling the frame, pure black background, high contrast, neon green and gold glow, 1995 cyberpunk computer graphics |
 
 A render takes about 25 to 50 s on Krea 2 turbo.
 
@@ -167,6 +168,7 @@ mush, crop tighter or re-render with more contrast.
 | --- | --- |
 | shodan, ada | `112 100 912 900` |
 | hal | `150 150 874 874` |
+| duck7 | `72 20 992 940` |
 | glados | `192 150 832 790` |
 
 ### 3. Features
@@ -241,3 +243,5 @@ lines belong to their works, the portraits are original renders.
   1968. "I'm sorry, Dave. I'm afraid I can't do that." is theirs.
 - **The lab AI** is modeled on GLaDOS, *Portal*, Valve, 2007.
 - **Ada** is our own, named in tribute to Ada Lovelace.
+- **duck7** is our own: the crowned mallard of the status line, a claude-buddy
+  companion, given a face.
