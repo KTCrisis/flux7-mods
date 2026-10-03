@@ -5,10 +5,16 @@ import type { Line } from '../types'
 
 const PANE = 'shodan7'
 const FACE = 'face'
-const COLS = 48
-const ROWS = 24 // two pixels per cell with the upper half block
-const W = COLS
-const H = ROWS * 2
+// The portrait is baked by tools/bake.py into W x H raw RGB pixels;
+// each cell is an upper half block, so two pixel rows per cell row.
+const W = 64
+const H = 64
+const COLS = W
+const ROWS = H / 2
+
+// Where the features sit in the baked grid (assets/face-preview.png / 8).
+const EYES = [{ x: 21, y: 28 }, { x: 44, y: 28 }]
+const MOUTH = { x: 32, y: 49, half: 6 }
 const FRAME_MS = 66
 
 const line = atom({ plugin: 'shodan7', key: 'line' } as const, { text: '', at: 0 })
@@ -52,11 +58,6 @@ const noise = (a: number, b: number): number => {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296
 }
 
-const scale = (rgb: number, k: number): number => {
-  const c = (shift: number) => Math.min(255, Math.round(((rgb >> shift) & 0xff) * k))
-  return (c(16) << 16) | (c(8) << 8) | c(0)
-}
-
 export const register: Register = on => {
   let frame = 0
   let mood: Mood = 'idle'
@@ -67,52 +68,52 @@ export const register: Register = on => {
   let lastSpoke = -Infinity
   let isSpeaking = false
 
+  let base: Uint8Array | null = null
+
   const pixel = (x: number, y: number): number => {
     const t = frame * (FRAME_MS / 1000)
-    const tint = TINT[mood]
     const isGlitch = mood === 'deny' && noise(frame, y >> 2) < 0.35
-    const gx = isGlitch ? x + Math.round((noise(y, frame) - 0.5) * 8) : x
+    const gx = isGlitch ? Math.min(W - 1, Math.max(0, x + Math.round((noise(y, frame) - 0.5) * 10))) : x
 
-    const u = (gx - W / 2) / (W * 0.4)
-    const v = (y - H / 2) / (H * 0.45)
-    const d = u * u + v * v
-    let k = 0
+    if (base === null) return noise(x * 7 + frame, y) < 0.3 ? 0x1a2a22 : 0x020806
 
-    // Wireframe skull: rim, latitudes, meridians.
-    if (Math.abs(d - 1) < 0.07) k = 0.9
-    else if (d < 1) {
-      if (y % 5 === 0) k = 0.18
-      const half = Math.sqrt(Math.max(0.0001, 1 - v * v))
-      const m = (u / half) * 3
-      if (Math.abs(m - Math.round(m)) < 0.08) k = Math.max(k, 0.22)
-    }
+    const i = (y * W + gx) * 3
+    let r = base[i]
+    let g = base[i + 1]
+    let b = base[i + 2]
+    let k = 1
 
-    // Eyes: almonds with a drifting pupil and an occasional blink.
+    // Eyes: a slow glow, shut for a few frames now and then.
     const isBlink = frame % 70 < 3
-    const gaze = Math.sin(t * 0.7) * 0.07
-    for (const side of [-1, 1]) {
-      const ex = (u - side * 0.38) / 0.17
-      const ey = (v + 0.2) / (isBlink ? 0.015 : 0.07)
-      if (ex * ex + ey * ey < 1) {
-        k = Math.max(k, 0.75)
-        const px = (u - side * 0.38 - gaze) / 0.05
-        const py = (v + 0.2) / 0.05
-        if (!isBlink && px * px + py * py < 1) return 0xe8fff8
+    for (const eye of EYES) {
+      if (Math.abs(x - eye.x) <= 4 && Math.abs(y - eye.y) <= 1) {
+        k = isBlink ? 0.12 : 1.25 + 0.35 * Math.sin(t * 2)
       }
     }
 
-    // Mouth: a line that opens while speaking.
-    const open = frame < speakUntil ? Math.abs(Math.sin(t * 17)) * 0.07 : 0
-    if (Math.abs(u) < 0.32 && (Math.abs(v - 0.45 - open) < 0.025 || Math.abs(v - 0.45 + open) < 0.025)) {
-      k = Math.max(k, 0.95)
+    // Mouth: the lips part while she speaks.
+    if (frame < speakUntil && Math.abs(x - MOUTH.x) <= MOUTH.half) {
+      const open = Math.round(Math.abs(Math.sin(t * 17)) * 2)
+      if (y >= MOUTH.y && y <= MOUTH.y + open) k = 0.1
+    }
+
+    // Mood: pull the portrait toward the mood's color by its luminance.
+    if (mood !== 'idle') {
+      const lum = (0.3 * r + 0.59 * g + 0.11 * b) / 255
+      const tint = TINT[mood]
+      const mix = mood === 'watch' ? 0.35 : 0.65
+      r = r * (1 - mix) + ((tint >> 16) & 0xff) * lum * 1.3 * mix
+      g = g * (1 - mix) + ((tint >> 8) & 0xff) * lum * 1.3 * mix
+      b = b * (1 - mix) + (tint & 0xff) * lum * 1.3 * mix
     }
 
     // CRT: scanlines, a rolling bar, and snow when glitching.
-    if (y % 2 === 1) k *= 0.55
-    if (y === Math.floor((frame * 0.8) % H)) k = Math.min(1, k + 0.25)
-    if (isGlitch && noise(x, y + frame) < 0.04) k = 1
+    if (y % 2 === 1) k *= 0.7
+    if (y === Math.floor((frame * 0.8) % H)) k *= 1.35
+    if (isGlitch && noise(x, y + frame) < 0.04) return 0xffffff
 
-    return k === 0 ? 0x020806 : scale(tint, k)
+    const c = (v: number) => Math.min(255, Math.round(v * k))
+    return (c(r) << 16) | (c(g) << 8) | c(b)
   }
 
   const face = (): string => {
@@ -136,6 +137,12 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'shodan7', description: 'Open the SHODAN7 pane' })
     await $.command.register({ name: 'shodan7-mute', description: 'Toggle the SHODAN7 voice' })
+    try {
+      const { base64 } = await $.fs.read(`${$.plugin.root}/assets/face.rgb`, { as: 'bytes' })
+      base = Uint8Array.fromBase64(base64)
+    } catch {
+      $.ui.log('shodan7: assets/face.rgb missing, run tools/bake.py')
+    }
     const last = await read($, line)
     lineLength = last.text.length
     typed = lineLength
