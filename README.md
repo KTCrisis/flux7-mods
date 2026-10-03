@@ -8,13 +8,14 @@ what lives here sees a single session, from the inside, as events happen.
 
 | Mod | What it does |
 | --- | --- |
+| `mesh7-pane` | mesh7 decisions live, polled from `localhost:9090` every 1.5 s: ALLOW / DENY / HUMAN per call with rule and parameters, approvals waiting for a human, emergency stop banner, status line counts, a toast on each new deny or approval request. Read-only. `/mesh7` opens the pane, `/mesh7 all` widens to every agent and session, `/mesh7 session` narrows back. |
 | `avatar7` | A machine face that watches tool calls and comments on them in the voice of a chosen avatar (SHODAN, HAL, a GLaDOS-like lab AI, Ada). See [avatar7/README.md](avatar7/README.md): how it works, and how to make an avatar (portrait, bake, personality). |
 
 ## Loading
 
-One session:
+One session, one or several mods:
 
-    claude --plugin-dir ~/flux7-mods/avatar7
+    claude --plugin-dir ~/flux7-mods/avatar7 --plugin-dir ~/flux7-mods/mesh7-pane
 
 Every interactive session: add the folder to `CLAUDE_CODE_PLUGIN_DIRS` in the
 `env` block of `~/.claude/settings.json` (colon-separated absolute paths).
