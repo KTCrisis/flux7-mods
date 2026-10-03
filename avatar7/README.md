@@ -119,6 +119,10 @@ changes those messages, update `MESH_DENY`.
   ~/.local/share/piper/.venv/bin/python piper-tts`, then `python -m
   piper.download_voices --download-dir ~/.local/share/piper/voices <name>`.
   A line takes one to two seconds to synthesize on the CPU, no GPU, no account.
+- A voice of one's own for an avatar goes in
+  `~/.local/share/piper/custom/<avatar id>.onnx` (with its `.onnx.json`, and
+  an optional `<id>.fx` filter): it wins over the persona's, and stays out of
+  the repo.
 - The voice is Windows SAPI, run from WSL: `powershell.exe` with the text on
   stdin in UTF-8, the persona's `voice` and `rate`.
 
@@ -215,7 +219,7 @@ is the grid enlarged x8):
 | `voice` | an installed SAPI voice: `Microsoft Hortense Desktop` (fr), `Microsoft David Desktop`, `Microsoft Zira Desktop` (en) |
 | `rate` | SAPI rate, -10 to 10 |
 | `pitch` | optional: SAPI pitch, -10 to 10; set, the voice goes through the SAPI COM object, which takes it as XML (duck7: 10) |
-| `piper` | optional: `{ "voice": "en_GB-alan-medium", "lengthScale": 0.95 }`, a [Piper](https://github.com/OHF-Voice/piper1-gpl) neural voice run on the CPU in WSL, its WAV played by Windows; SAPI speaks when Piper or the model is missing (fox: `en_US-ryan-high`, adjutant: `en_GB-jenny_dioco-medium`, morte: `en_GB-alan-medium`) |
+| `piper` | optional: `{ "voice": "en_GB-alan-medium", "lengthScale": 0.95, "fx": "…" }`, a [Piper](https://github.com/OHF-Voice/piper1-gpl) neural voice run on the CPU in WSL, its WAV played by Windows; `fx` is an ffmpeg audio filter (GLaDOS's metal, SHODAN's glitch, duck7's pitch). Every persona names one; SAPI speaks when Piper or the model is missing |
 | `color` | color of the line under the face |
 | `greeting` | spoken on `/avatar <id>` |
 | `nobody` | optional: the name used for `{, user}` when `user_name` is empty |

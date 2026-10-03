@@ -68,18 +68,27 @@ const speakScript = (who: { voice: string; rate: number; pitch?: number }, vol: 
 // A persona with a `piper` voice speaks through Piper (local neural TTS, on
 // the CPU, in WSL), its WAV played by Windows like SAPI; SAPI stays the voice
 // when Piper or the model is missing. Piper lives in ~/.local/share/piper:
-// .venv with piper-tts, voices/<name>.onnx.
+// .venv with piper-tts, voices/<name>.onnx. A private voice at
+// custom/<avatar id>.onnx wins over the persona's (its own pace, no filter
+// unless custom/<id>.fx holds one): voices one keeps out of the repo.
 const PIPER = '$HOME/.local/share/piper'
-export const speakArgv = (who: Persona, vol: number): string[] => [
+export const speakArgv = (id: string, who: Persona, vol: number): string[] => [
   'bash',
   '-c',
   [
     't=$(cat)',
     `m="${PIPER}/voices/$1.onnx"`,
+    `c="${PIPER}/custom/$6"`,
+    'if [ -n "$6" ] && [ -f "$c.onnx" ]; then m="$c.onnx"; set -- "$c" "$2" 1 "$4" "$(cat "$c.fx" 2>/dev/null)" "$6"; fi',
     `if [ -n "$1" ] && [ -f "$m" ] && [ -x "${PIPER}/.venv/bin/python" ]; then`,
     '  w=$(mktemp --suffix=.wav)',
-    `  printf %s "$t" | "${PIPER}/.venv/bin/python" -m piper -m "$m" -f "$w" --volume "$2" --length-scale "$3" 2>/dev/null &&`,
-    `  "${POWERSHELL}" -NoProfile -Command "(New-Object System.Media.SoundPlayer '$(wslpath -w "$w")').PlaySync()"`,
+    `  printf %s "$t" | "${PIPER}/.venv/bin/python" -m piper -m "$m" -f "$w" --volume "$2" --length-scale "$3" 2>/dev/null || exit 1`,
+    // The persona's ffmpeg filter (pitch, metal, glitch), skipped without ffmpeg.
+    '  if [ -n "$5" ] && command -v ffmpeg >/dev/null; then',
+    '    f=$(mktemp --suffix=.wav)',
+    '    ffmpeg -loglevel error -y -i "$w" -af "$5" "$f" && mv "$f" "$w"',
+    '  fi',
+    `  "${POWERSHELL}" -NoProfile -Command "\\$p=New-Object System.Media.SoundPlayer '$(wslpath -w "$w")'; \\$p.Load(); \\$p.PlaySync()"`,
     '  rm -f "$w"',
     'else',
     `  printf %s "$t" | "${POWERSHELL}" -NoProfile -Command "$4"`,
@@ -90,6 +99,8 @@ export const speakArgv = (who: Persona, vol: number): string[] => [
   String(Math.max(0, Math.min(100, vol)) / 100),
   String(who.piper?.lengthScale ?? 1),
   speakScript(who, vol),
+  who.piper?.fx ?? '',
+  id,
 ]
 
 const STYLE = ' No quotes, no emoji, no em dash.'
@@ -117,7 +128,9 @@ type Persona = {
   rate: number
   pitch?: number
   // Piper voice name and pace (length-scale, under 1 is faster).
-  piper?: { voice: string; lengthScale?: number }
+  // fx: an ffmpeg audio filter run on the WAV, from aresample=22050 so pitch
+  // shifts by asetrate hold whatever the voice's own rate.
+  piper?: { voice: string; lengthScale?: number; fx?: string }
   color: string
   eyes: { x: number; y: number; rx: number; ry: number }[]
   mouth: { x: number; y: number; half: number } | null
@@ -328,7 +341,7 @@ export const register: Register = (on, options) => {
           if (!(await read($, isMuted))) {
             const voice = who
             $.clock.after(1, async () => {
-              await $.process.run(speakArgv(voice, await read($, volume)), {
+              await $.process.run(speakArgv(id, voice, await read($, volume)), {
                 stdin: text,
                 timeoutMs: 30_000,
               })
@@ -415,7 +428,7 @@ export const register: Register = (on, options) => {
           speakUntil = frame + Math.ceil(text.length / 2) + 10
           await update($, line, () => ({ text, at: frame }) satisfies Line)
           if (!(await read($, isMuted))) {
-            await $.process.run(speakArgv(voice, await read($, volume)), {
+            await $.process.run(speakArgv(await read($, onDuty), voice, await read($, volume)), {
               stdin: text,
               timeoutMs: 30_000,
             })

@@ -2,6 +2,7 @@
   "name": "HAL 9000",
   "voice": "Microsoft David Desktop",
   "rate": -3,
+  "piper": { "voice": "en_US-norman-medium", "lengthScale": 1.15 },
   "color": "#ff3b30",
   "eyes": [
     {

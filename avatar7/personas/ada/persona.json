@@ -2,6 +2,7 @@
   "name": "Ada",
   "voice": "Microsoft Zira Desktop",
   "rate": -1,
+  "piper": { "voice": "en_GB-cori-high", "lengthScale": 1.05 },
   "color": "#e0b04a",
   "eyes": [
     {

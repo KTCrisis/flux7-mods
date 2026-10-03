@@ -2,6 +2,7 @@
   "name": "GLaDOS",
   "voice": "Microsoft Zira Desktop",
   "rate": 1,
+  "piper": { "voice": "en_US-kristin-medium", "lengthScale": 1.08, "fx": "aresample=22050,asetrate=22050*1.08,aresample=22050,atempo=0.93,aecho=0.8:0.85:7|13:0.35|0.25,chorus=0.6:0.9:25|40:0.3|0.25:0.3|0.4:2|1.5,highpass=f=180,treble=g=4,volume=1.4" },
   "color": "#ffd60a",
   "eyes": [
     {
