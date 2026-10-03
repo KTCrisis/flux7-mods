@@ -65,7 +65,8 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 | `command.run` `avatar` | opens the pane, or loads another persona, stores it, speaks its greeting |
 | `command.run` `avatar-talk`, the `talk` Button | raise a flag; the frame clock, which holds the session's `$`, reads the last 6 messages (`$.session.messages()`, 300 characters each) and asks Haiku for one line, outside the tool-call rate limits |
 | `command.run` `avatar-mute` | flips the `isMuted` state |
-| `tool.call` | lets the call run (`await next(e)`), then classifies the outcome and may ask for a line |
+| `tool.check` | an `ask` verdict on a real call (a settings rule, or mesh7's hook answering `ask` for Bash) sets the waiting face; the line comes only if the prompt is still up after ~2 s, since auto mode may settle the ask alone |
+| `tool.call` | lets the call run (`await next(e)`), then classifies the outcome and queues a line; a mesh7 answer `Approval required (id: …)` holds the face in `wait`, and the clock polls `GET /approvals` every ~1.5 s until the human decides |
 | `ui.render` `Pane` | draws the Raster and the line under it; a text fallback off the terminal |
 
 ### Moods
@@ -75,6 +76,7 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 | success | `watch` | slight cyan pull, about 0.8 s |
 | `isError` | `error` | amber pull, about 2 s |
 | denied by a hook or permission, or a mesh7 refusal | `deny` | magenta pull, shifted rows, snow, about 2 s |
+| held for a human: a mesh7 approval, or a permission prompt | `wait` | violet pull, slow breathing, until the decision; the pane shows `waiting: mesh approve <id>` for a mesh7 hold |
 
 A mesh7 refusal is recognized by the exact texts mesh7 returns
 (`mcp/server.go`, `halt/halt.go`): `Policy denied`, `Approval denied`,
@@ -229,6 +231,12 @@ In a session started with the alias, the save reloads the mod; `/avatar <id>`
 shows it.
 
 ## Limits
+
+- The pane shows how to approve a held call and never approves it: the mod
+  runs in the governed agent's session, which can edit it (see
+  `docs/decisions/2026-10-03-mesh7-pane-read-only.md`).
+- A mesh7 in supervisor mode blocks the call inside `next(e)`; the waiting
+  face does not show then.
 
 - Only three Windows voices are installed; HAL and the lab AI speak English.
   A local neural voice (piper) would change the rendition; not done.

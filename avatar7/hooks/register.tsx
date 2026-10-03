@@ -15,8 +15,9 @@ const W = 64
 const H = 64
 const MIN_SIZE = 16
 
-// Rows kept under the face for the line, which may wrap once, and the button.
-const TEXT_ROWS = 3
+// Rows kept under the face for the line, which may wrap once, the pending
+// approval and the buttons.
+const TEXT_ROWS = 4
 
 // The engine redraws on a change of width, never on a change of height alone:
 // the clock asks for a render this often so the face follows both.
@@ -35,6 +36,14 @@ const isMuted = atom({ plugin: 'avatar7', key: 'isMuted' } as const, false)
 
 // What mesh7 answers when it refuses a call (mcp/server.go, halt/halt.go).
 const MESH_DENY = /Policy denied|Approval denied|Denied by supervisor|Approval timed out|halted by operator/
+// What it answers when it holds one for a human (approvalRequiredText).
+const MESH_HELD = /Approval required \(id: ([0-9a-f]+)\)/
+const MESH = 'http://localhost:9090'
+// How often the clock asks mesh7 whether a held call was decided: ~1.5 s.
+const POLL_FRAMES = 23
+// An ask the mode may settle alone (auto mode): the face waits at once, the
+// avatar speaks only if the permission prompt is still up after ~2 s.
+const ASK_FRAMES = 30
 
 const POWERSHELL = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
 // A persona with a `pitch` (-10 to 10) speaks through the SAPI COM voice,
@@ -60,7 +69,13 @@ const ASKED_CHARS = 200
 const TALK_MESSAGES = 6
 const TALK_CHARS = 300
 
-type Mood = 'idle' | 'watch' | 'deny' | 'error'
+type Mood = 'idle' | 'watch' | 'deny' | 'error' | 'wait'
+
+// A line to speak: an event in a mood, or the user's poke, which reads the
+// conversation first.
+type Ask = { mood: Mood; event: string } | 'talk'
+
+type Approval = { id: string; status: string }
 
 type Persona = {
   name: string
@@ -72,7 +87,7 @@ type Persona = {
   mouth: { x: number; y: number; half: number } | null
   greeting: string
   persona: string
-  fallback: Record<Mood, string[]>
+  fallback: Record<Exclude<Mood, 'wait'>, string[]> & { wait?: string[] }
   nobody?: string
 }
 
@@ -89,6 +104,7 @@ const TINT: Record<Mood, number> = {
   watch: 0x00e5ff,
   deny: 0xff2a6d,
   error: 0xffb000,
+  wait: 0x7a5cff,
 }
 
 // Cheap deterministic noise for the glitch.
@@ -112,9 +128,15 @@ export const register: Register = (on, options) => {
   let who: Persona | null = null
   let size = W
   let asked = ''
-  // Set by the button or /avatar-talk; the clock, which holds the session's $,
-  // speaks it.
-  let isPoked = false
+  // The next line to speak; the clock, which holds the session's $, speaks it.
+  let queued: Ask | null = null
+  // A mesh7 approval this session's call is held on, by its short id.
+  let heldId: string | null = null
+  let heldCall = ''
+  let isPolling = false
+  // A call put to the permission prompt (a mesh7 hook's `ask`, a settings rule).
+  let askSince: number | null = null
+  let askCall = ''
 
   const pixel = (x: number, y: number): number => {
     const t = frame * (FRAME_MS / 1000)
@@ -153,11 +175,14 @@ export const register: Register = (on, options) => {
     if (mood !== 'idle') {
       const lum = (0.3 * r + 0.59 * g + 0.11 * b) / 255
       const tint = TINT[mood]
-      const mix = mood === 'watch' ? 0.3 : 0.65
+      const mix = mood === 'watch' ? 0.3 : mood === 'wait' ? 0.45 : 0.65
       r = r * (1 - mix) + ((tint >> 16) & 0xff) * lum * 1.3 * mix
       g = g * (1 - mix) + ((tint >> 8) & 0xff) * lum * 1.3 * mix
       b = b * (1 - mix) + (tint & 0xff) * lum * 1.3 * mix
     }
+
+    // Holding its breath while a human decides.
+    if (mood === 'wait') k *= 0.8 + 0.2 * Math.sin(t * 2.5)
 
     // Snow when glitching; the scanlines are drawn at the output size.
     if (isGlitch && noise(x, y + frame) < 0.04) return 0xffffff
@@ -244,29 +269,68 @@ export const register: Register = (on, options) => {
         $.ui.invalidate('ui.render')
       }
 
-      if (!isPoked || isSpeaking || who === null) return
-      isPoked = false
+      // A held call: ask mesh7 now and then whether the human decided.
+      if (heldId !== null && !isPolling && frame % POLL_FRAMES === 0) {
+        isPolling = true
+        const id = heldId
+        $.clock.after(1, async () => {
+          try {
+            const res = await $.http.fetch(`${MESH}/approvals`)
+            if (!res.ok) return
+            const found = (JSON.parse(res.text) as Approval[]).find(a => a.id.startsWith(id))
+            if (found === undefined || found.status === 'pending' || heldId !== id) return
+            heldId = null
+            const now: Mood = found.status === 'approved' ? 'watch' : found.status === 'denied' ? 'deny' : 'error'
+            mood = now
+            moodUntil = frame + 30
+            queued = { mood: now, event: `the human's decision on the held call ${heldCall}: ${found.status.toUpperCase()}` }
+          } catch {
+            // mesh7 down or unreadable: try again at the next poll.
+          } finally {
+            isPolling = false
+          }
+        })
+      }
+
+      if (askSince !== null && frame - askSince === ASK_FRAMES && queued === null) {
+        queued = { mood: 'wait', event: `call waiting for the user's permission: ${askCall}` }
+      }
+
+      if (queued === null || isSpeaking || who === null) return
+      const ask = queued
+      queued = null
       isSpeaking = true
       lastSpoke = frame
       const voice = who
       $.clock.after(1, async () => {
         try {
-          const messages = await $.session.messages()
-          const recent = messages
-            .filter(m => m.text.trim() !== '')
-            .slice(-TALK_MESSAGES)
-            .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, TALK_CHARS)}`)
-            .join('\n')
+          let prompt: string
+          if (ask === 'talk') {
+            const messages = await $.session.messages()
+            const recent = messages
+              .filter(m => m.text.trim() !== '')
+              .slice(-TALK_MESSAGES)
+              .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, TALK_CHARS)}`)
+              .join('\n')
+            prompt =
+              `The user pokes you and wants your take on where the conversation stands.\n` +
+              `Last messages, oldest first:\n${recent}`
+          } else {
+            prompt = asked === '' ? `Event: ${ask.event}` : `The user asked: ${asked}\nEvent: ${ask.event}`
+          }
           const r = await $.model.complete({
             model: 'haiku',
             system: personalize(voice.persona, userName, voice.nobody) + STYLE,
-            prompt:
-              `The user pokes you and wants your take on where the conversation stands.\n` +
-              `Last messages, oldest first:\n${recent}`,
+            prompt,
             maxTokens: 80,
             timeoutMs: 15_000,
           })
-          const pool = voice.fallback.idle
+          const pool =
+            ask === 'talk'
+              ? voice.fallback.idle
+              : ask.mood === 'wait'
+                ? (voice.fallback.wait ?? voice.fallback.watch)
+                : voice.fallback[ask.mood]
           const text = r.isAnswered
             ? (r.text.trim().split('\n')[0] ?? '')
             : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
@@ -325,7 +389,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'avatar-talk' }, async () => {
-    isPoked = true
+    queued = 'talk'
     return { text: `${who?.name ?? 'avatar7'} reads the conversation.` }
   })
 
@@ -342,64 +406,55 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // The verdict before the mode settles it: an ask may put up the prompt.
+  on('tool.check', async ($, e, next) => {
+    const verdict = await next(e)
+    if (verdict.decision === 'ask' && e.tool_use_id !== undefined) {
+      askSince = frame
+      askCall = describe({ ...(e.input as Record<string, unknown>), tool: e.tool })
+      mood = 'wait'
+      moodUntil = Infinity
+    }
+    return verdict
+  })
+
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
+    askSince = null
 
-    try {
-      const isMeshDeny =
-        e.tool.startsWith('mcp__mesh7__') &&
-        ran.deny === undefined &&
-        ran.isError === true &&
-        MESH_DENY.test(ran.text ?? '')
-      const now: Mood =
-        ran.deny !== undefined || isMeshDeny ? 'deny' : ran.isError === true ? 'error' : 'watch'
+    const isMesh = e.tool.startsWith('mcp__mesh7__')
+    const call = describe(e as unknown as Record<string, unknown>)
 
+    // Held for a human: wait, eyes fixed, until the clock sees the decision.
+    const held = isMesh ? MESH_HELD.exec(ran.text ?? '') : null
+    if (held !== null) {
+      heldId = held[1] ?? null
+      heldCall = call
+      mood = 'wait'
+      moodUntil = Infinity
+      queued = { mood: 'wait', event: `call HELD for human approval: ${call}` }
+      return ran
+    }
+
+    const isMeshDeny = isMesh && ran.deny === undefined && ran.isError === true && MESH_DENY.test(ran.text ?? '')
+    const now: Mood = ran.deny !== undefined || isMeshDeny ? 'deny' : ran.isError === true ? 'error' : 'watch'
+
+    // A held call keeps the waiting face; the others set theirs.
+    if (heldId === null) {
       mood = now
       moodUntil = frame + (now === 'watch' ? 12 : 30)
+    }
 
-      const quiet = now === 'watch' ? 45_000 / FRAME_MS : 5_000 / FRAME_MS
-      if (isSpeaking || who === null || frame - lastSpoke < quiet) return ran
-      lastSpoke = frame
-      isSpeaking = true
-
-      const voice = who
-      const call = describe(e as unknown as Record<string, unknown>)
-      const event =
+    const quiet = now === 'watch' ? 45_000 / FRAME_MS : 5_000 / FRAME_MS
+    if (isSpeaking || queued !== null || frame - lastSpoke < quiet) return ran
+    queued = {
+      mood: now,
+      event:
         now === 'deny'
           ? `call DENIED: ${call} (${(ran.deny ?? ran.text ?? '').slice(0, 120)})`
           : now === 'error'
             ? `call FAILED: ${call}`
-            : `call succeeded: ${call}`
-
-      $.clock.after(1, async () => {
-        try {
-          const r = await $.model.complete({
-            model: 'haiku',
-            system: personalize(voice.persona, userName, voice.nobody) + STYLE,
-            prompt: asked === '' ? `Event: ${event}` : `The user asked: ${asked}\nEvent: ${event}`,
-            maxTokens: 80,
-            timeoutMs: 15_000,
-          })
-          const pool = voice.fallback[now]
-          const text = r.isAnswered
-            ? (r.text.trim().split('\n')[0] ?? '')
-            : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
-          lineLength = text.length
-          typed = 0
-          speakUntil = frame + Math.ceil(text.length / 2) + 10
-          await update($, line, () => ({ text, at: frame }) satisfies Line)
-          if (!(await read($, isMuted))) {
-            await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice)], {
-              stdin: text,
-              timeoutMs: 30_000,
-            })
-          }
-        } finally {
-          isSpeaking = false
-        }
-      })
-    } catch {
-      isSpeaking = false
+            : `call succeeded: ${call}`,
     }
 
     return ran
@@ -430,8 +485,13 @@ export const register: Register = (on, options) => {
         <Text color={color} backgroundColor="#000000">
           {shown.length > 0 ? `> ${shown}` : '> ...'}
         </Text>
+        {heldId !== null && (
+          <Text color="#7a5cff" backgroundColor="#000000">
+            {`waiting: mesh approve ${heldId}`}
+          </Text>
+        )}
         <Box flexDirection="row" gap={2} backgroundColor="#000000">
-          <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => (isPoked = true)} />
+          <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => (queued = 'talk')} />
           <Button
             key="mute"
             label={muted ? 'unmute' : 'mute'}
