@@ -8,7 +8,7 @@ what lives here sees a single session, from the inside, as events happen.
 
 | Mod | What it does |
 | --- | --- |
-| `avatar7` | A machine face watching tool calls: a flux7-studio portrait baked to 64x64 (`tools/bake.py <persona>`), drawn as a Raster at 15 fps. Cyan on success, amber on error, magenta glitch on a refusal (hook, permission, or mesh7: policy, approval, supervisor, timeout, emergency stop). Comments in one line (Haiku) in the avatar's voice, spoken by Windows SAPI from WSL. Avatars in `personas/<id>/` (portrait, `face.rgb`, `persona.json`): `shodan`, `hal`, `glados`, `ada`. `/avatar <id>` switches and remembers, `/avatar` opens the pane, `/avatar-mute` toggles the voice. |
+| `avatar7` | A machine face that watches tool calls and comments on them in the voice of a chosen avatar (SHODAN, HAL, a GLaDOS-like lab AI, Ada). See [avatar7/README.md](avatar7/README.md): how it works, and how to make an avatar (portrait, bake, personality). |
 
 ## Loading
 
