@@ -15,7 +15,7 @@ the model call altogether.
   (a mood asked in words prefers five and more), and streams the audio into
   Windows' VLC with its dummy interface: no window, no focus taken.
 - **toggle / next / stop**: the WSL side runs in a process group of its own
-  (`setsid`); pause is `SIGSTOP` (VLC drains its buffer, a second or two),
+  (`setsid`); pause is VLC's own `pl_forcepause` over its HTTP interface, at once,
   stop is `CONT` then `TERM`, and the `vlc.exe` it started is terminated by
   its `--meta-title=jukebox7` tag, so a VLC opened by hand is never touched.
 
@@ -76,8 +76,8 @@ real time and nothing comes out) until `wsl --shutdown`.
 
 - The genre lists are one listener's; edit `GENRES` in `hooks/register.tsx`.
   A station belongs to its persona, in avatar7's `personas/<id>/persona.json`.
-- Pause starves VLC rather than pausing it; a very long pause may drop the
-  YouTube stream, and next picks up from there.
+- A very long pause may let YouTube drop the stream behind VLC, which then
+  ends the song early on resume.
 - A song that ends moves on within five seconds (the liveness poll).
 
 ## Tests

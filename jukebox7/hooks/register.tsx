@@ -238,7 +238,7 @@ export const parseRadio = (stdout: string): Track[] => {
 // Audio only, no window: yt-dlp streams the best audio into Windows' VLC
 // with its dummy interface (WSLg's PulseAudio stalls after a sleep, VLC
 // plays on the Windows side and takes no focus). setsid puts the WSL side in
-// a process group of its own, so STOP and CONT starve or feed VLC; vlc://quit
+// a process group of its own, which stop ends (pause asks VLC itself); vlc://quit
 // ends it with the stream; the id arrives as $1, checked against
 // /^[\w-]{11}$/ before.
 const VLC = '/mnt/c/Program Files/VideoLAN/VLC/vlc.exe'
@@ -280,6 +280,21 @@ export const volumeArgv = (percent: number, retry = false): string[] => [
   ...(retry ? ['--retry', '10', '--retry-connrefused', '--retry-delay', '1'] : ['--max-time', '2']),
   `http://127.0.0.1:${HTTP_PORT}/requests/status.xml?command=volume&val=${Math.round((clampVolume(percent) * 256) / 100)}`,
 ]
+// Pause and resume through the same interface: instant, where stopping the
+// WSL pipeline only starved VLC after its buffer ran out, seconds later or
+// not at all. force* are idempotent, so a missed click cannot invert them.
+export const pauseArgv = (isPaused: boolean): string[] => [
+  CURL,
+  '-s',
+  '-o',
+  'NUL',
+  '-u',
+  `:${HTTP_PASSWORD}`,
+  '--max-time',
+  '2',
+  `http://127.0.0.1:${HTTP_PORT}/requests/status.xml?command=${isPaused ? 'pl_forcepause' : 'pl_forceresume'}`,
+]
+
 // How many rows a wrapped line of plain Buttons takes: each draws as
 // `k: label`, three columns past its label, with `gap` between them.
 export const buttonRows = (labels: string[], columns: number, gap = 2): number => {
@@ -371,7 +386,7 @@ async function skip($: Engine, by: number): Promise<Track | undefined> {
 async function toggle($: Engine): Promise<Player> {
   const p = await read($, player)
   if (p.pgid === null) return p
-  await $.process.run(signal(p.isPlaying ? 'STOP' : 'CONT', p.pgid))
+  await $.process.run(pauseArgv(p.isPlaying))
   const now = await $.clock.now()
   const q: Player = p.isPlaying
     ? { ...p, isPlaying: false, pausedAt: now }

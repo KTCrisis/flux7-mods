@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio } from './register'
+import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -60,13 +60,13 @@ test('a second request stops the first pipeline and its VLC before starting', as
   expect(argv).toContainEqual(killVlcArgv)
 })
 
-test('pause stops the group, stop resumes then ends it', async ($, on) => {
+test('pause asks VLC to pause, stop ends the group and its VLC', async ($, on) => {
   const { argv, say } = engine(on, '{"action":"play","query":"ambient music","long":true}')
   await $.prompt.submit(typed('joue moi un peu de musique ambient'))
   say('{"action":"toggle"}')
   const paused = await $.prompt.submit(typed('pause la musique'))
   expect(paused.drop).toContain('paused')
-  expect(argv).toContainEqual(['kill', '-STOP', '--', '-4242'])
+  expect(argv).toContainEqual(pauseArgv(true))
   say('{"action":"stop"}')
   await $.prompt.submit(typed('coupe la musique'))
   expect(argv.slice(-3)).toEqual([['kill', '-CONT', '--', '-4242'], ['kill', '-TERM', '--', '-4242'], killVlcArgv])
