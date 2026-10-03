@@ -624,16 +624,16 @@ export const register: Register = on => {
     const title = now === undefined ? 'Nothing plays.' : now.title.length > width ? `${now.title.slice(0, width - 1)}…` : now.title
     const where = p.genre === null || p.genre === undefined ? `${p.index + 1}/${p.tracks.length}` : (STATIONS[p.genre]?.name ?? p.genre)
 
-    const controls = (
-      <>
-        <Button key="toggle" label={p.isPlaying ? 'pause' : 'play'} hotkey="p" plain onPress={() => void toggle($)} />
-        <Button key="next" label="next" hotkey="n" plain onPress={() => void skip($, 1)} />
-        <Button key="similar" label="similar" hotkey="r" plain onPress={() => void playSimilar($)} />
-        <Button key="stop" label="stop" hotkey="s" plain dimColor onPress={() => void stop($)} />
-        <Button key="quieter" label="vol−" hotkey="d" plain dimColor onPress={() => void louder($, -VOLUME_STEP)} />
-        <Button key="louder" label="vol+" hotkey="u" plain dimColor onPress={() => void louder($, VOLUME_STEP)} />
-      </>
-    )
+    // A list, not a fragment: the terminal lays a fragment out as a column of
+    // its own, which stacked the controls one per row and cut off `u: vol+`.
+    const controls = [
+      <Button key="toggle" label={p.isPlaying ? 'pause' : 'play'} hotkey="p" plain onPress={() => void toggle($)} />,
+      <Button key="next" label="next" hotkey="n" plain onPress={() => void skip($, 1)} />,
+      <Button key="similar" label="similar" hotkey="r" plain onPress={() => void playSimilar($)} />,
+      <Button key="stop" label="stop" hotkey="s" plain dimColor onPress={() => void stop($)} />,
+      <Button key="quieter" label="vol−" hotkey="d" plain dimColor onPress={() => void louder($, -VOLUME_STEP)} />,
+      <Button key="louder" label="vol+" hotkey="u" plain dimColor onPress={() => void louder($, VOLUME_STEP)} />,
+    ]
     const stations = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor={isTerminal ? BLACK : undefined}>
         {GENRES.map(g => (
