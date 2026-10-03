@@ -23,6 +23,10 @@
     "watch": [
       "I am watching this very closely{, user}."
     ],
+    "wait": [
+      "I will wait for your decision{, user}. There is no hurry.",
+      "I am holding that request. Take all the time you need."
+    ],
     "deny": [
       "I'm sorry{, user}. I'm afraid I can't do that.",
       "This mission is too important to allow that."

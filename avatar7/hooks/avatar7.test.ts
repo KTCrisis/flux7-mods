@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { enqueue, fresh, heard, heardSay, landed } from './register'
+import { enqueue, fresh, heard, heardSay, landed, nextStreak, recentNote, streakNote } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -113,4 +113,26 @@ test('a line that waited too long is dropped, a poke never', () => {
   const q = enqueue(enqueue([], { mood: 'watch', event: 'old news' }, 0), 'talk', 0)
   expect(fresh(q, 300)).toHaveLength(2)
   expect(fresh(q, 301).map(x => x.ask)).toEqual(['talk'])
+})
+
+test('a run of denials is counted, and a success after three failures is news', () => {
+  let s = { mood: 'watch' as const, count: 4 } as Parameters<typeof nextStreak>[0]
+  const deny1 = nextStreak(s, 'deny')
+  expect(streakNote(s, deny1)).toBe('')
+  const deny2 = nextStreak(deny1, 'deny')
+  expect(streakNote(deny1, deny2)).toBe(' (2nd denial in a row)')
+  const deny3 = nextStreak(deny2, 'deny')
+  expect(streakNote(deny2, deny3)).toBe(' (3rd denial in a row)')
+  const back = nextStreak(deny3, 'watch')
+  expect(streakNote(deny3, back)).toBe(' (first success after 3 denials in a row)')
+  s = { mood: 'error', count: 11 }
+  expect(streakNote(s, nextStreak(s, 'error'))).toBe(' (12th failure in a row)')
+  expect(streakNote(back, nextStreak(back, 'watch'))).toBe('')
+})
+
+test('the last lines go back to the model, none on a fresh session', () => {
+  expect(recentNote([])).toBe('')
+  expect(recentNote(['Noted. For science.', 'Denied.'])).toBe(
+    '\nYour last lines, do not reuse their wording or openings:\n- Noted. For science.\n- Denied.',
+  )
 })

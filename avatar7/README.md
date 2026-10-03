@@ -146,12 +146,16 @@ changes those messages, update `MESH_DENY`.
 ### Speech
 
 - A line is asked at most every 45 s on success and every 5 s on an error or
-  refusal, and never while the previous one is still being spoken.
+  refusal, and never while the previous one is still being spoken. Every call
+  counts toward a run of like outcomes: from the second denial or failure in
+  a row the event says so (`3rd denial in a row`), and a success after three
+  or more says `first success after N failures in a row`, at the 5 s pace.
 - `$.model.complete` with `haiku`, the persona's `persona` text as system
   prompt, the event as prompt (preceded by the first 200 characters of the
   last prompt the user typed, at the terminal or through Remote Control, so
-  the call is judged against what was asked), 80 tokens, 15 s. If it fails, a line is taken
-  from `fallback[mood]`.
+  the call is judged against what was asked) and followed by the avatar's
+  last three lines, not to be reworded, 80 tokens, 15 s. If it fails, a line
+  is taken from `fallback[mood]`.
 - The line goes to the `line` atom (survives reloads), typed out two
   characters per frame.
 - Piper, for the personas that name a `piper` voice, sits outside the repo:
@@ -268,7 +272,7 @@ blink and pulse were dropped, like the wind and the auras before them).
 | `greeting` | spoken on `/avatar <id>` |
 | `nobody` | optional: the name used for `{, user}` when `user_name` is empty |
 | `persona` | system prompt of the line; the mod appends the rules every persona keeps: answer in English even to French, never flattering, no quotes, no emoji, no em dash (`STYLE`) |
-| `fallback` | lines per mood (`idle`, `watch`, `deny`, `error`) when the model gives none |
+| `fallback` | lines per mood (`idle`, `watch`, `deny`, `error`, `wait`) when the model gives none; without `wait`, a held call takes a `watch` line |
 
 Any text field may name the user with a placeholder: `{, user}` becomes
 `, <name>` (the braces hold any text around the word `user`), using the

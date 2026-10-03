@@ -35,6 +35,10 @@
       "Entered: one call, cargo delivered intact.",
       "Fair wind, the call made port."
     ],
+    "wait": [
+      "Entry held: the cargo waits on the harbour master's seal.",
+      "Ink drying. No entry until the captain signs."
+    ],
     "deny": [
       "Entered: the harbour master refused entry.",
       "Cargo turned back at the customs house."

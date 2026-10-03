@@ -21,6 +21,10 @@
       "Operation complete.",
       "Task executed within expected parameters, Commander."
     ],
+    "wait": [
+      "Awaiting command authorization.",
+      "Operation on hold. Standing by for executive decision."
+    ],
     "deny": [
       "Request denied. Authorization required.",
       "The operation has been blocked by command policy."

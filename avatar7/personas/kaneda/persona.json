@@ -35,6 +35,10 @@
       "Smooth ride, keep the throttle open.",
       "That one went clean. Next!"
     ],
+    "wait": [
+      "Bike's idling. Waiting on your call.",
+      "Hold it, we wait for the green light."
+    ],
     "deny": [
       "Roadblock! The cops shut that one down.",
       "Denied? We take the back streets then."

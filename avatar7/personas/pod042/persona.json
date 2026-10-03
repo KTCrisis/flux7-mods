@@ -25,6 +25,10 @@
       "Report: tool call completed.",
       "Analysis: operation within expected parameters."
     ],
+    "wait": [
+      "Report: action suspended pending human authorization.",
+      "Proposal: wait. Operator approval is required."
+    ],
     "deny": [
       "Report: the call was refused by policy.",
       "Proposal: request authorization before retrying."

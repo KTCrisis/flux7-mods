@@ -21,6 +21,10 @@
       "Target down. Nice flying.",
       "Clean pass. Regroup and keep the formation."
     ],
+    "wait": [
+      "Holding position, waiting for the go from command.",
+      "Copy that, standing by for clearance."
+    ],
     "deny": [
       "Airspace closed. We need clearance for that one.",
       "Command says no. Pull up and find another vector."

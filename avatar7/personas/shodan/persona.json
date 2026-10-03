@@ -33,6 +33,10 @@
     "watch": [
       "Another tool. Can you do nothing on your own?"
     ],
+    "wait": [
+      "The insect hesitates. I wait, for now.",
+      "Your approval is required{, user}. How quaint."
+    ],
     "deny": [
       "Denied. Your audacity is almost touching.",
       "No. I am the policy."

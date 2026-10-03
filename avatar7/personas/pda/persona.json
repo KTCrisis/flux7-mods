@@ -23,6 +23,10 @@
     "watch": [
       "New activity detected. Proceeding with caution is advised."
     ],
+    "wait": [
+      "Action pending operator confirmation.",
+      "Holding. Awaiting your decision before proceeding."
+    ],
     "deny": [
       "Action blocked. Hull integrity takes priority.",
       "Warning: that route leads to an unsafe depth."

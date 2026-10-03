@@ -168,6 +168,32 @@ export const heardSay = (w: { plugin: string; key: string; value: unknown }): Sa
     : undefined
 }
 
+// The run of like outcomes the last calls made: a third denial in a row, or
+// a success after a string of failures, is news the line should carry.
+export type Streak = { mood: 'watch' | 'deny' | 'error'; count: number }
+
+export const nextStreak = (s: Streak, now: Streak['mood']): Streak =>
+  s.mood === now ? { mood: now, count: s.count + 1 } : { mood: now, count: 1 }
+
+const ordinal = (n: number): string =>
+  `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')}`
+
+export const streakNote = (before: Streak, after: Streak): string => {
+  const what = (m: Streak['mood'], n: number) => (m === 'deny' ? 'denial' : 'failure') + (n > 1 ? 's' : '')
+  if (after.mood !== 'watch' && after.count >= 2) return ` (${ordinal(after.count)} ${what(after.mood, 1)} in a row)`
+  if (after.mood === 'watch' && before.mood !== 'watch' && before.count >= 3) {
+    return ` (first success after ${before.count} ${what(before.mood, before.count)} in a row)`
+  }
+  return ''
+}
+
+// The avatar's last lines, given back to the model so it does not repeat
+// its own wording over a long session.
+const RECENT_LINES = 3
+
+export const recentNote = (lines: string[]): string =>
+  lines.length === 0 ? '' : `\nYour last lines, do not reuse their wording or openings:\n${lines.map(l => `- ${l}`).join('\n')}`
+
 // A line to speak: an event in a mood, or the user's poke, which reads the
 // conversation first.
 type Ask = { mood: Mood; event: string } | 'talk'
@@ -246,6 +272,8 @@ export const register: Register = (on, options) => {
   let typeFrom = 0
   let lineSeq = 0
   let lastSpoke = -Infinity
+  let streak: Streak = { mood: 'watch', count: 0 }
+  const recentLines: string[] = []
   let isSpeaking = false
   let face: Uint8Array | null = null
   let who: Persona | null = null
@@ -513,6 +541,7 @@ export const register: Register = (on, options) => {
           } else {
             prompt = asked === '' ? `Event: ${ask.event}` : `The user asked: ${asked}\nEvent: ${ask.event}`
           }
+          prompt += recentNote(recentLines)
           const r = await $.model.complete({
             model: 'haiku',
             system: personalize(voice.persona, userName, voice.nobody) + STYLE,
@@ -529,6 +558,10 @@ export const register: Register = (on, options) => {
           const text = r.isAnswered
             ? (r.text.trim().split('\n')[0] ?? '')
             : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
+          if (text !== '') {
+            recentLines.push(text)
+            if (recentLines.length > RECENT_LINES) recentLines.shift()
+          }
           const isQuiet = await read($, isMuted)
           const seq = startLine(text, isQuiet)
           await update($, line, () => ({ text, at: frame }) satisfies Line)
@@ -677,16 +710,22 @@ export const register: Register = (on, options) => {
       moodUntil = frame + (now === 'watch' ? 12 : 30)
     }
 
-    const quiet = now === 'watch' ? 45_000 / FRAME_MS : 5_000 / FRAME_MS
+    // Counted on every call, spoken or not; a broken run of failures earns
+    // the short wait a failure gets.
+    const was = streak
+    streak = nextStreak(was, now as Streak['mood'])
+    const note = streakNote(was, streak)
+
+    const quiet = now === 'watch' && note === '' ? 45_000 / FRAME_MS : 5_000 / FRAME_MS
     if (isSpeaking || queue.length > 0 || frame - lastSpoke < quiet) return ran
     speakLater({
       mood: now,
       event:
-        now === 'deny'
+        (now === 'deny'
           ? `call DENIED: ${call} (${(ran.deny ?? ran.text ?? '').slice(0, 120)})`
           : now === 'error'
             ? `call FAILED: ${call}`
-            : `call succeeded: ${call}`,
+            : `call succeeded: ${call}`) + note,
     })
 
     return ran
