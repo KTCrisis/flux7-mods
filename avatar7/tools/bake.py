@@ -7,7 +7,7 @@ Reads personas/<persona>/portrait.png, writes face.rgb (size x size pixels,
 import argparse
 from pathlib import Path
 
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageChops, ImageEnhance, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -26,8 +26,11 @@ img = ImageEnhance.Contrast(img).enhance(1.25)
 img = img.resize((a.size, a.size), Image.LANCZOS)
 # At 64 pixels the reduction softens every edge; an unsharp mask gives the
 # features back their line.
+# The mask may darken an edge at will but lighten it by a few levels only,
+# or pale faces (Ada) burn to white.
 if a.sharpen:
-    img = img.filter(ImageFilter.UnsharpMask(radius=1, percent=a.sharpen, threshold=2))
+    sharp = img.filter(ImageFilter.UnsharpMask(radius=1, percent=a.sharpen, threshold=2))
+    img = ImageChops.darker(sharp, ImageChops.add(img, Image.new("RGB", img.size, (10, 10, 10))))
 (folder / "face.rgb").write_bytes(img.tobytes())
 img.resize((a.size * 8, a.size * 8), Image.NEAREST).save(folder / "face-preview.png")
 print(f"{folder / 'face.rgb'} {a.size}x{a.size}")
