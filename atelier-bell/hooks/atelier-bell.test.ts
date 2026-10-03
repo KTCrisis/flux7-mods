@@ -6,7 +6,7 @@ test('/bell test rings a sample toast under atelier-bell, which avatar7 voices',
     rung.push({ text: e.text, plugin: next.origin.plugin })
   })
   const r = await $.command.run({ command: 'bell', args: 'test' })
-  expect(r.text).toBe('atelier-bell: test ring sent.')
+  expect(r.text).toBe('test ring sent.')
   expect(rung.length).toBe(1)
   expect(rung[0]?.plugin).toBe('atelier-bell')
 })

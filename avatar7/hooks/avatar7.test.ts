@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { heard } from './register'
+import { heard, landed } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -79,4 +79,11 @@ test('an `announce` another mod publishes is kept, a malformed or foreign key is
   expect(heard({ plugin: 'other', key: 'announce', value: { mood: 'shout', event: 'x' } })).toBeUndefined()
   expect(heard({ plugin: 'other', key: 'player', value: { mood: 'watch', event: 'x' } })).toBeUndefined()
   expect(heard({ plugin: 'avatar7', key: 'announce', value: { mood: 'watch', event: 'x' } })).toBeUndefined()
+})
+
+test('a write the host answers without isSet still counts; only isSet false does not', () => {
+  expect(landed({ version: 3 })).toBe(true)
+  expect(landed(undefined)).toBe(true)
+  expect(landed({ isSet: true, version: 3 })).toBe(true)
+  expect(landed({ isSet: false, version: 4 })).toBe(false)
 })

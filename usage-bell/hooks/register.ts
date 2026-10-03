@@ -151,7 +151,7 @@ export const register: Register = on => {
   on('command.run', { command: 'usage7' }, async ($, e) => {
     if (e.args.trim() === 'test') {
       $.ui.toast('test ring: context 72% full, a sample, no real limit is near')
-      return { text: 'usage-bell: test ring sent.' }
+      return { text: 'test ring sent.' }
     }
     const rows: string[] = []
     rows.push(context === undefined ? 'context: no reading yet' : `context: ${Math.round(context)}%, rings at ${CONTEXT_STEPS.join(' / ')}`)

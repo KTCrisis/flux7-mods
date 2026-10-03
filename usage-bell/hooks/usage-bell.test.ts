@@ -107,7 +107,7 @@ test('/usage7 test rings a sample toast under usage-bell, which avatar7 voices',
     origins.push(next.origin.plugin)
   })
   const r = await $.command.run({ command: 'usage7', args: 'test' })
-  expect(r.text).toBe('usage-bell: test ring sent.')
+  expect(r.text).toBe('test ring sent.')
   expect(origins).toEqual(['usage-bell'])
 })
 

@@ -93,7 +93,7 @@ await $.state.set({ plugin: 'my-mod', key: 'announce' }, { mood: 'watch', event:
 words the line is written from; the toast text is added to it. avatar7 hears
 the write and keeps it across its own reloads; the mod never imports avatar7,
 and without it the value just sits unread. atelier-bell, usage-bell and
-jukebox7 do this.
+jukebox7 do this. `/avatar voices` lists the mods heard so far.
 
 ### Moods
 

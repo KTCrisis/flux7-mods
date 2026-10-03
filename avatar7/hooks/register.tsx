@@ -137,6 +137,10 @@ const TALK_CHARS = 300
 
 type Mood = 'idle' | 'watch' | 'deny' | 'error' | 'wait'
 
+// Whether a write landed. The host answers a plain write without `isSet`
+// (2.1.288, despite StateSetResult): only a write another one beat says false.
+export const landed = (done: unknown): boolean => (done as { isSet?: boolean } | undefined)?.isSet !== false
+
 // A write another mod made, as an announce the avatar keeps, or undefined:
 // its own key `announce`, a calm or amber face, and the event in words.
 export const heard = (w: { plugin: string; key: string; value: unknown }): Announce | undefined => {
@@ -522,6 +526,16 @@ export const register: Register = (on, options) => {
       const opened = await $.ui.open({ id: PANE, title: who?.name ?? 'avatar7' })
       return { text: opened.isPlaced ? `${who?.name ?? 'avatar7'} is watching.` : 'The pane needs a wider terminal.' }
     }
+    // The mods heard asking for a voice, and what they asked.
+    if (id === 'voices') {
+      const all = Object.entries(await read($, announcers))
+      return {
+        text:
+          all.length === 0
+            ? 'No mod has asked for a voice in this session.'
+            : all.map(([plugin, a]) => `${plugin}: ${a.mood}, ${a.event}`).join('\n'),
+      }
+    }
     if (!AVATARS.includes(id)) return { text: `Unknown avatar. Choose one of: ${AVATARS.join(', ')}.` }
 
     pendingAvatar = id
@@ -549,11 +563,19 @@ export const register: Register = (on, options) => {
   // A mod that wants its toasts voiced publishes `announce` under its own
   // name (atelier-bell, usage-bell, jukebox7...): the avatar keeps a record
   // of each, so plugging a mod in is enough, and no mod depends on avatar7.
+  const heardHere = new Map<string, Announce>()
   on('state.set', async ($, e, next) => {
     const done = await next(e)
     const w = e as { plugin: string; key: string; value: unknown }
-    const a = done.isSet ? heard(w) : undefined
-    if (a !== undefined) await update($, announcers, was => ({ ...was, [w.plugin]: a }))
+    const a = landed(done) ? heard(w) : undefined
+    if (a !== undefined) {
+      heardHere.set(w.plugin, a)
+      try {
+        await update($, announcers, was => ({ ...was, [w.plugin]: a }))
+      } catch (err) {
+        $.ui.log(`avatar7 could not keep ${w.plugin}.announce: ${String(err)}`, { to: 'debug' })
+      }
+    }
     return done
   })
 
@@ -561,7 +583,7 @@ export const register: Register = (on, options) => {
   // rate limits; a warning in amber.
   on('ui.toast', async ($, e, next) => {
     const from = next.origin.plugin
-    const bell = from === undefined || from === 'avatar7' ? undefined : (await read($, announcers))[from]
+    const bell = from === undefined || from === 'avatar7' ? undefined : (heardHere.get(from) ?? (await read($, announcers))[from])
     if (bell !== undefined && who !== null) {
       if (heldId === null && askSince === null) {
         mood = bell.mood

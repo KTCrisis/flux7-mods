@@ -1,4 +1,4 @@
-import type { Register } from 'claude-code'
+import type { Engine, Register } from 'claude-code'
 
 // flux7-studio and the ComfyUI behind it, both local.
 const STUDIO = 'http://localhost:8700'
@@ -13,6 +13,11 @@ const clock = (seconds: number): string => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+// For avatar7, when loaded: a render ready is calm news.
+async function announce($: Engine): Promise<void> {
+  await $.state.set({ plugin: 'atelier-bell', key: 'announce' }, { mood: 'watch', event: 'an atelier finished its work' })
+}
+
 export const register: Register = on => {
   // Outputs already there; null until the first answer, which only seeds it,
   // so a session never rings for renders made before it started.
@@ -21,8 +26,7 @@ export const register: Register = on => {
   let last = ''
 
   on('session.start', async ($, e, next) => {
-    // For avatar7, when loaded: a render ready is calm news.
-    await $.state.set({ plugin: 'atelier-bell', key: 'announce' }, { mood: 'watch', event: 'an atelier finished its work' })
+    await announce($)
     await $.command.register({ name: 'bell', description: 'What the ateliers are doing now (test: a sample ring)' })
     // A status line pinned by an earlier version stays until cleared.
     $.ui.status(undefined)
@@ -81,8 +85,9 @@ export const register: Register = on => {
   // heard without waiting for a render.
   on('command.run', { command: 'bell' }, async ($, e) => {
     if (e.args.trim() === 'test') {
+      await announce($)
       $.ui.toast('test ring: studio: image sample.png is ready, a sample, nothing was rendered')
-      return { text: 'atelier-bell: test ring sent.' }
+      return { text: 'test ring sent.' }
     }
     return { text: status === '' ? 'studio: nothing rendered since this session started.' : status }
   })
