@@ -33,6 +33,9 @@ const fit = (columns: number, rows: number): number => {
 
 const line = atom({ plugin: 'avatar7', key: 'line' } as const, { text: '', at: 0 })
 const isMuted = atom({ plugin: 'avatar7', key: 'isMuted' } as const, false)
+// SAPI volume, 0 to 100, kept across sessions in $.store.
+const volume = atom({ plugin: 'avatar7', key: 'volume' } as const, 100)
+const VOLUME_STEP = 10
 
 // What mesh7 answers when it refuses a call (mcp/server.go, halt/halt.go).
 const MESH_DENY = /Policy denied|Approval denied|Denied by supervisor|Approval timed out|halted by operator/
@@ -48,14 +51,14 @@ const ASK_FRAMES = 30
 const POWERSHELL = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
 // A persona with a `pitch` (-10 to 10) speaks through the SAPI COM voice,
 // which takes the pitch as XML; the text is escaped for it.
-const speakScript = (who: { voice: string; rate: number; pitch?: number }) =>
+const speakScript = (who: { voice: string; rate: number; pitch?: number }, vol: number) =>
   '[Console]::InputEncoding=[Text.Encoding]::UTF8; $t=[Console]::In.ReadToEnd(); ' +
   (who.pitch === undefined
     ? 'Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; ' +
-      `$s.SelectVoice("${who.voice}"); $s.Rate=${who.rate}; $s.Speak($t)`
+      `$s.SelectVoice("${who.voice}"); $s.Rate=${who.rate}; $s.Volume=${vol}; $s.Speak($t)`
     : '$q=[char]34; $v=New-Object -ComObject SAPI.SpVoice; ' +
       `$v.Voice=($v.GetVoices() | ? { $_.GetDescription() -like "${who.voice}*" } | select -First 1); ` +
-      `$v.Rate=${who.rate}; ` +
+      `$v.Rate=${who.rate}; $v.Volume=${vol}; ` +
       `[void]$v.Speak("<pitch absmiddle=" + $q + "${who.pitch}" + $q + ">" + [Security.SecurityElement]::Escape($t) + "</pitch>", 8)`)
 
 const STYLE = ' No quotes, no emoji, no em dash.'
@@ -243,6 +246,9 @@ export const register: Register = (on, options) => {
     await $.command.register({ name: 'avatar-mute', description: 'Toggle the avatar voice' })
     await $.command.register({ name: 'avatar-talk', description: 'Ask the avatar what it thinks of the conversation' })
 
+    const storedVolume = await $.store.get('volume')
+    if (typeof storedVolume === 'number') await update($, volume, () => storedVolume)
+
     const stored = await $.store.get('avatar')
     const id = typeof stored === 'string' && AVATARS.includes(stored) ? stored : DEFAULT
     try {
@@ -339,7 +345,7 @@ export const register: Register = (on, options) => {
           speakUntil = frame + Math.ceil(text.length / 2) + 10
           await update($, line, () => ({ text, at: frame }) satisfies Line)
           if (!(await read($, isMuted))) {
-            await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice)], {
+            await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice, await read($, volume))], {
               stdin: text,
               timeoutMs: 30_000,
             })
@@ -378,7 +384,7 @@ export const register: Register = (on, options) => {
     if (!(await read($, isMuted))) {
       const voice = who
       $.clock.after(1, async () => {
-        await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice)], {
+        await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice, await read($, volume))], {
           stdin: text,
           timeoutMs: 30_000,
         })
@@ -477,6 +483,7 @@ export const register: Register = (on, options) => {
 
     const { Box, Text, Raster, Button } = $.ui.resolve(e)
     const muted = await read($, isMuted)
+    const vol = await read($, volume)
     size = fit(e.props.bodyColumns, e.props.scroll.bodyRows)
     return (
       // viewport.rows is the whole surface: taller than the pane, which clips the rest.
@@ -500,6 +507,30 @@ export const register: Register = (on, options) => {
             dimColor
             onPress={() => update($, isMuted, was => !was)}
           />
+          <Box flexDirection="row" gap={1} backgroundColor="#000000">
+            <Text dimColor backgroundColor="#000000">vol</Text>
+            <Button
+              key="quieter"
+              label="-"
+              plain
+              dimColor
+              onPress={async () => {
+                const v = await update($, volume, was => Math.max(0, was - VOLUME_STEP))
+                await $.store.set('volume', v)
+              }}
+            />
+            <Text dimColor backgroundColor="#000000">{String(vol)}</Text>
+            <Button
+              key="louder"
+              label="+"
+              plain
+              dimColor
+              onPress={async () => {
+                const v = await update($, volume, was => Math.min(100, was + VOLUME_STEP))
+                await $.store.set('volume', v)
+              }}
+            />
+          </Box>
         </Box>
       </Box>
     )
