@@ -83,11 +83,16 @@ export const STATIONS: Record<string, { name: string; artists: string[] }> = {
 // A genre's artists, or an avatar's station by its id.
 const pool = (label: string): string[] => GENRES.find(g => g.label === label)?.artists ?? STATIONS[label]?.artists ?? []
 const onDuty = { plugin: 'avatar7', key: 'avatar' } as const
+const tint = { plugin: 'avatar7', key: 'color' } as const
+// Without an avatar on duty the pane keeps the terminal's phosphor green.
+const PHOSPHOR = '#00ff9c'
+const BLACK = '#000000'
+const BAR = 12
 
 const anyOf = <T,>(xs: T[]): T | undefined => xs[Math.floor(Math.random() * xs.length)]
 export const isSong = (t: Track): boolean => t.seconds !== null && t.seconds >= MIN_SECONDS && t.seconds <= MAX_SECONDS
 
-const IDLE: Player = { tracks: [], index: 0, pgid: null, isPlaying: false, genre: null }
+const IDLE: Player = { tracks: [], index: 0, pgid: null, isPlaying: false, genre: null, startedAt: null, pausedAt: null }
 const player = atom({ plugin: 'jukebox7', key: 'player' } as const, IDLE)
 
 export const parseIntent = (text: string): Intent => {
@@ -188,10 +193,18 @@ async function playAt($: Engine, tracks: Track[], index: number, genre: string |
   }
   const started = await $.process.run(startArgv(track.id))
   const pgid = Number(started.stdout.trim())
-  const p: Player = { tracks, index, pgid: Number.isInteger(pgid) && pgid > 1 ? pgid : null, isPlaying: true, genre }
+  const p: Player = {
+    tracks,
+    index,
+    pgid: Number.isInteger(pgid) && pgid > 1 ? pgid : null,
+    isPlaying: true,
+    genre,
+    startedAt: await $.clock.now(),
+    pausedAt: null,
+  }
   await update($, player, () => p)
   $.ui.status(show(p))
-  void $.ui.open({ id: PANE, title: 'jukebox7', rows: 5 })
+  void $.ui.open({ id: PANE, title: 'jukebox7', rows: 6 })
   return track
 }
 
@@ -205,7 +218,10 @@ async function toggle($: Engine): Promise<Player> {
   const p = await read($, player)
   if (p.pgid === null) return p
   await $.process.run(signal(p.isPlaying ? 'STOP' : 'CONT', p.pgid))
-  const q = { ...p, isPlaying: !p.isPlaying }
+  const now = await $.clock.now()
+  const q: Player = p.isPlaying
+    ? { ...p, isPlaying: false, pausedAt: now }
+    : { ...p, isPlaying: true, pausedAt: null, startedAt: (p.startedAt ?? now) + (now - (p.pausedAt ?? now)) }
   await update($, player, () => q)
   $.ui.status(show(q))
   return q
@@ -246,6 +262,16 @@ async function playGenre($: Engine, label: string): Promise<Track | undefined> {
   return playAt($, [track], 0, label)
 }
 
+const clock = (s: number): string => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+
+// `▰▰▰▱▱▱ 03:12 / 07:00`, or the elapsed time alone when YouTube gave no length.
+export const progress = (p: Player, now: number, seconds: number | null): { done: string; left: string; time: string } => {
+  const elapsed = p.startedAt === null ? 0 : Math.max(0, ((p.pausedAt ?? now) - p.startedAt) / 1000)
+  if (seconds === null || seconds <= 0) return { done: '', left: '', time: clock(elapsed) }
+  const filled = Math.min(BAR, Math.round((elapsed / seconds) * BAR))
+  return { done: '▰'.repeat(filled), left: '▱'.repeat(BAR - filled), time: `${clock(Math.min(elapsed, seconds))} / ${clock(seconds)}` }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -260,14 +286,17 @@ export const register: Register = on => {
         const p = await read($, player)
         if (p.pgid === null || !p.isPlaying) return
         const alive = await $.process.run(['kill', '-0', '--', `-${p.pgid}`])
-        if (alive.exitCode === 0) return
+        if (alive.exitCode === 0) {
+          $.ui.invalidate('ui.render')
+          return
+        }
         await skip($, 1)
       })()
     })
 
     // Unasked, the pane seats from 144 columns, under the avatar's; /music
     // opens it at any width.
-    void $.ui.open({ id: PANE, title: 'jukebox7', rows: 5 })
+    void $.ui.open({ id: PANE, title: 'jukebox7', rows: 6 })
 
     return next(e)
   })
@@ -330,7 +359,7 @@ export const register: Register = on => {
     const p = await read($, player)
     const now = p.tracks[p.index]
     if (args === '') {
-      void $.ui.open({ id: PANE, title: 'jukebox7', rows: 5 })
+      void $.ui.open({ id: PANE, title: 'jukebox7', rows: 6 })
       if (p.pgid === null || now === undefined) return { text: 'Nothing played from here yet: pick a genre in the pane.' }
       return { text: `${p.isPlaying ? 'Playing' : 'Paused'}: ${now.title}` }
     }
@@ -360,30 +389,68 @@ export const register: Register = on => {
     const now = p.tracks[p.index]
     const { value: avatar } = await $.state.get(onDuty)
     const station = avatar === undefined ? undefined : STATIONS[avatar]
-    const width = Math.max(10, (e.props.bodyColumns ?? 40) - 2)
+    const isTerminal = e.surface === 'terminal'
+    // The border and the play glyph take three columns on the terminal.
+    const width = Math.max(10, (e.props.bodyColumns ?? 40) - (isTerminal ? 5 : 2))
     const title = now === undefined ? 'Nothing plays.' : now.title.length > width ? `${now.title.slice(0, width - 1)}…` : now.title
+    const where = p.genre === null || p.genre === undefined ? `${p.index + 1}/${p.tracks.length}` : (STATIONS[p.genre]?.name ?? p.genre)
 
+    const controls = (
+      <>
+        <Button key="toggle" label={p.isPlaying ? 'pause' : 'play'} hotkey="p" plain onPress={() => void toggle($)} />
+        <Button key="next" label="next" hotkey="n" plain onPress={() => void skip($, 1)} />
+        <Button key="stop" label="stop" hotkey="s" plain dimColor onPress={() => void stop($)} />
+      </>
+    )
+    const stations = (
+      <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor={isTerminal ? BLACK : undefined}>
+        {GENRES.map(g => (
+          <Button key={g.label} label={g.label} hotkey={g.key} plain dimColor onPress={() => void playGenre($, g.label)} />
+        ))}
+        {station !== undefined && avatar !== undefined && (
+          <Button key="avatar" label={`${station.name}'s pick`} hotkey="a" plain onPress={() => void playGenre($, avatar)} />
+        )}
+      </Box>
+    )
+
+    if (!isTerminal) {
+      return (
+        <Box flexDirection="column">
+          <Text dimColor={now === undefined || !p.isPlaying}>{title}</Text>
+          {now !== undefined && (
+            <Box flexDirection="row" gap={2}>
+              <Text dimColor>
+                {p.isPlaying ? 'playing' : 'paused'} {where}
+              </Text>
+              {controls}
+            </Box>
+          )}
+          {stations}
+        </Box>
+      )
+    }
+
+    // The terminal: black, framed and lit in the color of the avatar on duty.
+    const { value: color } = await $.state.get(tint)
+    const accent = typeof color === 'string' && color !== '' ? color : PHOSPHOR
+    const bar = progress(p, await $.clock.now(), now?.seconds ?? null)
     return (
-      <Box flexDirection="column">
-        <Text dimColor={now === undefined || !p.isPlaying}>{title}</Text>
+      <Box flexDirection="column" borderStyle="round" borderColor={accent} backgroundColor={BLACK} paddingX={1}>
+        <Text color={accent} backgroundColor={BLACK} dimColor={now === undefined || !p.isPlaying}>
+          {now === undefined ? '■ ' : p.isPlaying ? '▶ ' : '❚❚ '}
+          {title}
+        </Text>
         {now !== undefined && (
-          <Box flexDirection="row" gap={2}>
-            <Text dimColor>
-              {p.isPlaying ? 'playing' : 'paused'} {p.genre === null || p.genre === undefined ? `${p.index + 1}/${p.tracks.length}` : (STATIONS[p.genre]?.name ?? p.genre)}
+          <Box flexDirection="row" gap={2} backgroundColor={BLACK}>
+            <Text backgroundColor={BLACK}>
+              <Text color={accent}>{bar.done}</Text>
+              <Text dimColor>{bar.left}</Text>
+              <Text dimColor>{` ${bar.time}  ${where}`}</Text>
             </Text>
-            <Button key="toggle" label={p.isPlaying ? 'pause' : 'play'} hotkey="p" plain onPress={() => void toggle($)} />
-            <Button key="next" label="next" hotkey="n" plain onPress={() => void skip($, 1)} />
-            <Button key="stop" label="stop" hotkey="s" plain dimColor onPress={() => void stop($)} />
+            {controls}
           </Box>
         )}
-        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-          {GENRES.map(g => (
-            <Button key={g.label} label={g.label} hotkey={g.key} plain dimColor onPress={() => void playGenre($, g.label)} />
-          ))}
-          {station !== undefined && avatar !== undefined && (
-            <Button key="avatar" label={`${station.name}'s pick`} hotkey="a" plain onPress={() => void playGenre($, avatar)} />
-          )}
-        </Box>
+        {stations}
       </Box>
     )
   })

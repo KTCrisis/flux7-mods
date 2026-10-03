@@ -38,6 +38,8 @@ const volume = atom({ plugin: 'avatar7', key: 'volume' } as const, 100)
 const VOLUME_STEP = 10
 // The avatar on duty, by its id: other mods read it (jukebox7 picks its music).
 const onDuty = atom({ plugin: 'avatar7', key: 'avatar' } as const, '')
+// The on-duty persona's color, read by jukebox7 to light its pane alike.
+const tint = atom({ plugin: 'avatar7', key: 'color' } as const, '')
 
 // What mesh7 answers when it refuses a call (mcp/server.go, halt/halt.go).
 const MESH_DENY = /Policy denied|Approval denied|Denied by supervisor|Approval timed out|halted by operator/
@@ -251,6 +253,7 @@ export const register: Register = (on, options) => {
     try {
       const dir = `${$.plugin.root}/personas/${id}`
       who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
+      await update($, tint, () => who?.color ?? '')
       const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
       face = Uint8Array.fromBase64(base64)
     } catch {
@@ -368,6 +371,7 @@ export const register: Register = (on, options) => {
 
     const dir = `${$.plugin.root}/personas/${id}`
     who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
+    await update($, tint, () => who?.color ?? '')
     const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
     face = Uint8Array.fromBase64(base64)
     await $.store.set('avatar', id)
@@ -511,6 +515,7 @@ export const register: Register = (on, options) => {
         </Box>
         <Text color={color} backgroundColor="#000000">
           {shown.length > 0 ? `> ${shown}` : '> ...'}
+          {typed < last.text.length ? '█' : ''}
         </Text>
         {heldId !== null && (
           <Text color="#7a5cff" backgroundColor="#000000">

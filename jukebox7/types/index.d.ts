@@ -9,12 +9,16 @@ export type Player = {
   isPlaying: boolean
   // The genre button behind it: next and the end of a song roll again there.
   genre: string | null
+  // When the track started, pushed forward by each pause, and when the
+  // current pause began (ms, $.clock.now): what the progress bar reads.
+  startedAt: number | null
+  pausedAt: number | null
 }
 
 declare module 'claude-code' {
   interface PluginState {
     jukebox7: { player: Player }
     // Read only: avatar7 owns it and says which face is on duty.
-    avatar7: { avatar: string }
+    avatar7: { avatar: string; color: string }
   }
 }

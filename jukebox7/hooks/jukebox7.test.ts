@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, isSong, GENRES } from './register'
+import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -21,6 +21,7 @@ const engine = (on: On, intent: string): { argv: string[][]; toasts: string[]; s
     const stdout = a[0] === 'yt-dlp' ? RESULTS : a[0] === 'bash' ? '4242\n' : ''
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
   })
+  on('clock.now', () => ({ value: 1_000_000 }) as never)
   on('ui.status', () => undefined)
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('ui.close', () => ({ value: undefined }) as never)
@@ -102,4 +103,12 @@ test('leaving the session ends the pipeline and detaches the VLC kill', async ($
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 's', resume: { id: 's' } } as never)
   expect(argv).toContainEqual(['kill', '-TERM', '--', '-4242'])
   expect(argv.at(-1)).toEqual(detachedKillVlcArgv)
+})
+
+test('the progress bar fills with the elapsed time and holds still while paused', () => {
+  const p = { tracks: [], index: 0, pgid: 1, isPlaying: true, genre: null, startedAt: 0, pausedAt: null }
+  expect(progress(p, 210_000, 420)).toEqual({ done: '▰'.repeat(6), left: '▱'.repeat(6), time: '03:30 / 07:00' })
+  expect(progress({ ...p, isPlaying: false, pausedAt: 60_000 }, 400_000, 420).time).toBe('01:00 / 07:00')
+  expect(progress(p, 90_000, null)).toEqual({ done: '', left: '', time: '01:30' })
+  expect(progress(p, 999_000, 420).left).toBe('')
 })
