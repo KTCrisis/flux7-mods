@@ -425,7 +425,16 @@ export const rain = (columns: number, rows: number, tick: number): { level: 0 | 
   })
 
 export const register: Register = on => {
+  // A daemon's background session (a spare kept warm, a `claude --bg`)
+  // inherits the plugin dirs but nobody listens to it: no /music, no poll,
+  // no prompt turned into a song.
+  let isBackground = false
+
   on('session.start', async ($, e, next) => {
+    const kind = await $.process.run(['sh', '-c', 'printf %s "$CLAUDE_CODE_SESSION_KIND"'])
+    isBackground = kind.stdout === 'bg'
+    if (isBackground) return next(e)
+
     await $.command.register({
       name: 'music',
       description: 'Play music from YouTube: /music <search>, /music pause, /music next, /music similar, /music stop, /music vol [+|-]<n>, /music alone for what plays',
@@ -476,7 +485,7 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    if ((e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') || !CANDIDATE.test(e.text)) return next(e)
+    if (isBackground || (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') || !CANDIDATE.test(e.text)) return next(e)
 
     const r = await $.model.complete({
       model: 'haiku',

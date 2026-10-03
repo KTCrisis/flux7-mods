@@ -8,8 +8,9 @@ const RESULTS = [
 ].join('\n')
 
 // The engine beneath: Haiku answers `intent`, yt-dlp the results above, the
-// detached pipeline its process group 4242, and every command line is kept.
-const engine = (on: On, intent: string): { argv: string[][]; toasts: string[]; say: (next: string) => void } => {
+// detached pipeline its process group 4242, the shell `kind` as
+// CLAUDE_CODE_SESSION_KIND, and every command line is kept.
+const engine = (on: On, intent: string, kind = ''): { argv: string[][]; toasts: string[]; say: (next: string) => void } => {
   const said = { intent }
   const argv: string[][] = []
   const toasts: string[] = []
@@ -18,7 +19,7 @@ const engine = (on: On, intent: string): { argv: string[][]; toasts: string[]; s
   on('process.run', ($, e) => {
     const a = [...(e as { argv: string[] }).argv]
     argv.push(a)
-    const stdout = a[0] === 'yt-dlp' ? RESULTS : a[0] === 'bash' ? '4242\n' : ''
+    const stdout = a[0] === 'yt-dlp' ? RESULTS : a[0] === 'bash' ? '4242\n' : a[0] === 'sh' ? kind : ''
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
   })
   on('clock.now', () => ({ value: 1_000_000 }) as never)
@@ -167,4 +168,14 @@ test('every genre carries discoveries, none of them already in its own list', ()
     expect((g.discover ?? []).length).toBeGreaterThan(0)
     expect((g.discover ?? []).filter(a => g.artists.includes(a))).toEqual([])
   }
+})
+
+test('a background session (a daemon spare) turns no prompt into a song', async ($, on) => {
+  const { argv, toasts } = engine(on, '{"action":"play","query":"ambient music","long":true}', 'bg')
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/home/u' } as never)
+  const r = await $.prompt.submit(typed('joue moi un peu de musique ambient'))
+  expect(r.text).toBe('joue moi un peu de musique ambient')
+  expect(argv.filter(a => a[0] !== 'sh')).toEqual([])
+  expect(toasts).toEqual([])
 })
