@@ -189,6 +189,7 @@ is the grid enlarged x8):
 | `name` | pane title |
 | `voice` | an installed SAPI voice: `Microsoft Hortense Desktop` (fr), `Microsoft David Desktop`, `Microsoft Zira Desktop` (en) |
 | `rate` | SAPI rate, -10 to 10 |
+| `pitch` | optional: SAPI pitch, -10 to 10; set, the voice goes through the SAPI COM object, which takes it as XML (duck7: 10) |
 | `color` | color of the line under the face |
 | `greeting` | spoken on `/avatar <id>` |
 | `nobody` | optional: the name used for `{, user}` when `user_name` is empty |

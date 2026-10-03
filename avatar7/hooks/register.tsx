@@ -37,10 +37,17 @@ const isMuted = atom({ plugin: 'avatar7', key: 'isMuted' } as const, false)
 const MESH_DENY = /Policy denied|Approval denied|Denied by supervisor|Approval timed out|halted by operator/
 
 const POWERSHELL = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
-const speakScript = (voice: string, rate: number) =>
+// A persona with a `pitch` (-10 to 10) speaks through the SAPI COM voice,
+// which takes the pitch as XML; the text is escaped for it.
+const speakScript = (who: { voice: string; rate: number; pitch?: number }) =>
   '[Console]::InputEncoding=[Text.Encoding]::UTF8; $t=[Console]::In.ReadToEnd(); ' +
-  'Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; ' +
-  `$s.SelectVoice("${voice}"); $s.Rate=${rate}; $s.Speak($t)`
+  (who.pitch === undefined
+    ? 'Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; ' +
+      `$s.SelectVoice("${who.voice}"); $s.Rate=${who.rate}; $s.Speak($t)`
+    : '$q=[char]34; $v=New-Object -ComObject SAPI.SpVoice; ' +
+      `$v.Voice=($v.GetVoices() | ? { $_.GetDescription() -like "${who.voice}*" } | select -First 1); ` +
+      `$v.Rate=${who.rate}; ` +
+      `[void]$v.Speak("<pitch absmiddle=" + $q + "${who.pitch}" + $q + ">" + [Security.SecurityElement]::Escape($t) + "</pitch>", 8)`)
 
 const STYLE = ' No quotes, no emoji, no em dash.'
 
@@ -54,6 +61,7 @@ type Persona = {
   name: string
   voice: string
   rate: number
+  pitch?: number
   color: string
   eyes: { x: number; y: number; rx: number; ry: number }[]
   mouth: { x: number; y: number; half: number } | null
@@ -256,7 +264,7 @@ export const register: Register = (on, options) => {
     if (!(await read($, isMuted))) {
       const voice = who
       $.clock.after(1, async () => {
-        await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice.voice, voice.rate)], {
+        await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice)], {
           stdin: text,
           timeoutMs: 30_000,
         })
@@ -326,7 +334,7 @@ export const register: Register = (on, options) => {
           speakUntil = frame + Math.ceil(text.length / 2) + 10
           await update($, line, () => ({ text, at: frame }) satisfies Line)
           if (!(await read($, isMuted))) {
-            await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice.voice, voice.rate)], {
+            await $.process.run([POWERSHELL, '-NoProfile', '-Command', speakScript(voice)], {
               stdin: text,
               timeoutMs: 30_000,
             })
