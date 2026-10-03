@@ -335,6 +335,8 @@ export const register: Register = (on, options) => {
   let streak: Streak = { mood: 'watch', count: 0 }
   // The persona's own events: on unless /avatar events off; the next one's frame.
   let eventsOn = true
+  // Visits from other personas, a share of the events, switched apart.
+  let visitsOn = true
   let nextEventAt = Infinity
   const nextGap = (): number => EVENT_MIN_FRAMES + Math.random() * EVENT_SPAN_FRAMES
   // A question the avatar put to the user, until answered or five minutes pass.
@@ -496,7 +498,7 @@ export const register: Register = (on, options) => {
 
     await $.command.register({
       name: 'avatar',
-      description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar duo [id], /avatar events on|off`,
+      description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar duo [id], /avatar events on|off, /avatar visits on|off`,
     })
     await $.command.register({ name: 'avatar-mute', description: 'Toggle the avatar voice' })
     await $.command.register({ name: 'avatar-talk', description: 'Ask the avatar what it thinks of the conversation' })
@@ -530,6 +532,7 @@ export const register: Register = (on, options) => {
     lineLength = last.text.length
     typed = lineLength
     eventsOn = (await $.store.get('events')) !== false
+    visitsOn = (await $.store.get('visits')) !== false
     nextEventAt = frame + nextGap()
 
     $.clock.every(FRAME_MS, () => {
@@ -616,7 +619,7 @@ export const register: Register = (on, options) => {
       ) {
         nextEventAt = frame + nextGap()
         // One event in three is a visit from another persona.
-        const gid = Math.random() < 1 / 3 ? pickGuest(AVATARS, whoId, Math.random()) : undefined
+        const gid = visitsOn && Math.random() < 1 / 3 ? pickGuest(AVATARS, whoId, Math.random()) : undefined
         if (gid !== undefined) {
           void loadGuest($, gid).then(g => {
             if (g !== null) startDuo(g, Math.random() < 0.5 ? 'session' : 'stories')
@@ -772,9 +775,16 @@ export const register: Register = (on, options) => {
       startDuo(g, Math.random() < 0.5 ? 'session' : 'stories')
       return { text: `${g.persona.name} visits ${who?.name ?? 'avatar7'}.` }
     }
+    if (id === 'visits on' || id === 'visits off') {
+      visitsOn = id === 'visits on'
+      await $.store.set('visits', visitsOn)
+      $.ui.invalidate('ui.render')
+      return { text: visitsOn ? 'The avatars visit each other again.' : 'No more visits.' }
+    }
     if (id === 'events on' || id === 'events off') {
       eventsOn = id === 'events on'
       await $.store.set('events', eventsOn)
+      $.ui.invalidate('ui.render')
       return { text: eventsOn ? 'The avatars live their own stories again.' : 'No more events of their own.' }
     }
     if (id === 'voices') {
@@ -1010,7 +1020,7 @@ export const register: Register = (on, options) => {
             ))}
           </Box>
         )}
-        <Box flexDirection="row" gap={2} backgroundColor="#000000">
+        <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor="#000000">
           <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => speakLater('talk')} />
           <Button
             key="avatars"
@@ -1030,6 +1040,30 @@ export const register: Register = (on, options) => {
             plain
             dimColor
             onPress={() => update($, isMuted, was => !was)}
+          />
+          <Button
+            key="events"
+            label={eventsOn ? 'events: on' : 'events: off'}
+            hotkey="e"
+            plain
+            dimColor
+            onPress={async () => {
+              eventsOn = !eventsOn
+              await $.store.set('events', eventsOn)
+              $.ui.invalidate('ui.render')
+            }}
+          />
+          <Button
+            key="visits"
+            label={visitsOn ? 'visits: on' : 'visits: off'}
+            hotkey="v"
+            plain
+            dimColor
+            onPress={async () => {
+              visitsOn = !visitsOn
+              await $.store.set('visits', visitsOn)
+              $.ui.invalidate('ui.render')
+            }}
           />
           <Box flexDirection="row" gap={1} backgroundColor="#000000">
             <Text dimColor backgroundColor="#000000">vol</Text>

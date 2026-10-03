@@ -133,6 +133,11 @@ the speaker, and the line reads `GLaDOS: …`. A turn the model leaves empty
 ends the visit; so does a turn that waited too long behind other lines.
 `/avatar duo glados` brings one now, `/avatar duo` a guest at random.
 
+The pane has two switches beside `mute`: `events` (key `e`) for all of a
+persona's own events, `visits` (key `v`) for the visits alone, which leaves
+the stories and questions on. Both are kept in `$.store`, and answer to
+`/avatar events on|off` and `/avatar visits on|off` too.
+
 ### Moods
 
 | Outcome | Mood | Look |
