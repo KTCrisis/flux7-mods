@@ -15,11 +15,18 @@ const W = 64
 const H = 64
 const MIN_SIZE = 16
 
+// Rows kept under the face for the line, which may wrap once.
+const TEXT_ROWS = 2
+
+// The engine redraws on a change of width, never on a change of height alone:
+// the clock asks for a render this often so the face follows both.
+const REFIT_FRAMES = 15
+
 // The face's side in pixels for a pane body: as wide as the body, as tall as
-// the surface leaves (two pixels per row, a few rows kept for the text), even,
+// the body leaves (two pixels per row, a few rows kept for the text), even,
 // never past the baked portrait.
 const fit = (columns: number, rows: number): number => {
-  const side = Math.min(W, columns, Math.max(MIN_SIZE / 2, rows - 6) * 2)
+  const side = Math.min(W, columns, Math.max(MIN_SIZE / 2, rows - TEXT_ROWS) * 2)
   return Math.max(MIN_SIZE, side - (side % 2))
 }
 
@@ -211,6 +218,8 @@ export const register: Register = (on, options) => {
       if (typed < lineLength) {
         typed = Math.min(lineLength, typed + 2)
         $.ui.invalidate('ui.render')
+      } else if (frame % REFIT_FRAMES === 0) {
+        $.ui.invalidate('ui.render')
       }
     })
 
@@ -336,7 +345,7 @@ export const register: Register = (on, options) => {
     }
 
     const { Box, Text, Raster } = $.ui.resolve(e)
-    size = fit(e.props.bodyColumns, e.viewport?.rows ?? H / 2 + 6)
+    size = fit(e.props.bodyColumns, e.props.scroll.bodyRows)
     return (
       // viewport.rows is the whole surface: taller than the pane, which clips the rest.
       <Box flexDirection="column" flexGrow={1} width="100%" height={e.viewport?.rows ?? H / 2 + 2} backgroundColor="#000000">
