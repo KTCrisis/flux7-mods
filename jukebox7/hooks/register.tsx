@@ -3,10 +3,15 @@ import type { Engine, Register } from 'claude-code'
 
 import type { Player, Track } from '../types'
 
-// Cheap sieve before any model call: a prompt without one of these words
-// reaches the session untouched, with no added latency.
-const CANDIDATE =
-  /\b(musique|music|morceau|chanson|son|joue|jouer|mets|lance|play|pause|stop|coupe|arr[eê]te|reprends|resume|suivant|next|skip|ambient|lofi|playlist|youtube|volume|fort|louder|quieter|similar|similaire|pareil|radio)\b/i
+// Cheap sieve before any model call: a prompt that fails it reaches the
+// session untouched, with no added latency. A command to the jukebox is
+// short; a longer message is talk to the assistant, even about music (one
+// about ducking the music was once taken for a volume change). Common words
+// (son, fort, mets, lance) only count inside a music phrase.
+const MAX_WORDS = 8
+const MUSIC =
+  /\b(musique|music|morceau|chanson|playlist|youtube|ambient|lofi|radio|volume|pause|stop|coupe|arr[eê]te|reprends|resume|suivant|next|skip|louder|quieter|similar|similaire|pareil)\b|\b(monte|baisse|coupe)[sz]?\s+(le\s+)?son\b|\b(plus|moins)\s+fort\b|\b(joue|jouer|mets|lance|play)\b.*\b(du|de\s+la|un\s+peu\s+de|some)\b/i
+export const isCandidate = (text: string): boolean => text.trim().split(/\s+/).length <= MAX_WORDS && MUSIC.test(text)
 
 const INTENT = [
   'You read one message typed to a coding assistant and decide whether it asks to control music playback on the computer.',
@@ -22,6 +27,7 @@ const INTENT = [
   'long: true for background or mood music (ambient, lofi, focus, a genre), false for one named track.',
   'toggle: pause or resume the music. next: skip to another one. similar: more songs like the one playing. stop: stop, cut or turn off the music.',
   'volume: louder (delta 10, or 20 for much louder) or quieter (delta -10, or -20).',
+  'Only a direct, short command to the music player counts. A question, a remark, a request to change software or code, or a description of how music should behave is none, even when it names volume or music.',
   'none: anything else, including talk about music, code that plays audio, and requests aimed at Renoise, play7, keys7, a piano, a pattern or a melody.',
 ].join('\n')
 
@@ -251,6 +257,23 @@ export const volumeArgv = (percent: number, retry = false): string[] => [
   ...(retry ? ['--retry', '10', '--retry-connrefused', '--retry-delay', '1'] : ['--max-time', '2']),
   `http://127.0.0.1:${HTTP_PORT}/requests/status.xml?command=volume&val=${Math.round((clampVolume(percent) * 256) / 100)}`,
 ]
+// How many rows a wrapped line of plain Buttons takes: each draws as
+// `k: label`, three columns past its label, with `gap` between them.
+export const buttonRows = (labels: string[], columns: number, gap = 2): number => {
+  let rows = 1
+  let used = 0
+  for (const label of labels) {
+    const w = label.length + 3
+    if (used > 0 && used + gap + w > columns) {
+      rows += 1
+      used = w
+    } else {
+      used += (used > 0 ? gap : 0) + w
+    }
+  }
+  return rows
+}
+
 // While the avatar speaks, the music drops to this share of its level.
 export const DUCK = 0.3
 export const duckArgv = (level: number, isVoicing: boolean): string[] => volumeArgv(isVoicing ? level * DUCK : level)
@@ -499,7 +522,7 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    if (isBackground || (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') || !CANDIDATE.test(e.text)) return next(e)
+    if (isBackground || (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') || !isCandidate(e.text)) return next(e)
 
     const r = await $.model.complete({
       model: 'haiku',
@@ -646,7 +669,16 @@ export const register: Register = on => {
     const rows = e.props.scroll?.bodyRows ?? 0
     // The frame, the title, the bar, the controls and the stations; the rain
     // takes what is left of the pane's height.
-    const rainRows = Math.max(0, rows - (now === undefined ? 5 : 7))
+    // The controls and the stations wrap inside the frame (border and padding:
+    // four columns); each row they take comes out of the rain.
+    const inner = Math.max(10, (e.props.bodyColumns ?? 40) - 4)
+    const controlRows = now === undefined ? 0 : buttonRows([p.isPlaying ? 'pause' : 'play', 'next', 'similar', 'stop', 'vol−', 'vol+'], inner)
+    const stationRows = buttonRows(
+      [...GENRES.map(g => g.label), ...(station !== undefined ? [`${station.name}'s pick`] : [])],
+      inner,
+    )
+    // The frame's two borders, the title, the bar when something plays.
+    const rainRows = Math.max(0, rows - 3 - (now === undefined ? 0 : 1) - controlRows - stationRows)
     const rainColumns = Math.max(0, (e.props.bodyColumns ?? 40) - 2)
     return (
       <Box flexDirection="column" width="100%" height={rows > 0 ? rows : undefined} backgroundColor={BLACK}>

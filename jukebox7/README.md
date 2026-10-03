@@ -56,6 +56,10 @@ to 30 % of its level, then returns.
 `/music <search>` plays one named track; `/music pause|next|stop`;
 `/music vol 60`, `/music vol +20`. In words, `monte le son` works too.
 
+Only a short prompt (eight words at most) with a music word or phrase goes to
+Haiku; a longer one is talk to the assistant and passes untouched, even when
+it mentions music.
+
 The volume goes through VLC's HTTP interface on Windows' loopback (port
 18797), reached with Windows' own `curl.exe`. The level is kept apart from
 the player, survives a stop, and is set again on each new song: a fresh VLC

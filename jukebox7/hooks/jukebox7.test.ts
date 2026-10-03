@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, clampVolume, rain, musicSearch, parseTracks, parseRadio } from './register'
+import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, clampVolume, rain, musicSearch, parseTracks, parseRadio } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -184,4 +184,28 @@ test('while avatar7 speaks the music drops to a share of its level, then returns
   expect(duckArgv(80, true)).toEqual(volumeArgv(80 * DUCK))
   expect(duckArgv(80, false)).toEqual(volumeArgv(80))
   expect(DUCK).toBeLessThan(1)
+})
+
+test('the controls wrap on a narrow pane, and the rows they take are counted', () => {
+  const controls = ['pause', 'next', 'similar', 'stop', 'vol−', 'vol+']
+  expect(buttonRows(controls, 60)).toBe(1)
+  // 44 columns: `u: vol+` goes to a second row.
+  expect(buttonRows(controls, 44)).toBe(2)
+  expect(buttonRows(controls, 20)).toBeGreaterThan(2)
+})
+
+test('the sieve keeps short music commands and lets talk through', () => {
+  for (const cmd of ['joue moi un peu de musique ambient', 'pause', 'next', 'monte le son', 'baisse le son', 'plus fort', 'mets du lofi', 'stop the music', 'volume 40']) {
+    expect(isCandidate(cmd)).toBe(true)
+  }
+  for (const talk of [
+    'refactor the mesh7 pane',
+    'oui, pousse et baisse la musique quand l avatar parle sinon on entend rien',
+    'son code est trop fort pour moi',
+    'mets le fichier dans le dossier',
+    'lance les tests',
+    'oui push',
+  ]) {
+    expect(isCandidate(talk)).toBe(false)
+  }
 })
