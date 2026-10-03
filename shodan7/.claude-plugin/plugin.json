@@ -1,1 +1,0 @@
-{ "name": "shodan7", "version": "0.1.0", "description": "A CRT face that watches tool calls and comments on them", "types": "./types/index.d.ts" }

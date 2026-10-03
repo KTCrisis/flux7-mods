@@ -1,0 +1,1 @@
+{ "name": "avatar7", "version": "0.2.0", "description": "A machine face that watches tool calls and comments on them, with switchable avatars", "types": "./types/index.d.ts" }
