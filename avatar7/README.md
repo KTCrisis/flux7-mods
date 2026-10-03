@@ -17,7 +17,7 @@ sessions.
 | Command | Effect |
 | --- | --- |
 | `/avatar` | open the pane |
-| `/avatar <id>` | switch avatar (`shodan`, `hal`, `glados`, `ada`), greet, remember the choice across sessions |
+| `/avatar <id>` | switch avatar (`shodan`, `hal`, `glados`, `ada`, `duck7`, `pod042`, `kaneda`, `commis`, `fox`, `adjutant`, `morte`), greet, remember the choice across sessions |
 | `/avatar-talk` | ask the avatar what it thinks of the conversation; the `talk` button under the face (hotkey `t` while the pane has the focus) does the same |
 | `/avatar-mute` | toggle the voice for this session; the `mute` / `unmute` button under the face (hotkey `m`) does the same |
 | `vol - N +` | buttons under the face: SAPI volume by steps of 10, 0 to 100, kept across sessions (`$.store`) |
@@ -145,7 +145,7 @@ reduction is contrast and a large central subject, so the prompt asks for:
 - a pure black or dark background;
 - high contrast and one dominant glow color.
 
-The eight shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
+The eleven shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
 random unless given; the actual seed is in the PNG metadata):
 
 | id | style | prompt |
@@ -158,6 +158,9 @@ random unless given; the actual seed is in the PNG metadata):
 | pod042 | none, seed 42 | frontal symmetric view of a small floating support robot pod, boxy grey metal casing with rounded edges, a single horizontal glowing slit eye in the center, two small mechanical arms folded at its sides, minimalist post-apocalyptic android design, centered and filling the frame, pure black background, high contrast, soft white and pale yellow glow, 2017 video game concept art |
 | kaneda | none, seed 1988 | frontal portrait of a cocky teenage biker gang leader, spiky brown hair, smirking confidently straight at the viewer, red leather biker jacket with a white pill capsule emblem on the chest, neon red city lights behind, 1988 japanese anime cel animation style, bold outlines, face centered and filling the frame, dark background, high contrast, saturated red |
 | commis | none, seed 1769 | frontal symmetric portrait of an 18th century East India Company clerk, a weathered ship log keeper with a powdered wig and round brass spectacles, quill pen behind the ear, teak and rattan background with brass navigation instruments and a faded nautical chart, warm candlelight, face centered and filling the frame, dark surroundings, high contrast, oil painting in the style of a colonial era portrait |
+| fox | none, seed 1994 | frontal portrait of a cocky anthropomorphic fox fighter pilot, orange and white fur, sharp green eyes looking straight at the viewer with a confident smirk, a radio headset with a small microphone over the muzzle, green flight jacket collar with a white scarf, starfield and a blue cockpit glow behind, 1990s video game box art style, bold outlines, head centered and filling the frame, dark background, high contrast |
+| adjutant | none, seed 1999 | frontal symmetric portrait of a pale female android face, bald, porcelain white skin with thin seams, blank glowing pale blue eyes staring straight ahead, thick black cables and tubes plugged into the skull and neck, holographic blue scanlines and monitor glow, military command interface, face centered and filling the frame, pure black background, high contrast, cold cyan blue light, 1998 science fiction video game cinematic |
+| morte | none, seed 2009 | frontal portrait of a floating grinning human skull, cracked yellowed bone, empty dark eye sockets with tiny glowing embers, wide toothy grin with chattering teeth, mischievous expression, no body, faint purple and green planar haze, ink and watercolor dark fantasy illustration in the style of 1999 Planescape role-playing game art, skull centered and filling the frame, black background, high contrast |
 
 A render takes about 25 to 50 s on Krea 2 turbo.
 
@@ -182,6 +185,9 @@ mush, crop tighter or re-render with more contrast.
 | kaneda | `180 40 860 720` |
 | commis | `192 100 832 740` |
 | glados | `192 150 832 790` |
+| fox | `112 60 912 860` |
+| adjutant | `92 10 932 850` |
+| morte | `50 30 970 950` |
 
 ### 3. Features
 
@@ -270,5 +276,9 @@ lines belong to their works, the portraits are original renders.
   fallback name for an unnamed user is Tetsuo.
 - **The Commis** is our own, a trading post clerk keeping the log; he never
   praises the Company.
+- **Fox McCloud**: *Star Fox*, Nintendo, 1993.
+- **The Adjutant**: *StarCraft*, Blizzard Entertainment, 1998; her fallback
+  name for an unnamed user is Commander.
+- **Morte**: *Planescape: Torment*, Black Isle Studios and Interplay, 1999.
 - **duck7** is our own: the crowned mallard of the status line, a claude-buddy
   companion, given a face.
