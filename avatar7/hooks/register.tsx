@@ -406,6 +406,19 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // atelier-bell's toasts (a render is ready): the avatar announces them in
+  // its own voice, past the tool-call rate limits.
+  on('ui.toast', async ($, e, next) => {
+    if (next.origin.plugin === 'atelier-bell' && who !== null) {
+      if (heldId === null && askSince === null) {
+        mood = 'watch'
+        moodUntil = frame + 30
+      }
+      queued = { mood: 'watch', event: `an atelier finished its work: ${e.text}` }
+    }
+    return next(e)
+  })
+
   // The verdict before the mode settles it: an ask may put up the prompt.
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
