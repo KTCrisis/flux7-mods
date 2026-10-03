@@ -22,7 +22,7 @@ the model call altogether.
 The **pane** (`/music`, or opened on the first song) shows the title, its
 state and volume, `p` pause, `n` next, `r` similar, `s` stop, `d` and `u` the volume by
 10 %, and the genre buttons `1` to `9` and `0`:
-ambient, lofi, black metal, darksynth, idm, indie rock, video games, modern classical, hip-hop, post-rock. A genre
+ambient, lofi, metal, synth & electro, idm, indie rock, video games, modern classical, hip-hop, post-rock. A genre
 is a radio: a random artist from its list, a random song of theirs; next and
 the end of a song roll again.
 

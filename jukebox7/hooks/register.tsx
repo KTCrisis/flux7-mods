@@ -61,15 +61,15 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
   { key: '2', label: 'lofi', artists: ['Nujabes', 'Prefuse 73', 'cLOUDDEAD', 'DJ Shadow', 'Bonobo', 'Tomppabeats', 'Why?'], discover: ['Madlib', 'J Dilla', 'Flying Lotus', 'Knxwledge', 'Odd Nosdam', 'Jel Anticon', 'Blockhead', 'Elaquent'] },
   {
     key: '3',
-    label: 'black metal',
+    label: 'metal',
     artists: ['Dissection', 'Cradle of Filth Dusk and Her Embrace', 'Emperor', 'Dimmu Borgir Enthrone Darkness Triumphant', 'Agalloch', 'Ulver Bergtatt', 'Arcturus', 'Blut Aus Nord', 'Wolves in the Throne Room', 'Opeth'], discover: ['Deathspell Omega', 'Mgła', 'Panopticon', 'Alcest', 'Oranssi Pazuzu', 'Wiegedood', 'Cult of Luna', 'Russian Circles'],
   },
-  { key: '4', label: 'darksynth', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead', 'Master Boot Record', 'Crystal Castles', 'The Knife Silent Shout'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk'] },
+  { key: '4', label: 'synth & electro', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead', 'Master Boot Record', 'Crystal Castles', 'The Knife Silent Shout', 'Grimes Visions'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk'] },
   { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel', 'Jega'], discover: ['Richard Devine', 'Proem', 'Lusine', 'Funckarma', 'Sewerslvt', 'Machine Girl', 'Rival Consoles', 'Max Cooper'] },
   {
     key: '6',
     label: 'indie rock',
-    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT', 'Ratatat', 'Grimes Visions', 'Perfume Genius', 'The Notwist', 'Beach House', 'Weezer'], discover: ['Car Seat Headrest', 'Alex G', 'Duster Stratosphere', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra'],
+    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT', 'Ratatat', 'Perfume Genius', 'The Notwist', 'Beach House', 'Weezer'], discover: ['Car Seat Headrest', 'Alex G', 'Duster Stratosphere', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra'],
   },
   {
     key: '7',
