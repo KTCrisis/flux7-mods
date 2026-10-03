@@ -233,14 +233,16 @@ reduction is contrast and a large central subject, so the prompt asks for:
 - a pure black or dark background;
 - high contrast and one dominant glow color.
 
-The twelve shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
-random unless given; the actual seed is in the PNG metadata):
+The shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
+random unless given; the actual seed is in the PNG metadata). Morte and
+GLaDOS are edits of a still from their game (Boogu Edit, `mode: edit`), not
+renders from a prompt:
 
 | id | style | prompt |
 | --- | --- | --- |
 | shodan | `cyber-futur 1995` | frontal symmetric portrait of a cold artificial intelligence goddess, female machine face made of glowing wireframe mesh and circuit plates, piercing luminous eyes staring straight at the viewer, thick cables and wires flowing from the head like hair, face centered and filling the frame, pure black background, high contrast, green and cyan glow, 1994 cyberspace computer graphics |
 | hal | `libre` | extreme close-up of a single glowing red camera lens eye set in a brushed aluminium panel, deep red glass iris with a bright yellow-white pinpoint center, concentric reflections, perfectly symmetric, centered and filling the frame, 1968 science fiction spaceship computer, pure black surroundings, high contrast |
-| glados | `libre` | giant robotic artificial intelligence hanging from the ceiling, sleek white and black mechanical head seen from the front with a single large glowing yellow eye in the center, articulated robotic neck, cables, sterile laboratory test chamber, head centered and filling the frame, dark background, high contrast, cinematic |
+| glados | edit, seed 2011 | Boogu Edit (`mode: edit`) of a Portal 2 still of GLaDOS: "keep this exact white robotic head with its single glowing yellow eye, turn the head so the eye faces the viewer straight on, centered and filling the frame, replace the whole background with pure black" |
 | ada | `decopunk (Belle Époque futur)` | frontal symmetric portrait of a benevolent automaton woman, face of polished brass and ivory porcelain, gentle kind luminous amber eyes, serene soft smile, ornate brass filigree and whiplash curves framing the head like a halo, face centered and filling the frame, warm golden light, dark background, high contrast |
 | duck7 | none, seed 11 | cartoon mascot portrait of a cheeky mallard duck head facing the viewer, 1990s animated series style, bold thick black outlines, flat cel shading, big round expressive white eyes with black pupils and a mischievous half-lidded look, wide orange-yellow bill with a smug grin, glossy emerald green head, small tilted golden crown, symmetric, head centered and filling the frame, pure black background, high contrast, vivid saturated colors |
 | pod042 | none, seed 42 | frontal symmetric view of a small floating support robot pod, boxy grey metal casing with rounded edges, a single horizontal glowing slit eye in the center, two small mechanical arms folded at its sides, minimalist post-apocalyptic android design, centered and filling the frame, pure black background, high contrast, soft white and pale yellow glow, 2017 video game concept art |
@@ -248,8 +250,10 @@ random unless given; the actual seed is in the PNG metadata):
 | commis | none, seed 1769 | frontal symmetric portrait of an 18th century East India Company clerk, a weathered ship log keeper with a powdered wig and round brass spectacles, quill pen behind the ear, teak and rattan background with brass navigation instruments and a faded nautical chart, warm candlelight, face centered and filling the frame, dark surroundings, high contrast, oil painting in the style of a colonial era portrait |
 | fox | none, seed 1994 | frontal portrait of a cocky anthropomorphic fox fighter pilot, orange and white fur, sharp green eyes looking straight at the viewer with a confident smirk, a radio headset with a small microphone over the muzzle, green flight jacket collar with a white scarf, starfield and a blue cockpit glow behind, 1990s video game box art style, bold outlines, head centered and filling the frame, dark background, high contrast |
 | adjutant | none, seed 1999 | frontal symmetric portrait of a pale female android face, bald, porcelain white skin with thin seams, blank glowing pale blue eyes staring straight ahead, thick black cables and tubes plugged into the skull and neck, holographic blue scanlines and monitor glow, military command interface, face centered and filling the frame, pure black background, high contrast, cold cyan blue light, 1998 science fiction video game cinematic |
-| morte | none, seed 2009 | frontal portrait of a floating grinning human skull, cracked yellowed bone, empty dark eye sockets with tiny glowing embers, wide toothy grin with chattering teeth, mischievous expression, no body, faint purple and green planar haze, ink and watercolor dark fantasy illustration in the style of 1999 Planescape role-playing game art, skull centered and filling the frame, black background, high contrast |
+| morte | edit, seed 2009 | Boogu Edit (`mode: edit`) of a Planescape: Torment still of Morte: "keep this exact floating skull with its bulging eyes and open toothy jaw, turn it to face the viewer straight on, centered and filling the frame, replace the whole background with pure black, keep the painted 1999 game art style" |
 | pda | none, seed 2018 | frontal symmetric view of a rugged handheld survival PDA device floating in dark deep ocean water, a round glowing screen in the center showing a single luminous cyan signal ring like an eye, concentric rings, small status lights on a scratched white and orange casing, faint bubbles and bioluminescent particles around, device centered and filling the frame, pure black abyssal background, high contrast, cold cyan and teal glow, 2018 underwater survival video game interface |
+| lain | `libre`, seed 1998 | frontal portrait of a quiet teenage girl with a short brown bob haircut, one long lock of hair on her left side held by a small X shaped clip, large pale grey eyes staring straight at the viewer, pale skin lit by the faint glow of an old CRT monitor, tangled cables and telephone wires blurred in the darkness behind, late 1990s anime cel animation style, melancholic and distant, face centered and filling the frame, black background, high contrast, cold blue glow with a touch of red |
+| tachikoma | `libre`, seed 2002 | frontal view of a small cobalt blue spider-like AI think-tank robot facing the viewer, a round bulbous abdomen pod behind, three large round glowing optical sensors clustered on its front like curious eyes, two small manipulator arms, glossy rounded armor, childlike curious pose, late 1990s anime mecha cel style, robot centered and filling the frame, black background, high contrast, cyan and white glow |
 
 A render takes about 25 to 50 s on Krea 2 turbo.
 
@@ -273,11 +277,13 @@ mush, crop tighter or re-render with more contrast.
 | pod042 | `64 20 960 916` |
 | kaneda | `180 40 860 720` |
 | commis | `192 100 832 740` |
-| glados | `192 150 832 790` |
+| glados | `70 105 430 465` (on the 504x480 edit) |
 | fox | `112 60 912 860` |
 | adjutant | `92 10 932 850` |
-| morte | `50 30 970 950` |
+| morte | `-15 25 231 271` (on the 216x360 edit; outside the image is black) |
 | pda | `130 120 890 880` |
+| lain | `140 60 880 800` |
+| tachikoma | `112 160 912 960` |
 
 ### 3. Features
 
@@ -360,7 +366,8 @@ shows it.
 ## Credits
 
 The avatars pay homage to machines other people imagined; the names and a few
-lines belong to their works, the portraits are original renders.
+lines belong to their works. The portraits are renders from a prompt, except
+Morte's and GLaDOS's, edited from stills of their games.
 
 - **SHODAN**: *System Shock*, Looking Glass Technologies, 1994.
 - **HAL 9000**: *2001: A Space Odyssey*, Stanley Kubrick and Arthur C. Clarke,
@@ -376,5 +383,10 @@ lines belong to their works, the portraits are original renders.
 - **The Adjutant**: *StarCraft*, Blizzard Entertainment, 1998; her fallback
   name for an unnamed user is Commander.
 - **Morte**: *Planescape: Torment*, Black Isle Studios and Interplay, 1999.
+- **Lain**: *Serial Experiments Lain*, Triangle Staff, Yoshitoshi ABe and
+  Chiaki J. Konaka, 1998.
+- **The Tachikoma**: *Ghost in the Shell: Stand Alone Complex*, Production
+  I.G, 2002, after Masamune Shirow; its fallback name for an unnamed user is
+  Batou.
 - **duck7** is our own: the crowned mallard of the status line, a claude-buddy
   companion, given a face.
