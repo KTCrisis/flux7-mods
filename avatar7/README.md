@@ -189,9 +189,10 @@ is the grid enlarged x8):
 
 - `eyes`: a list of `{ x, y, rx, ry }`, center and radii in grid pixels. Two
   almonds for a face (`rx` 3 to 4, `ry` 1), one disc for a lens (`rx = ry = 4`).
-- `mouth`: `{ x, y, half }`, the line where the lips part and its half width;
-  or `null` for a face without one, in which case the eyes pulse while the
-  avatar speaks and never blink.
+- `mouth`: `{ x, y, half }`, the line of the lips and its half width, which
+  marks a face: its eyes blink now and then and the mouth stays still (a
+  moving mouth read as cringe); or `null` for a lens or a slit, whose eyes
+  pulse while the avatar speaks and never blink.
 
 ### 4. Personality (`persona.json`)
 

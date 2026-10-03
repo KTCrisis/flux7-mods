@@ -154,7 +154,8 @@ export const register: Register = (on, options) => {
     let b = face[i + 2]
     let k = 1
 
-    // Eyes: a slow glow, shut now and then; with no mouth, they speak.
+    // Eyes: a slow glow; a face (one with a mouth) blinks now and then, the
+    // mouth itself stays still; a lens (no mouth) pulses while it speaks.
     const isSpeakingNow = frame < speakUntil
     const isBlink = who.mouth !== null && frame % 70 < 3
     for (const eye of who.eyes) {
@@ -165,13 +166,6 @@ export const register: Register = (on, options) => {
         else if (who.mouth === null && isSpeakingNow) k = 1.1 + 0.6 * Math.abs(Math.sin(t * 9))
         else k = 1.2 + 0.25 * Math.sin(t * 2)
       }
-    }
-
-    // Mouth: the lips part while the avatar speaks.
-    const mouth = who.mouth
-    if (mouth !== null && isSpeakingNow && Math.abs(x - mouth.x) <= mouth.half) {
-      const open = Math.round(Math.abs(Math.sin(t * 17)) * 2)
-      if (y >= mouth.y && y <= mouth.y + open) k = 0.1
     }
 
     // Mood: pull the portrait toward the mood's color by its luminance.
