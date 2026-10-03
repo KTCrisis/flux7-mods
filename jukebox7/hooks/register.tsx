@@ -160,6 +160,7 @@ export const killVlcArgv = [
   '-Command',
   `Get-CimInstance Win32_Process -Filter "Name='vlc.exe'" | Where-Object { $_.CommandLine -like '*${TAG}*' } | Invoke-CimMethod -MethodName Terminate | Out-Null`,
 ]
+export const detachedKillVlcArgv = ['bash', '-c', 'setsid "$0" "$@" </dev/null >/dev/null 2>&1 &', ...killVlcArgv]
 const signal = (sig: 'STOP' | 'CONT' | 'TERM', pgid: number): string[] => ['kill', `-${sig}`, '--', `-${pgid}`]
 
 const show = (p: Player) => {
@@ -268,6 +269,20 @@ export const register: Register = on => {
     // opens it at any width.
     void $.ui.open({ id: PANE, title: 'jukebox7', rows: 5 })
 
+    return next(e)
+  })
+
+  // Quitting (or /clear, which loses $.state's pgid) must not orphan the
+  // detached pipeline. The end chain runs under one short bound and
+  // PowerShell starts slower than that: the group goes at once, the VLC
+  // kill is detached so it outlives the exit.
+  on('session.end', async ($, e, next) => {
+    const p = await read($, player)
+    if (p.pgid !== null) {
+      await $.process.run(signal('CONT', p.pgid))
+      await $.process.run(signal('TERM', p.pgid))
+    }
+    await $.process.run(detachedKillVlcArgv)
     return next(e)
   })
 

@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { parseIntent, pickTrack, startArgv, killVlcArgv, isSong, GENRES } from './register'
+import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, isSong, GENRES } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -93,4 +93,13 @@ test('parseIntent, pickTrack and the genre hotkeys', () => {
   expect(pickTrack(RESULTS, true)?.id).toBe('DRFHklnN-SM')
   expect(isSong({ id: 'x', title: 'mix', seconds: 12000 })).toBe(false)
   expect(new Set(GENRES.map(g => g.key)).size).toBe(GENRES.length)
+})
+
+test('leaving the session ends the pipeline and detaches the VLC kill', async ($, on) => {
+  const { argv } = engine(on, '{"action":"play","query":"ambient music","long":true}')
+  on('session.end', ($, e) => ({ sessionId: e.sessionId }) as never)
+  await $.prompt.submit(typed('joue moi un peu de musique ambient'))
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 's', resume: { id: 's' } } as never)
+  expect(argv).toContainEqual(['kill', '-TERM', '--', '-4242'])
+  expect(argv.at(-1)).toEqual(detachedKillVlcArgv)
 })
