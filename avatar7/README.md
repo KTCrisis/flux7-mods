@@ -188,7 +188,8 @@ mush, crop tighter or re-render with more contrast.
 
 | id | box |
 | --- | --- |
-| shodan, ada | `112 100 912 900` |
+| shodan | `112 100 912 900` |
+| ada | `112 100 912 900 --sharpen 0` (a pale face, kept soft) |
 | hal | `150 150 874 874` |
 | duck7 | none (full frame) |
 | pod042 | `64 20 960 916` |

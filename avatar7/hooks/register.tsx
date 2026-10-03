@@ -14,6 +14,11 @@ const AVATARS = ['shodan', 'hal', 'glados', 'ada', 'duck7', 'pod042', 'kaneda', 
 const W = 64
 // Seconds the rolling band takes to cross the face once.
 const BAND_SECONDS = 4
+// The aura lights only what is darker than this (luminance, 0 to 1), at this
+// strength unless the persona says otherwise: a glow in the background, not
+// a coat of paint on the hair.
+const AURA_DARK = 0.14
+const AURA_STRENGTH = 0.35
 const H = 64
 const MIN_SIZE = 16
 
@@ -182,7 +187,7 @@ export const windShift = (w: Wind, x: number, y: number, t: number): number => {
 
 // Aura: a ring of light in the dark around the figure, flickering by angle
 // like a flame. Returns its strength, 0 to 1.
-export type Aura = { color: string; radius: number; width: number; y?: number }
+export type Aura = { color: string; radius: number; width: number; y?: number; strength?: number }
 export const auraGlow = (a: Aura, x: number, y: number, t: number): number => {
   const dx = x - W / 2
   const dy = y - (a.y ?? H / 2)
@@ -244,12 +249,12 @@ export const register: Register = (on, options) => {
     // The aura shows on the dark only, so the face keeps its own colors.
     if (who.look?.aura !== undefined) {
       const lum = (0.3 * r + 0.59 * g + 0.11 * b) / 255
-      if (lum < 0.22) {
-        const glow = auraGlow(who.look.aura, x, y, t) * (1 - lum / 0.22)
+      if (lum < AURA_DARK) {
+        const glow = auraGlow(who.look.aura, x, y, t) * (1 - lum / AURA_DARK) * (who.look.aura.strength ?? AURA_STRENGTH)
         const c = parseInt(who.look.aura.color.slice(1), 16)
-        r += ((c >> 16) & 0xff) * glow * 0.8
-        g += ((c >> 8) & 0xff) * glow * 0.8
-        b += (c & 0xff) * glow * 0.8
+        r += ((c >> 16) & 0xff) * glow
+        g += ((c >> 8) & 0xff) * glow
+        b += (c & 0xff) * glow
       }
     }
 
