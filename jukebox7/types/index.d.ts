@@ -17,7 +17,7 @@ export type Player = {
 
 declare module 'claude-code' {
   interface PluginState {
-    jukebox7: { player: Player }
+    jukebox7: { player: Player; volume: number }
     // Read only: avatar7 owns it and says which face is on duty.
     avatar7: { avatar: string; color: string }
   }

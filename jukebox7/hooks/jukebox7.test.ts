@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES } from './register'
+import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, clampVolume } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -111,4 +111,24 @@ test('the progress bar fills with the elapsed time and holds still while paused'
   expect(progress({ ...p, isPlaying: false, pausedAt: 60_000 }, 400_000, 420).time).toBe('01:00 / 07:00')
   expect(progress(p, 90_000, null)).toEqual({ done: '', left: '', time: '01:30' })
   expect(progress(p, 999_000, 420).left).toBe('')
+})
+
+test('each start sets the kept volume again, once VLC listens', async ($, on) => {
+  const { argv } = engine(on, '{"action":"play","query":"ambient music","long":true}')
+  await $.prompt.submit(typed('joue moi un peu de musique ambient'))
+  expect(argv[1]?.[2]).toContain('--extraintf http')
+  expect(argv[2]?.slice(3)).toEqual(volumeArgv(70, true))
+})
+
+test('louder and quieter move the volume by steps, kept within 0 and 125', async ($, on) => {
+  const { argv, say } = engine(on, '{"action":"play","query":"ambient music","long":true}')
+  await $.prompt.submit(typed('joue moi un peu de musique ambient'))
+  say('{"action":"volume","delta":20}')
+  const r = await $.prompt.submit(typed('monte le son'))
+  expect(r.drop).toBe('jukebox7: volume 90%')
+  expect(argv.at(-1)).toEqual(volumeArgv(90))
+  expect((await $.command.run({ command: 'music', args: 'vol 200' })).text).toBe('Volume 125%.')
+  expect((await $.command.run({ command: 'music', args: 'vol -130' })).text).toBe('Volume 0%.')
+  expect(volumeArgv(125).at(-1)).toContain('val=320')
+  expect(clampVolume(-5)).toBe(0)
 })

@@ -6,7 +6,7 @@ import type { Player, Track } from '../types'
 // Cheap sieve before any model call: a prompt without one of these words
 // reaches the session untouched, with no added latency.
 const CANDIDATE =
-  /\b(musique|music|morceau|chanson|son|joue|jouer|mets|lance|play|pause|stop|coupe|arr[eê]te|reprends|resume|suivant|next|skip|ambient|lofi|playlist|youtube)\b/i
+  /\b(musique|music|morceau|chanson|son|joue|jouer|mets|lance|play|pause|stop|coupe|arr[eê]te|reprends|resume|suivant|next|skip|ambient|lofi|playlist|youtube|volume|fort|louder|quieter)\b/i
 
 const INTENT = [
   'You read one message typed to a coding assistant and decide whether it asks to control music playback on the computer.',
@@ -15,10 +15,12 @@ const INTENT = [
   '{"action":"toggle"}',
   '{"action":"next"}',
   '{"action":"stop"}',
+  '{"action":"volume","delta":10}',
   '{"action":"none"}',
   'play: the user wants music played now. query: YouTube search words, in English for a genre or mood, as given for a named artist or title.',
   'long: true for background or mood music (ambient, lofi, focus, a genre), false for one named track.',
   'toggle: pause or resume the music. next: skip to another one. stop: stop, cut or turn off the music.',
+  'volume: louder (delta 10, or 20 for much louder) or quieter (delta -10, or -20).',
   'none: anything else, including talk about music, code that plays audio, and requests aimed at Renoise, play7, keys7, a piano, a pattern or a melody.',
 ].join('\n')
 
@@ -27,6 +29,7 @@ type Intent =
   | { action: 'toggle' }
   | { action: 'next' }
   | { action: 'stop' }
+  | { action: 'volume'; delta: number }
   | { action: 'none' }
 
 // A song lasts two to twenty minutes; above is an album or a mix. A mood
@@ -94,6 +97,11 @@ export const isSong = (t: Track): boolean => t.seconds !== null && t.seconds >= 
 
 const IDLE: Player = { tracks: [], index: 0, pgid: null, isPlaying: false, genre: null, startedAt: null, pausedAt: null }
 const player = atom({ plugin: 'jukebox7', key: 'player' } as const, IDLE)
+// Percent of VLC's 100 %, kept apart from the player so a stop keeps it.
+const volume = atom({ plugin: 'jukebox7', key: 'volume' } as const, 70)
+const VOLUME_STEP = 10
+const VOLUME_MAX = 125
+export const clampVolume = (v: number): number => Math.min(VOLUME_MAX, Math.max(0, Math.round(v)))
 
 export const parseIntent = (text: string): Intent => {
   const json = /\{[^}]*\}/.exec(text)?.[0]
@@ -104,6 +112,7 @@ export const parseIntent = (text: string): Intent => {
       return { action: 'play', query: v.query.trim(), long: v.long === true }
     }
     if (v.action === 'toggle' || v.action === 'next' || v.action === 'stop') return { action: v.action }
+    if (v.action === 'volume' && typeof v.delta === 'number' && v.delta !== 0) return { action: 'volume', delta: v.delta }
   } catch {
     // Not JSON after all: the prompt goes on to the session.
   }
@@ -148,7 +157,13 @@ const search = (query: string): string[] => [
 // /^[\w-]{11}$/ before.
 const VLC = '/mnt/c/Program Files/VideoLAN/VLC/vlc.exe'
 const TAG = '--meta-title=jukebox7'
-const PIPE = `yt-dlp -q --no-warnings -f bestaudio -o - "https://www.youtube.com/watch?v=$1" | "${VLC}" --intf dummy --dummy-quiet --play-and-exit --no-video -q ${TAG} - vlc://quit`
+// The volume goes through VLC's HTTP interface, bound to Windows' loopback:
+// curl.exe runs there, where WSL's own localhost does not reach. The
+// password only satisfies VLC, which refuses the interface without one.
+const HTTP_PORT = 18797
+const HTTP_PASSWORD = 'jukebox7'
+const HTTP = `--extraintf http --http-host 127.0.0.1 --http-port ${HTTP_PORT} --http-password ${HTTP_PASSWORD}`
+const PIPE = `yt-dlp -q --no-warnings -f bestaudio -o - "https://www.youtube.com/watch?v=$1" | "${VLC}" --intf dummy --dummy-quiet --play-and-exit --no-video -q ${TAG} ${HTTP} - vlc://quit`
 export const startArgv = (id: string): string[] => [
   'bash',
   '-c',
@@ -165,6 +180,21 @@ export const killVlcArgv = [
   '-Command',
   `Get-CimInstance Win32_Process -Filter "Name='vlc.exe'" | Where-Object { $_.CommandLine -like '*${TAG}*' } | Invoke-CimMethod -MethodName Terminate | Out-Null`,
 ]
+// VLC counts 256 for 100 %. A fresh VLC starts at whatever Windows kept for
+// it (--mmdevice-volume is ignored), so each start sets the level again,
+// retrying while the interface is not up yet.
+const CURL = '/mnt/c/Windows/System32/curl.exe'
+export const volumeArgv = (percent: number, retry = false): string[] => [
+  CURL,
+  '-s',
+  '-o',
+  'NUL',
+  '-u',
+  `:${HTTP_PASSWORD}`,
+  ...(retry ? ['--retry', '10', '--retry-connrefused', '--retry-delay', '1'] : ['--max-time', '2']),
+  `http://127.0.0.1:${HTTP_PORT}/requests/status.xml?command=volume&val=${Math.round((clampVolume(percent) * 256) / 100)}`,
+]
+const detached = (argv: string[]): string[] => ['bash', '-c', 'setsid "$0" "$@" </dev/null >/dev/null 2>&1 &', ...argv]
 export const detachedKillVlcArgv = ['bash', '-c', 'setsid "$0" "$@" </dev/null >/dev/null 2>&1 &', ...killVlcArgv]
 const signal = (sig: 'STOP' | 'CONT' | 'TERM', pgid: number): string[] => ['kill', `-${sig}`, '--', `-${pgid}`]
 
@@ -203,6 +233,7 @@ async function playAt($: Engine, tracks: Track[], index: number, genre: string |
     pausedAt: null,
   }
   await update($, player, () => p)
+  if (p.pgid !== null) await $.process.run(detached(volumeArgv(await read($, volume), true)))
   $.ui.status(show(p))
   void $.ui.open({ id: PANE, title: 'jukebox7', rows: 6 })
   return track
@@ -225,6 +256,13 @@ async function toggle($: Engine): Promise<Player> {
   await update($, player, () => q)
   $.ui.status(show(q))
   return q
+}
+
+async function louder($: Engine, delta: number): Promise<number> {
+  const v = clampVolume((await read($, volume)) + delta)
+  await update($, volume, () => v)
+  if ((await read($, player)).pgid !== null) await $.process.run(volumeArgv(v))
+  return v
 }
 
 async function stop($: Engine) {
@@ -276,7 +314,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'music',
-      description: 'Play music from YouTube: /music <search>, /music pause, /music next, /music stop, /music alone for what plays',
+      description: 'Play music from YouTube: /music <search>, /music pause, /music next, /music stop, /music vol [+|-]<n>, /music alone for what plays',
     })
 
     // A pipeline that ended by itself (the track is over) moves on to the
@@ -337,6 +375,11 @@ export const register: Register = on => {
         $.ui.toast('music stopped')
         return { drop: 'jukebox7: stopped' }
       }
+      if (intent.action === 'volume') {
+        const v = await louder($, intent.delta)
+        $.ui.toast(`music volume ${v}%`)
+        return { drop: `jukebox7: volume ${v}%` }
+      }
       if (intent.action === 'next') {
         const t = await skip($, 1)
         $.ui.toast(t === undefined ? 'music: end of the list' : `music now playing: ${t.title}`)
@@ -364,6 +407,14 @@ export const register: Register = on => {
       return { text: `${p.isPlaying ? 'Playing' : 'Paused'}: ${now.title}` }
     }
 
+    const vol = /^vol(?:ume)?(?:\s+([+-]?)(\d+))?$/.exec(args)
+    if (vol !== null) {
+      const [, sign, n] = vol
+      if (n === undefined) return { text: `Volume ${await read($, volume)}%.` }
+      const v = await louder($, sign === '' ? Number(n) - (await read($, volume)) : Number(`${sign}${n}`))
+      return { text: `Volume ${v}%.` }
+    }
+
     if (args === 'pause' || args === 'next' || args === 'stop') {
       if (p.pgid === null) return { text: 'Nothing is playing from here.' }
       if (args === 'stop') {
@@ -386,6 +437,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const p = await read($, player)
+    const level = await read($, volume)
     const now = p.tracks[p.index]
     const { value: avatar } = await $.state.get(onDuty)
     const station = avatar === undefined ? undefined : STATIONS[avatar]
@@ -400,6 +452,8 @@ export const register: Register = on => {
         <Button key="toggle" label={p.isPlaying ? 'pause' : 'play'} hotkey="p" plain onPress={() => void toggle($)} />
         <Button key="next" label="next" hotkey="n" plain onPress={() => void skip($, 1)} />
         <Button key="stop" label="stop" hotkey="s" plain dimColor onPress={() => void stop($)} />
+        <Button key="quieter" label="vol−" hotkey="-" plain dimColor onPress={() => void louder($, -VOLUME_STEP)} />
+        <Button key="louder" label="vol+" hotkey="+" plain dimColor onPress={() => void louder($, VOLUME_STEP)} />
       </>
     )
     const stations = (
@@ -420,7 +474,7 @@ export const register: Register = on => {
           {now !== undefined && (
             <Box flexDirection="row" gap={2}>
               <Text dimColor>
-                {p.isPlaying ? 'playing' : 'paused'} {where}
+                {p.isPlaying ? 'playing' : 'paused'} {where} · vol {level}%
               </Text>
               {controls}
             </Box>
@@ -445,7 +499,7 @@ export const register: Register = on => {
             <Text backgroundColor={BLACK}>
               <Text color={accent}>{bar.done}</Text>
               <Text dimColor>{bar.left}</Text>
-              <Text dimColor>{` ${bar.time}  ${where}`}</Text>
+              <Text dimColor>{` ${bar.time}  ${where}  vol ${level}%`}</Text>
             </Text>
             {controls}
           </Box>

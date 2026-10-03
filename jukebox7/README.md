@@ -20,7 +20,8 @@ the model call altogether.
   its `--meta-title=jukebox7` tag, so a VLC opened by hand is never touched.
 
 The **pane** (`/music`, or opened on the first song) shows the title, its
-state, `p` pause, `n` next, `s` stop, and the genre buttons `1` to `7`:
+state and volume, `p` pause, `n` next, `s` stop, `-` and `+` the volume by
+10 %, and the genre buttons `1` to `7`:
 ambient, lofi, black metal, darksynth, idm, indie rock, video games. A genre
 is a radio: a random artist from its list, a random song of theirs; next and
 the end of a song roll again.
@@ -29,7 +30,13 @@ With avatar7 loaded, `a` plays the pick of the avatar on duty: a station per
 face, read from avatar7's `avatar` state, and avatar7 announces each song in
 its own voice.
 
-`/music <search>` plays one named track; `/music pause|next|stop`.
+`/music <search>` plays one named track; `/music pause|next|stop`;
+`/music vol 60`, `/music vol +20`. In words, `monte le son` works too.
+
+The volume goes through VLC's HTTP interface on Windows' loopback (port
+18797), reached with Windows' own `curl.exe`. The level is kept apart from
+the player, survives a stop, and is set again on each new song: a fresh VLC
+starts at whatever level Windows kept for it.
 
 ## Requirements
 
