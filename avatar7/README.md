@@ -148,7 +148,7 @@ random unless given; the actual seed is in the PNG metadata):
 | hal | `libre` | extreme close-up of a single glowing red camera lens eye set in a brushed aluminium panel, deep red glass iris with a bright yellow-white pinpoint center, concentric reflections, perfectly symmetric, centered and filling the frame, 1968 science fiction spaceship computer, pure black surroundings, high contrast |
 | glados | `libre` | giant robotic artificial intelligence hanging from the ceiling, sleek white and black mechanical head seen from the front with a single large glowing yellow eye in the center, articulated robotic neck, cables, sterile laboratory test chamber, head centered and filling the frame, dark background, high contrast, cinematic |
 | ada | `decopunk (Belle Époque futur)` | frontal symmetric portrait of a benevolent automaton woman, face of polished brass and ivory porcelain, gentle kind luminous amber eyes, serene soft smile, ornate brass filigree and whiplash curves framing the head like a halo, face centered and filling the frame, warm golden light, dark background, high contrast |
-| duck7 | none, seed 77 | frontal symmetric portrait of a legendary mallard duck head looking straight at the viewer, iridescent emerald green feathers, bright yellow bill, two glowing amber eyes, small golden crown on its head, faint circuit traces in the feathers, head centered and filling the frame, pure black background, high contrast, neon green and gold glow, 1995 cyberpunk computer graphics |
+| duck7 | none, seed 11 | cartoon mascot portrait of a cheeky mallard duck head facing the viewer, 1990s animated series style, bold thick black outlines, flat cel shading, big round expressive white eyes with black pupils and a mischievous half-lidded look, wide orange-yellow bill with a smug grin, glossy emerald green head, small tilted golden crown, symmetric, head centered and filling the frame, pure black background, high contrast, vivid saturated colors |
 
 A render takes about 25 to 50 s on Krea 2 turbo.
 
@@ -168,7 +168,7 @@ mush, crop tighter or re-render with more contrast.
 | --- | --- |
 | shodan, ada | `112 100 912 900` |
 | hal | `150 150 874 874` |
-| duck7 | `72 20 992 940` |
+| duck7 | none (full frame) |
 | glados | `192 150 832 790` |
 
 ### 3. Features
