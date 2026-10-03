@@ -20,7 +20,7 @@ the model call altogether.
   its `--meta-title=jukebox7` tag, so a VLC opened by hand is never touched.
 
 The **pane** (`/music`, or opened on the first song) shows the title, its
-state and volume, `p` pause, `n` next, `s` stop, `-` and `+` the volume by
+state and volume, `p` pause, `n` next, `s` stop, `d` and `u` the volume by
 10 %, and the genre buttons `1` to `7`:
 ambient, lofi, black metal, darksynth, idm, indie rock, video games. A genre
 is a radio: a random artist from its list, a random song of theirs; next and

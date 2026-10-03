@@ -452,8 +452,8 @@ export const register: Register = on => {
         <Button key="toggle" label={p.isPlaying ? 'pause' : 'play'} hotkey="p" plain onPress={() => void toggle($)} />
         <Button key="next" label="next" hotkey="n" plain onPress={() => void skip($, 1)} />
         <Button key="stop" label="stop" hotkey="s" plain dimColor onPress={() => void stop($)} />
-        <Button key="quieter" label="vol−" hotkey="-" plain dimColor onPress={() => void louder($, -VOLUME_STEP)} />
-        <Button key="louder" label="vol+" hotkey="+" plain dimColor onPress={() => void louder($, VOLUME_STEP)} />
+        <Button key="quieter" label="vol−" hotkey="d" plain dimColor onPress={() => void louder($, -VOLUME_STEP)} />
+        <Button key="louder" label="vol+" hotkey="u" plain dimColor onPress={() => void louder($, VOLUME_STEP)} />
       </>
     )
     const stations = (
