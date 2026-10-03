@@ -251,6 +251,9 @@ export const volumeArgv = (percent: number, retry = false): string[] => [
   ...(retry ? ['--retry', '10', '--retry-connrefused', '--retry-delay', '1'] : ['--max-time', '2']),
   `http://127.0.0.1:${HTTP_PORT}/requests/status.xml?command=volume&val=${Math.round((clampVolume(percent) * 256) / 100)}`,
 ]
+// While the avatar speaks, the music drops to this share of its level.
+export const DUCK = 0.3
+export const duckArgv = (level: number, isVoicing: boolean): string[] => volumeArgv(isVoicing ? level * DUCK : level)
 const detached = (argv: string[]): string[] => ['bash', '-c', 'setsid "$0" "$@" </dev/null >/dev/null 2>&1 &', ...argv]
 export const detachedKillVlcArgv = ['bash', '-c', 'setsid "$0" "$@" </dev/null >/dev/null 2>&1 &', ...killVlcArgv]
 const signal = (sig: 'STOP' | 'CONT' | 'TERM', pgid: number): string[] => ['kill', `-${sig}`, '--', `-${pgid}`]
@@ -429,6 +432,15 @@ export const register: Register = on => {
   // inherits the plugin dirs but nobody listens to it: no /music, no poll,
   // no prompt turned into a song.
   let isBackground = false
+
+  // avatar7 speaking: the music steps back, then returns to its level. The
+  // curl is detached, so the voice never waits on VLC.
+  on('state.set', { plugin: 'avatar7', key: 'isVoicing' }, async ($, e, next) => {
+    const done = await next(e)
+    const p = await read($, player)
+    if (p.pgid !== null && p.isPlaying) await $.process.run(detached(duckArgv(await read($, volume), e.value === true)))
+    return done
+  })
 
   on('session.start', async ($, e, next) => {
     const kind = await $.process.run(['sh', '-c', 'printf %s "$CLAUDE_CODE_SESSION_KIND"'])

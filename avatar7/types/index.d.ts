@@ -15,6 +15,8 @@ declare module 'claude-code' {
       color: string
       // Each mod's announce, by plugin name, as heard; kept across a reload.
       announcers: Record<string, Announce>
+      // True while a line is heard (the WAV playing), read by jukebox7 to duck.
+      isVoicing: boolean
     }
   }
 }

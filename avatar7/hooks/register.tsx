@@ -42,6 +42,8 @@ const onDuty = atom({ plugin: 'avatar7', key: 'avatar' } as const, '')
 const tint = atom({ plugin: 'avatar7', key: 'color' } as const, '')
 // The mods that asked for a voice, by plugin name: each publishes its own
 // `announce` key, and the avatar hears the write.
+// True while a line is heard: jukebox7 lowers its music meanwhile.
+const isVoicing = atom({ plugin: 'avatar7', key: 'isVoicing' } as const, false)
 const announcers = atom({ plugin: 'avatar7', key: 'announcers' } as const, {} as Record<string, Announce>)
 
 // What mesh7 answers when it refuses a call (mcp/server.go, halt/halt.go).
@@ -507,10 +509,14 @@ export const register: Register = (on, options) => {
               timeoutMs: 30_000,
             })
             const wav = voiced(seq, made.stdout, text.length)
-            if (wav !== '') await $.process.run(playArgv(wav), { timeoutMs: 60_000 })
+            if (wav !== '') {
+              await update($, isVoicing, () => true)
+              await $.process.run(playArgv(wav), { timeoutMs: 60_000 })
+            }
           }
         } finally {
           isSpeaking = false
+          if (await read($, isVoicing)) await update($, isVoicing, () => false)
         }
       })
     })

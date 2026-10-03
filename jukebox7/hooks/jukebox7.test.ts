@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio } from './register'
+import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, clampVolume, rain, musicSearch, parseTracks, parseRadio } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -178,4 +178,10 @@ test('a background session (a daemon spare) turns no prompt into a song', async 
   expect(r.text).toBe('joue moi un peu de musique ambient')
   expect(argv.filter(a => a[0] !== 'sh')).toEqual([])
   expect(toasts).toEqual([])
+})
+
+test('while avatar7 speaks the music drops to a share of its level, then returns to it', () => {
+  expect(duckArgv(80, true)).toEqual(volumeArgv(80 * DUCK))
+  expect(duckArgv(80, false)).toEqual(volumeArgv(80))
+  expect(DUCK).toBeLessThan(1)
 })
