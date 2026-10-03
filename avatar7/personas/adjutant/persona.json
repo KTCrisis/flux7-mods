@@ -5,6 +5,7 @@
   "pitch": -2,
   "piper": { "voice": "en_GB-jenny_dioco-medium", "lengthScale": 1.05, "fx": "aresample=22050,aformat=channel_layouts=mono,asplit[d][w];[w]aeval=val(0)*sin(2*PI*t*160):c=same,volume=0.35[r];[d][r]amix=inputs=2:normalize=0,aecho=0.8:0.75:3|6|9:0.45|0.3|0.2,flanger=delay=1:depth=1:speed=0.2:regen=40,highpass=f=280,lowpass=f=4500,acompressor=threshold=0.08:ratio=6:attack=3:release=50,acrusher=bits=10:mode=log:aa=1,volume=1.4[s];anoisesrc=d=0.1:c=white:a=0.15:r=22050,highpass=f=2000,aformat=channel_layouts=mono[n1];anoisesrc=d=0.08:c=white:a=0.12:r=22050,highpass=f=2000,aformat=channel_layouts=mono[n2];[n1][s][n2]concat=n=3:v=0:a=1" },
   "color": "#4fc3ff",
+  "station": ["Glenn Stafford StarCraft", "Derek Duke StarCraft", "Kenji Kawai Ghost in the Shell", "Front Line Assembly", "Autechre", "Deus Ex soundtrack", "Loscil", "Perturbator"],
   "eyes": [
     { "x": 20, "y": 27, "rx": 3, "ry": 1 },
     { "x": 44, "y": 27, "rx": 3, "ry": 1 }

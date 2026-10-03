@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Announce, Line } from '../types'
+import type { Announce, Line, Station } from '../types'
 
 const PANE = 'avatar7'
 const FACE = 'face'
@@ -40,6 +40,8 @@ const VOLUME_STEP = 10
 const onDuty = atom({ plugin: 'avatar7', key: 'avatar' } as const, '')
 // The on-duty persona's color, read by jukebox7 to light its pane alike.
 const tint = atom({ plugin: 'avatar7', key: 'color' } as const, '')
+// The on-duty persona's station, read by jukebox7 for its avatar's pick.
+const station = atom({ plugin: 'avatar7', key: 'station' } as const, { name: '', artists: [] } as Station)
 // The mods that asked for a voice, by plugin name: each publishes its own
 // `announce` key, and the avatar hears the write.
 // True while a line is heard: jukebox7 lowers its music meanwhile.
@@ -175,6 +177,8 @@ type Persona = {
   persona: string
   fallback: Record<Exclude<Mood, 'wait'>, string[]> & { wait?: string[] }
   nobody?: string
+  // The artists this persona would put on; jukebox7 plays them.
+  station?: string[]
 }
 
 // `{, user}` in a persona's text becomes ", <name>": the user_name option,
@@ -375,6 +379,7 @@ export const register: Register = (on, options) => {
       who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
       whoId = id
       await update($, tint, () => who?.color ?? '')
+      await update($, station, () => ({ name: who?.name ?? '', artists: who?.station ?? [] }))
       const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
       face = Uint8Array.fromBase64(base64)
     } catch {
@@ -402,6 +407,7 @@ export const register: Register = (on, options) => {
           who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
           whoId = id
           await update($, tint, () => who?.color ?? '')
+          await update($, station, () => ({ name: who?.name ?? '', artists: who?.station ?? [] }))
           const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
           face = Uint8Array.fromBase64(base64)
           await $.store.set('avatar', id)

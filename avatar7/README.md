@@ -246,6 +246,7 @@ is the grid enlarged x8):
 | `pitch` | optional: SAPI pitch, -10 to 10; set, the voice goes through the SAPI COM object, which takes it as XML (duck7: 10) |
 | `piper` | optional: `{ "voice": "en_GB-alan-medium", "lengthScale": 0.95, "fx": "…" }`, a [Piper](https://github.com/OHF-Voice/piper1-gpl) neural voice run on the CPU in WSL, its WAV played by Windows; `fx` is an ffmpeg audio filter (GLaDOS's metal, SHODAN's glitch, duck7's pitch). Every persona names one; SAPI speaks when Piper or the model is missing |
 | `color` | color of the line under the face |
+| `station` | optional: artists this persona would put on; avatar7 publishes them in its `station` state and jukebox7's `a` plays them |
 | `greeting` | spoken on `/avatar <id>` |
 | `nobody` | optional: the name used for `{, user}` when `user_name` is empty |
 | `persona` | system prompt of the line; the mod appends "No quotes, no emoji, no em dash." |

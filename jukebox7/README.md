@@ -48,8 +48,8 @@ avatar's color, and the room left under the player fills with a green code
 rain in the manner of Ghost in the Shell: half-width katakana and digits,
 falling five frames a second while a song plays, frozen on pause.
 
-With avatar7 loaded, `a` plays the pick of the avatar on duty: a station per
-face, read from avatar7's `avatar` state, and avatar7 announces each song in
+With avatar7 loaded, `a` plays the pick of the avatar on duty: the `station`
+of its `persona.json`, which avatar7 publishes in its `station` state, and avatar7 announces each song in
 its own voice. While the avatar speaks (its `isVoicing` state) the music drops
 to 70 % of its level, then returns.
 
@@ -74,8 +74,8 @@ real time and nothing comes out) until `wsl --shutdown`.
 
 ## Limits
 
-- The genre and station lists are one listener's; edit `GENRES` and
-  `STATIONS` in `hooks/register.tsx`.
+- The genre lists are one listener's; edit `GENRES` in `hooks/register.tsx`.
+  A station belongs to its persona, in avatar7's `personas/<id>/persona.json`.
 - Pause starves VLC rather than pausing it; a very long pause may drop the
   YouTube stream, and next picks up from there.
 - A song that ends moves on within five seconds (the liveness poll).

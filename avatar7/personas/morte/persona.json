@@ -5,6 +5,7 @@
   "pitch": 4,
   "piper": { "voice": "en_US-joe-medium", "lengthScale": 0.82, "fx": "aresample=22050,asetrate=22050*1.06,aresample=22050,equalizer=f=1200:t=q:w=1.2:g=5,highpass=f=180,aecho=0.8:0.5:8|13:0.3|0.2,volume=1.2" },
   "color": "#b48cff",
+  "station": ["Mark Morgan Planescape Torment", "Mark Morgan Fallout", "Dead Can Dance", "Tom Waits", "Agalloch", "Danny Elfman", "Arcturus", "Ulver"],
   "eyes": [
     { "x": 21, "y": 28, "rx": 4, "ry": 3 },
     { "x": 45, "y": 28, "rx": 4, "ry": 3 }

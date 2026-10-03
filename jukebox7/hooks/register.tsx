@@ -81,22 +81,14 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
   },
 ]
 
-// What each avatar7 face would put on, within the author's own styles.
-export const STATIONS: Record<string, { name: string; artists: string[] }> = {
-  shodan: { name: 'SHODAN', artists: ['System Shock soundtrack', 'Skinny Puppy', 'Autechre', 'Venetian Snares', 'Perturbator', 'Blut Aus Nord', 'Atari Teenage Riot', 'Deus Ex soundtrack'] },
-  hal: { name: 'HAL 9000', artists: ['Boards of Canada', 'Brian Eno', 'Kenji Kawai Ghost in the Shell', 'Loscil', 'Aphex Twin Selected Ambient Works Volume II', 'Arovane', 'Ulver Perdition City'] },
-  glados: { name: 'GLaDOS', artists: ['Aphex Twin', 'Plaid', 'Squarepusher', 'Portal 2 soundtrack', 'Kettel', 'Ceephax Acid Crew', 'The Unicorns', 'Danger 11h30'] },
-  ada: { name: 'Ada', artists: ['Jeremy Soule Oblivion', 'Múm', 'Helios', 'Sufjan Stevens', 'Joanna Newsom Ys', 'Broadcast', 'Arcturus', 'Agalloch'] },
-  commis: { name: 'The Commis', artists: ['Grandaddy', 'Sparklehorse', 'Elliott Smith', 'Neutral Milk Hotel', 'Agalloch', 'Jeremy Soule Skyrim', 'Jeremy Soule Morrowind', 'Modest Mouse'] },
-  duck7: { name: 'duck7', artists: ['Venetian Snares', 'Pixies', 'Modest Mouse', 'The Unicorns', 'Sewerslvt', 'Machine Girl', 'Of Montreal', 'Eels'] },
-  kaneda: { name: 'Kaneda', artists: ['Geinoh Yamashirogumi Akira', 'Carpenter Brut', 'Danger 11h30', 'Fixions', 'Pixies', 'Atari Teenage Riot', 'Perturbator', 'Mega Drive'] },
-  pod042: { name: 'Pod 042', artists: ['NieR Automata soundtrack Keiichi Okabe', 'NieR Replicant soundtrack', 'Mega Drive', 'Dan Terminus', 'Plaid', 'Boards of Canada', 'Fixions'] },
-  fox: { name: 'Fox McCloud', artists: ['Hajime Wakai Star Fox 64', 'Star Fox SNES soundtrack', 'Mega Drive', 'Daft Punk', 'Kavinsky', 'Danger 11h30', 'Lazerhawk', 'Gunship'] },
-  adjutant: { name: 'Adjutant', artists: ['Glenn Stafford StarCraft', 'Derek Duke StarCraft', 'Kenji Kawai Ghost in the Shell', 'Front Line Assembly', 'Autechre', 'Deus Ex soundtrack', 'Loscil', 'Perturbator'] },
-  morte: { name: 'Morte', artists: ['Mark Morgan Planescape Torment', 'Mark Morgan Fallout', 'Dead Can Dance', 'Tom Waits', 'Agalloch', 'Danny Elfman', 'Arcturus', 'Ulver'] },
+// A genre's artists, or else the station of the avatar on duty, which
+// avatar7 publishes from the persona's own persona.json.
+async function poolOf($: Engine, label: string): Promise<{ name: string; artists: string[] }> {
+  const genre = GENRES.find(g => g.label === label)
+  if (genre !== undefined) return { name: label, artists: genre.artists }
+  const { value } = await $.state.get(onStation)
+  return { name: value?.name || label, artists: value?.artists ?? [] }
 }
-// A genre's artists, or an avatar's station by its id.
-const pool = (label: string): string[] => GENRES.find(g => g.label === label)?.artists ?? STATIONS[label]?.artists ?? []
 // Artists picked for a genre beyond the listener's own: one pick in three
 // comes from there, and its title wears a ✦.
 const discoveries = (label: string): string[] => GENRES.find(g => g.label === label)?.discover ?? []
@@ -104,6 +96,7 @@ const DISCOVER_ODDS = 1 / 3
 export const DISCOVERED = '✦ '
 const onDuty = { plugin: 'avatar7', key: 'avatar' } as const
 const tint = { plugin: 'avatar7', key: 'color' } as const
+const onStation = { plugin: 'avatar7', key: 'station' } as const
 // Without an avatar on duty the pane keeps the terminal's phosphor green.
 const PHOSPHOR = '#00ff9c'
 const BLACK = '#000000'
@@ -397,9 +390,10 @@ async function play($: Engine, query: string, long: boolean): Promise<Track | un
 async function playGenre($: Engine, label: string): Promise<Track | undefined> {
   const fresh = discoveries(label)
   const isNew = fresh.length > 0 && Math.random() < DISCOVER_ODDS
-  const artist = anyOf(isNew ? fresh : pool(label))
+  const pool = await poolOf($, label)
+  const artist = anyOf(isNew ? fresh : pool.artists)
   if (artist === undefined) return undefined
-  $.ui.status(`music: looking for ${STATIONS[label]?.name ?? label}, ${artist}…`)
+  $.ui.status(`music: looking for ${pool.name}, ${artist}…`)
   const was = (await read($, player)).tracks
   const music = await $.process.run(musicSearch(artist), { timeoutMs: 20_000 })
   let songs = music.exitCode === 0 ? parseTracks(music.stdout).filter(t => t.seconds === null || isSong(t)) : []
@@ -646,12 +640,13 @@ export const register: Register = on => {
     const level = await read($, volume)
     const now = p.tracks[p.index]
     const { value: avatar } = await $.state.get(onDuty)
-    const station = avatar === undefined ? undefined : STATIONS[avatar]
+    const { value: onAir } = await $.state.get(onStation)
+    const station = onAir !== undefined && onAir.artists.length > 0 ? onAir : undefined
     const isTerminal = e.surface === 'terminal'
     // The border and the play glyph take three columns on the terminal.
     const width = Math.max(10, (e.props.bodyColumns ?? 40) - (isTerminal ? 5 : 2))
     const title = now === undefined ? 'Nothing plays.' : now.title.length > width ? `${now.title.slice(0, width - 1)}…` : now.title
-    const where = p.genre === null || p.genre === undefined ? `${p.index + 1}/${p.tracks.length}` : (STATIONS[p.genre]?.name ?? p.genre)
+    const where = p.genre === null || p.genre === undefined ? `${p.index + 1}/${p.tracks.length}` : (GENRES.some(g => g.label === p.genre) ? p.genre : (onAir?.name || p.genre))
 
     // A list, not a fragment: the terminal lays a fragment out as a column of
     // its own, which stacked the controls one per row and cut off `u: vol+`.
