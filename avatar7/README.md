@@ -64,7 +64,7 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 | Hook | Role |
 | --- | --- |
 | `session.start` | registers `/avatar`, `/avatar-talk` and `/avatar-mute`, loads the stored avatar (`$.store`), starts the frame clock, opens the pane |
-| `command.run` `avatar` | opens the pane, or loads another persona, stores it, speaks its greeting |
+| `command.run` `avatar` | opens the pane, or loads another persona, stores it, queues its greeting (first in line, never over another voice) |
 | `command.run` `avatar-talk`, the `talk` Button | raise a flag; the frame clock, which holds the session's `$`, reads the last 6 messages (`$.session.messages()`, 300 characters each) and asks Haiku for one line, outside the tool-call rate limits |
 | `command.run` `avatar-mute` | flips the `isMuted` state |
 | `state.set` | another mod's write to its own `announce` key is recorded in `announcers`, by plugin name; a write to its own `say` key queues a line at once (see below) |
@@ -186,6 +186,12 @@ changes those messages, update `MESH_DENY`.
   is taken from `fallback[mood]`.
 - The line goes to the `line` atom (survives reloads), typed out two
   characters per frame.
+- The WAV plays in a process of its own session (`setsid`): the engine kills
+  a module's children when it reloads, and a line half spoken used to die
+  with it. The voice is held for the WAV's length plus 0.9 s for PowerShell
+  to start, then the next line may speak.
+- The user's last prompt is forgotten at the end of each turn
+  (`turn.complete`): a toast or a story later on is not judged against it.
 - Piper, for the personas that name a `piper` voice, sits outside the repo:
   `uv venv ~/.local/share/piper/.venv && uv pip install --python
   ~/.local/share/piper/.venv/bin/python piper-tts`, then `python -m

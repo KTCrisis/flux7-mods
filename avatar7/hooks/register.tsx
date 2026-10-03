@@ -126,6 +126,13 @@ const playArgv = (wav: string): string[] => [
 // takes ~0.3 s to get there), over the audio's length. Without a WAV within
 // HOLD_FRAMES (Piper missing, SAPI speaking itself) it is typed anyway.
 const PLAY_LEAD_FRAMES = 5
+// How long PowerShell takes to start a detached playback, at most (measured
+// ~0.3 s warm, more cold): the voice is held this much past the WAV's length.
+const PLAY_START_MS = 900
+
+// A command run in its own session: the engine kills a module's children on
+// reload, and a line half spoken was cut with them.
+const detachedArgv = (argv: string[]): string[] => ['bash', '-c', 'setsid "$0" "$@" </dev/null >/dev/null 2>&1 &', ...argv]
 const HOLD_FRAMES = 75
 
 // Rules every persona keeps, whatever its character: added to each prompt.
@@ -204,6 +211,7 @@ type Ask =
   | 'question'
   | { question: string; answer: string }
   | Duo
+  | { greet: string }
 
 // One turn of a dialogue with a visiting persona: even turns are the host's,
 // odd ones the guest's; `history` holds the lines said so far, by name.
@@ -255,7 +263,7 @@ export const rankOf = (ask: Ask): number => {
   if (ask === 'talk') return 4
   if (ask === 'question') return 0
   if ('duo' in ask) return 0
-  if ('answer' in ask) return 4
+  if ('answer' in ask || 'greet' in ask) return 4
   if ('story' in ask) return 0
   return ask.mood === 'deny' ? 3 : ask.mood === 'error' || ask.mood === 'wait' ? 2 : 1
 }
@@ -264,7 +272,9 @@ export const enqueue = (queue: Queued[], ask: Ask, at: number): Queued[] =>
   [...queue, { ask, rank: rankOf(ask), at }].sort((a, b) => b.rank - a.rank || a.at - b.at).slice(0, QUEUE_MAX)
 
 export const fresh = (queue: Queued[], now: number): Queued[] =>
-  queue.filter(q => q.ask === 'talk' || (typeof q.ask === 'object' && 'answer' in q.ask) || now - q.at <= STALE_FRAMES)
+  queue.filter(
+    q => q.ask === 'talk' || (typeof q.ask === 'object' && ('answer' in q.ask || 'greet' in q.ask)) || now - q.at <= STALE_FRAMES,
+  )
 
 type Approval = { id: string; status: string }
 
@@ -409,15 +419,16 @@ export const register: Register = (on, options) => {
 
   // The WAV synthArgv made, its line then typed over the audio's length while
   // SAPI plays it; '' when SAPI already spoke.
-  const voiced = (seq: number, stdout: string, length: number): string => {
+  const voiced = (seq: number, stdout: string, length: number): { wav: string; ms: number } => {
     const [wav = '', seconds = ''] = stdout.trim().split('\n')
-    const frames = Math.round((Number(seconds) * 1000) / FRAME_MS)
-    if (wav === '' || !(frames > 0)) return ''
+    const ms = Number(seconds) * 1000
+    const frames = Math.round(ms / FRAME_MS)
+    if (wav === '' || !(frames > 0)) return { wav: '', ms: 0 }
     if (seq === lineSeq) {
       typeRate = Math.max(length / frames, 0.2)
       typeFrom = frame + PLAY_LEAD_FRAMES
     }
-    return wav
+    return { wav, ms }
   }
 
   const pixel = (x: number, y: number): number => {
@@ -563,21 +574,9 @@ export const register: Register = (on, options) => {
           await update($, onDuty, () => id)
           await $.ui.open({ id: PANE, title: who.name })
   
-          const text = personalize(who.greeting, userName, who.nobody)
-          const isQuiet = await read($, isMuted)
-          const seq = startLine(text, isQuiet)
-          await update($, line, () => ({ text, at: frame }) satisfies Line)
-          if (!isQuiet) {
-            const voice = who
-            $.clock.after(1, async () => {
-              const made = await $.process.run(synthArgv(id, voice, await read($, volume)), {
-                stdin: text,
-                timeoutMs: 30_000,
-              })
-              const wav = voiced(seq, made.stdout, text.length)
-              if (wav !== '') await $.process.run(playArgv(wav), { timeoutMs: 60_000 })
-            })
-          }
+          // Through the queue like any line: never over another voice, and
+          // jukebox7 hears isVoicing for it too.
+          speakLater({ greet: personalize(who.greeting, userName, who.nobody) })
         })()
       }
       if (frame > moodUntil && mood !== 'idle') mood = 'idle'
@@ -659,62 +658,66 @@ export const register: Register = (on, options) => {
       isGuestShown = isGuestTurn
       $.clock.after(1, async () => {
         try {
-          let prompt: string
-          const conversation = async (): Promise<string> =>
-            (await $.session.messages())
-              .filter(m => m.text.trim() !== '')
-              .slice(-TALK_MESSAGES)
-              .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, TALK_CHARS)}`)
-              .join('\n')
-          if (ask === 'talk') {
-            prompt =
-              `The user pokes you and wants your take on where the conversation stands.\n` +
-              `Last messages, oldest first:\n${await conversation()}`
-          } else if (ask === 'question') {
-            prompt =
-              `Ask the user ONE short question, then stop: philosophical, from your own story, or technical, ` +
-              `about the work in the conversation below. Your bent: ${voice.asks ?? 'what your character would wonder'}.\n` +
-              `Last messages, oldest first:\n${await conversation()}`
-          } else if ('story' in ask) {
-            prompt = `A moment of your own story happens now, unrelated to the tool calls: ${ask.story}. Say what you live or feel in it.`
-          } else if ('duo' in ask) {
-            const other = isGuestTurn ? (who?.name ?? 'the host') : (guest?.persona.name ?? 'a visitor')
-            const about =
-              ask.topic === 'session'
-                ? `the work going on in this terminal session. Last messages, oldest first:\n${await conversation()}`
-                : 'where your two stories cross'
-            prompt =
-              ask.turn === 0
-                ? `${other} visits your terminal. Open a short exchange with them, speaking to them directly, about ${about}`
-                : `You are talking with ${other}. The exchange so far:\n${ask.history.join('\n')}\n` +
-                  (ask.turn === DUO_TURNS - 1 ? 'Close the exchange in one sentence, to them.' : 'Answer them in one sentence.')
-          } else if ('answer' in ask) {
-            prompt =
-              `You asked the user: ${ask.question}\nThe user answered: ${ask.answer}\n` +
-              `React in character: challenge it, approve it your way, or ask one follow-up.`
-          } else {
-            prompt = asked === '' ? `Event: ${ask.event}` : `The user asked: ${asked}\nEvent: ${ask.event}`
+          // The line: a greeting as written, anything else from the model.
+          const write = async (): Promise<string> => {
+            let prompt: string
+            const conversation = async (): Promise<string> =>
+              (await $.session.messages())
+                .filter(m => m.text.trim() !== '')
+                .slice(-TALK_MESSAGES)
+                .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, TALK_CHARS)}`)
+                .join('\n')
+            if (ask === 'talk') {
+              prompt =
+                `The user pokes you and wants your take on where the conversation stands.\n` +
+                `Last messages, oldest first:\n${await conversation()}`
+            } else if (ask === 'question') {
+              prompt =
+                `Ask the user ONE short question, then stop: philosophical, from your own story, or technical, ` +
+                `about the work in the conversation below. Your bent: ${voice.asks ?? 'what your character would wonder'}.\n` +
+                `Last messages, oldest first:\n${await conversation()}`
+            } else if ('story' in ask) {
+              prompt = `A moment of your own story happens now, unrelated to the tool calls: ${ask.story}. Say what you live or feel in it.`
+            } else if ('duo' in ask) {
+              const other = isGuestTurn ? (who?.name ?? 'the host') : (guest?.persona.name ?? 'a visitor')
+              const about =
+                ask.topic === 'session'
+                  ? `the work going on in this terminal session. Last messages, oldest first:\n${await conversation()}`
+                  : 'where your two stories cross'
+              prompt =
+                ask.turn === 0
+                  ? `${other} visits your terminal. Open a short exchange with them, speaking to them directly, about ${about}`
+                  : `You are talking with ${other}. The exchange so far:\n${ask.history.join('\n')}\n` +
+                    (ask.turn === DUO_TURNS - 1 ? 'Close the exchange in one sentence, to them.' : 'Answer them in one sentence.')
+            } else if ('answer' in ask) {
+              prompt =
+                `You asked the user: ${ask.question}\nThe user answered: ${ask.answer}\n` +
+                `React in character: challenge it, approve it your way, or ask one follow-up.`
+            } else {
+              prompt = asked === '' ? `Event: ${ask.event}` : `The user asked: ${asked}\nEvent: ${ask.event}`
+            }
+            prompt += recentNote(recentLines)
+            const r = await $.model.complete({
+              model: 'haiku',
+              system: personalize(voice.persona, userName, voice.nobody) + STYLE,
+              prompt,
+              maxTokens: 80,
+              timeoutMs: 15_000,
+            })
+            // A question with no model answer is simply not asked.
+            const pool =
+              ask === 'question' || 'duo' in ask
+                ? []
+                : ask === 'talk' || 'story' in ask || 'answer' in ask
+                  ? voice.fallback.idle
+                  : ask.mood === 'wait'
+                    ? (voice.fallback.wait ?? voice.fallback.watch)
+                    : voice.fallback[ask.mood as Exclude<Mood, 'idle' | 'wait'>]
+            return r.isAnswered
+              ? (r.text.trim().split('\n')[0] ?? '')
+              : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
           }
-          prompt += recentNote(recentLines)
-          const r = await $.model.complete({
-            model: 'haiku',
-            system: personalize(voice.persona, userName, voice.nobody) + STYLE,
-            prompt,
-            maxTokens: 80,
-            timeoutMs: 15_000,
-          })
-          // A question with no model answer is simply not asked.
-          const pool =
-            ask === 'question' || 'duo' in ask
-              ? []
-              : ask === 'talk' || 'story' in ask || 'answer' in ask
-                ? voice.fallback.idle
-                : ask.mood === 'wait'
-                  ? (voice.fallback.wait ?? voice.fallback.watch)
-                  : voice.fallback[ask.mood as Exclude<Mood, 'idle' | 'wait'>]
-          const text = r.isAnswered
-            ? (r.text.trim().split('\n')[0] ?? '')
-            : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
+          const text = typeof ask === 'object' && 'greet' in ask ? ask.greet : await write()
           if (text === '') return
           if (ask === 'question') {
             openQuestion = { text, at: frame }
@@ -734,10 +737,13 @@ export const register: Register = (on, options) => {
               stdin: text,
               timeoutMs: 30_000,
             })
-            const wav = voiced(seq, made.stdout, shown.length)
+            const { wav, ms } = voiced(seq, made.stdout, shown.length)
             if (wav !== '') {
+              // Detached, so a reload of this module no longer cuts the line;
+              // the voice is held for the WAV's length plus PowerShell's start.
               await update($, isVoicing, () => true)
-              await $.process.run(playArgv(wav), { timeoutMs: 60_000 })
+              await $.process.run(detachedArgv(playArgv(wav)))
+              await $.clock.sleep(ms + PLAY_START_MS)
             }
           }
           if (typeof ask === 'object' && 'duo' in ask && ask.turn < DUO_TURNS - 1) {
@@ -819,6 +825,13 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'avatar-mute' }, async $ => {
     const muted = await update($, isMuted, was => !was)
     return { text: muted ? 'The avatar falls silent.' : 'The avatar speaks again.' }
+  })
+
+  // The user's prompt judges the calls of its own turn only; a toast or a
+  // story an hour later is not measured against it.
+  on('turn.complete', async ($, e, next) => {
+    asked = ''
+    return next(e)
   })
 
   // Only what the user typed, at the terminal or through Remote Control.
