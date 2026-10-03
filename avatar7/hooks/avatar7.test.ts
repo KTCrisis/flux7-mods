@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
+import { fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -193,4 +193,14 @@ test('the frown wins on a refusal, the mouth flaps while speaking, a persona wit
   expect(pickFace(all, 'idle', false, 0.2)).toBe('base')
   const bare = { base: 'base', talk: null, deny: null }
   expect(pickFace(bare, 'deny', true, 0.1)).toBe('base')
+})
+
+test('every kind of line finds its fallback without throwing; a poke takes the idle lines', () => {
+  const fb = { idle: ['i'], watch: ['w'], deny: ['d'], error: ['e'], wait: ['wa'] }
+  expect(fallbackPool('talk', fb)).toEqual(['i'])
+  expect(fallbackPool('question', fb)).toEqual([])
+  expect(fallbackPool({ duo: 'hal', turn: 0, topic: 'stories', history: [] }, fb)).toEqual([])
+  expect(fallbackPool({ story: 's', mood: 'error' }, fb)).toEqual(['i'])
+  expect(fallbackPool({ mood: 'wait', event: 'x' }, fb)).toEqual(['wa'])
+  expect(fallbackPool({ mood: 'deny', event: 'x' }, fb)).toEqual(['d'])
 })

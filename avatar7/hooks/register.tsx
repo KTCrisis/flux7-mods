@@ -237,6 +237,17 @@ export const pickGuest = (avatars: string[], current: string, roll: number, frie
 
 export type Story = { story: string; mood: Exclude<Mood, 'idle'> }
 
+// The persona's own lines for when the model gives none. A question or a
+// dialogue turn has none: it is simply not said. The string asks are tested
+// first, since `in` on a string throws (it once silenced every poke).
+export const fallbackPool = (ask: Ask, fallback: Persona['fallback']): string[] => {
+  if (ask === 'talk') return fallback.idle
+  if (ask === 'question') return []
+  if ('duo' in ask) return []
+  if ('story' in ask || 'answer' in ask || 'greet' in ask) return fallback.idle
+  return ask.mood === 'wait' ? (fallback.wait ?? fallback.watch) : fallback[ask.mood as Exclude<Mood, 'idle' | 'wait'>]
+}
+
 // One of the persona's own events, or undefined when it has none: a story
 // or a question, even odds when it has both. `roll` and `pick` are in [0, 1).
 export const pickEvent = (stories: Story[], canAsk: boolean, roll: number, pick: number): Ask | undefined => {
@@ -734,15 +745,7 @@ export const register: Register = (on, options) => {
               maxTokens: 80,
               timeoutMs: 15_000,
             })
-            // A question with no model answer is simply not asked.
-            const pool =
-              ask === 'question' || 'duo' in ask
-                ? []
-                : ask === 'talk' || 'story' in ask || 'answer' in ask
-                  ? voice.fallback.idle
-                  : ask.mood === 'wait'
-                    ? (voice.fallback.wait ?? voice.fallback.watch)
-                    : voice.fallback[ask.mood as Exclude<Mood, 'idle' | 'wait'>]
+            const pool = fallbackPool(ask, voice.fallback)
             return r.isAnswered
               ? (r.text.trim().split('\n')[0] ?? '')
               : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
