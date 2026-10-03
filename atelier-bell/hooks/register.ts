@@ -21,7 +21,7 @@ export const register: Register = on => {
   let last = ''
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'bell', description: 'What the ateliers are doing now' })
+    await $.command.register({ name: 'bell', description: 'What the ateliers are doing now (test: a sample ring)' })
     // A status line pinned by an earlier version stays until cleared.
     $.ui.status(undefined)
 
@@ -75,7 +75,13 @@ export const register: Register = on => {
     status === '' ? next(e) : next({ ...e, props: { ...e.props, tail: `${e.props.tail ?? ''} · ${status}` } }),
   )
 
-  on('command.run', { command: 'bell' }, async () => ({
-    text: status === '' ? 'studio: nothing rendered since this session started.' : status,
-  }))
+  // `/bell test`: a sample ring, so the voice avatar7 lends the bell can be
+  // heard without waiting for a render.
+  on('command.run', { command: 'bell' }, async ($, e) => {
+    if (e.args.trim() === 'test') {
+      $.ui.toast('test ring: studio: image sample.png is ready, a sample, nothing was rendered')
+      return { text: 'atelier-bell: test ring sent.' }
+    }
+    return { text: status === '' ? 'studio: nothing rendered since this session started.' : status }
+  })
 }

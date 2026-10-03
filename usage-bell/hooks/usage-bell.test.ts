@@ -100,3 +100,13 @@ test('the readings ride dim at the end of the hint line', async ($, on) => {
   } as never)
   expect(tail).toBe(' · ctx 42% · 5h 30%')
 })
+
+test('/usage7 test rings a sample toast under usage-bell, which avatar7 voices', async ($, on) => {
+  const origins: string[] = []
+  on('ui.toast', ($, e, next) => {
+    origins.push(next.origin.plugin)
+  })
+  const r = await $.command.run({ command: 'usage7', args: 'test' })
+  expect(r.text).toBe('usage-bell: test ring sent.')
+  expect(origins).toEqual(['usage-bell'])
+})

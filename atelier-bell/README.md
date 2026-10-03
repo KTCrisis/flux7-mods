@@ -13,7 +13,8 @@ Every 3 s it reads `GET localhost:8700/outputs` (flux7-studio) and
 - dim at the end of the hint line under the prompt (not a pinned status line,
   which the engine draws with a warning sign): `studio: rendering, 2 queued`
   while ComfyUI works, then `studio: last kf_00042_.png at 12:31`;
-- `/bell` prints that status.
+- `/bell` prints that status; `/bell test` rings a sample toast, to hear
+  avatar7 announce it without waiting for a render.
 
 The first answer only seeds what is already there: a session never rings for
 renders made before it started. Studio or ComfyUI down: it stays quiet.

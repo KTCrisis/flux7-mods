@@ -25,7 +25,8 @@ the engine draws with a warning sign; `/usage7` prints them against their
 thresholds.
 
 With avatar7 loaded, the avatar announces each toast in its own voice, in
-amber. Neither mod depends on the other.
+amber. Neither mod depends on the other. `/usage7 test` rings a sample toast,
+to hear that voice without waiting for a threshold.
 
 ## Limits
 

@@ -64,7 +64,7 @@ export const register: Register = on => {
   }
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'usage7', description: 'Context, rate limits and memory index, against their limits' })
+    await $.command.register({ name: 'usage7', description: 'Context, rate limits and memory index, against their limits (test: a sample ring)' })
     // A status line pinned by an earlier version stays until cleared.
     $.ui.status(undefined)
 
@@ -144,7 +144,13 @@ export const register: Register = on => {
     })
   }
 
-  on('command.run', { command: 'usage7' }, async () => {
+  // `/usage7 test`: a sample ring, so the voice avatar7 lends the bell can
+  // be heard without waiting for a real threshold.
+  on('command.run', { command: 'usage7' }, async ($, e) => {
+    if (e.args.trim() === 'test') {
+      $.ui.toast('test ring: context 72% full, a sample, no real limit is near')
+      return { text: 'usage-bell: test ring sent.' }
+    }
     const rows: string[] = []
     rows.push(context === undefined ? 'context: no reading yet' : `context: ${Math.round(context)}%, rings at ${CONTEXT_STEPS.join(' / ')}`)
     if (limits.length === 0) rows.push('rate limits: no reading (not on a subscription, or no response yet)')
