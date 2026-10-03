@@ -60,7 +60,7 @@ export const register: Register = on => {
   }
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'usage', description: 'Context, rate limits and memory index, against their limits' })
+    await $.command.register({ name: 'usage7', description: 'Context, rate limits and memory index, against their limits' })
 
     // The auto-memory index this session loaded, from the free local estimate.
     try {
@@ -132,7 +132,7 @@ export const register: Register = on => {
     })
   }
 
-  on('command.run', { command: 'usage' }, async () => {
+  on('command.run', { command: 'usage7' }, async () => {
     const rows: string[] = []
     rows.push(context === undefined ? 'context: no reading yet' : `context: ${Math.round(context)}%, rings at ${CONTEXT_STEPS.join(' / ')}`)
     if (limits.length === 0) rows.push('rate limits: no reading (not on a subscription, or no response yet)')

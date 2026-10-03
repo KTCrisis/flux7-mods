@@ -20,7 +20,7 @@ Each threshold rings once on the way up; a value that falls 5 points under it
 (a compaction, `/clear`, a window that reset) arms it again.
 
 The status line carries the readings, `ctx 62% · 5h 41% · 7d 12% · mem
-145/200`; `/usage` prints them against their thresholds.
+145/200`; `/usage7` prints them against their thresholds.
 
 With avatar7 loaded, the avatar announces each toast in its own voice, in
 amber. Neither mod depends on the other.

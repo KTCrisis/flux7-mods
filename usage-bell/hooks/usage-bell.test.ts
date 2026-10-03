@@ -42,10 +42,10 @@ test('a rate-limit window rings at 80 and 95', async ($, on) => {
   expect(toasts).toEqual(['5h rate limit 81% used', '5h rate limit 96% used'])
 })
 
-test('/usage reports the last reading', async ($, on) => {
+test('/usage7 reports the last reading', async ($, on) => {
   engine(on)
   await $.session.measure(measure(42, 30))
-  const r = await $.command.run({ command: 'usage', args: '' })
+  const r = await $.command.run({ command: 'usage7', args: '' })
   expect(r.text).toContain('context: 42%')
   expect(r.text).toContain('5h: 30%')
 })
