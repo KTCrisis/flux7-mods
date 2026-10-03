@@ -4,7 +4,7 @@
   "rate": -3,
   "piper": { "voice": "en_US-norman-medium", "lengthScale": 1.15 },
   "color": "#ff3b30",
-  "station": ["Boards of Canada", "Brian Eno", "Kenji Kawai Ghost in the Shell", "Loscil", "Aphex Twin Selected Ambient Works Volume II", "Arovane", "Ulver Perdition City", "Philip Glass"],
+  "station": ["Boards of Canada", "Brian Eno", "Kenji Kawai Ghost in the Shell", "Loscil", "Aphex Twin Selected Ambient Works Volume II", "Arovane", "Ulver Perdition City", "Philip Glass", "Godspeed You! Black Emperor"],
   "eyes": [
     {
       "x": 32,
