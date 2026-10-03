@@ -51,7 +51,7 @@ falling five frames a second while a song plays, frozen on pause.
 With avatar7 loaded, `a` plays the pick of the avatar on duty: a station per
 face, read from avatar7's `avatar` state, and avatar7 announces each song in
 its own voice. While the avatar speaks (its `isVoicing` state) the music drops
-to 30 % of its level, then returns.
+to 70 % of its level, then returns.
 
 `/music <search>` plays one named track; `/music pause|next|stop`;
 `/music vol 60`, `/music vol +20`. In words, `monte le son` works too.

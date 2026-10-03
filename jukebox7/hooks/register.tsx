@@ -275,7 +275,7 @@ export const buttonRows = (labels: string[], columns: number, gap = 2): number =
 }
 
 // While the avatar speaks, the music drops to this share of its level.
-export const DUCK = 0.3
+export const DUCK = 0.7
 export const duckArgv = (level: number, isVoicing: boolean): string[] => volumeArgv(isVoicing ? level * DUCK : level)
 const detached = (argv: string[]): string[] => ['bash', '-c', 'setsid "$0" "$@" </dev/null >/dev/null 2>&1 &', ...argv]
 export const detachedKillVlcArgv = ['bash', '-c', 'setsid "$0" "$@" </dev/null >/dev/null 2>&1 &', ...killVlcArgv]
