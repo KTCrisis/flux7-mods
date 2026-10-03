@@ -19,8 +19,10 @@ its folder. The engine cuts it at load past 200 lines or 25,000 bytes
 Each threshold rings once on the way up; a value that falls 5 points under it
 (a compaction, `/clear`, a window that reset) arms it again.
 
-The status line carries the readings, `ctx 62% · 5h 41% · 7d 12% · mem
-145/200`; `/usage7` prints them against their thresholds.
+The readings ride dim at the end of the hint line under the prompt, `ctx 62%
+· 5h 41% · 7d 12% · mem 145/200`, rather than as a pinned status line, which
+the engine draws with a warning sign; `/usage7` prints them against their
+thresholds.
 
 With avatar7 loaded, the avatar announces each toast in its own voice, in
 amber. Neither mod depends on the other.

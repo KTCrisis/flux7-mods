@@ -22,6 +22,8 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'bell', description: 'What the ateliers are doing now' })
+    // A status line pinned by an earlier version stays until cleared.
+    $.ui.status(undefined)
 
     $.clock.every(POLL_MS, async () => {
       try {
@@ -57,7 +59,7 @@ export const register: Register = on => {
               : ''
         if (now !== status) {
           status = now
-          $.ui.status(now === '' ? undefined : now)
+          $.ui.invalidate('ui.render')
         }
       } catch {
         // studio or ComfyUI down: stay quiet, try again at the next poll.
@@ -66,6 +68,12 @@ export const register: Register = on => {
 
     return next(e)
   })
+
+  // The status, dim at the end of the hint line under the prompt: a pinned
+  // status line would come with the engine's warning sign; the toasts ring.
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) =>
+    status === '' ? next(e) : next({ ...e, props: { ...e.props, tail: `${e.props.tail ?? ''} · ${status}` } }),
+  )
 
   on('command.run', { command: 'bell' }, async () => ({
     text: status === '' ? 'studio: nothing rendered since this session started.' : status,

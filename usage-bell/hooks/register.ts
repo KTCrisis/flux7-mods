@@ -51,6 +51,10 @@ export const register: Register = on => {
     return now > before ? now : undefined
   }
 
+  // The readings, dim at the end of the hint line under the prompt: a pinned
+  // status line would come with the engine's warning sign, and these are not
+  // warnings; the toasts are.
+  let tail = ''
   const statusLine = (): string | undefined => {
     const parts: string[] = []
     if (context !== undefined) parts.push(`ctx ${Math.round(context)}%`)
@@ -61,6 +65,8 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'usage7', description: 'Context, rate limits and memory index, against their limits' })
+    // A status line pinned by an earlier version stays until cleared.
+    $.ui.status(undefined)
 
     // The auto-memory index this session loaded, from the free local estimate.
     try {
@@ -90,7 +96,8 @@ export const register: Register = on => {
         } else if (step !== undefined) {
           $.ui.toast(`memory index near its limit: ${lines}/${MEMORY_MAX_LINES} lines, ${Math.round(bytes / 1000)}/${MEMORY_MAX_BYTES / 1000} kB`)
         }
-        $.ui.status(statusLine())
+        tail = statusLine() ?? ''
+        $.ui.invalidate('ui.render')
       } catch {
         // Unreadable for now: try again at the next write.
       }
@@ -118,9 +125,14 @@ export const register: Register = on => {
       }
     }
 
-    $.ui.status(statusLine())
+    tail = statusLine() ?? ''
+    $.ui.invalidate('ui.render')
     return next(e)
   })
+
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) =>
+    tail === '' ? next(e) : next({ ...e, props: { ...e.props, tail: `${e.props.tail ?? ''} · ${tail}` } }),
+  )
 
   // A write into the memory folder: the clock rereads the index.
   for (const tool of ['Write', 'Edit'] as const) {

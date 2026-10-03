@@ -10,8 +10,9 @@ Every 3 s it reads `GET localhost:8700/outputs` (flux7-studio) and
 
 - a new output (image, video) since the last poll: a toast, `studio: image
   kf_00042_.png is ready`, or one toast for a batch;
-- the status line: `studio: rendering, 2 queued` while ComfyUI works, then
-  `studio: last kf_00042_.png at 12:31`;
+- dim at the end of the hint line under the prompt (not a pinned status line,
+  which the engine draws with a warning sign): `studio: rendering, 2 queued`
+  while ComfyUI works, then `studio: last kf_00042_.png at 12:31`;
 - `/bell` prints that status.
 
 The first answer only seeds what is already there: a session never rings for

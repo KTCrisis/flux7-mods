@@ -82,3 +82,21 @@ test('the memory index rings near its limit, then once it is cut', async ($, on)
     'memory index is cut at load: 201 lines, 1005 bytes (limit 200 / 25000)',
   ])
 })
+
+test('the readings ride dim at the end of the hint line', async ($, on) => {
+  engine(on)
+  let tail: string | undefined
+  on('ui.render', { component: 'PromptHint' }, ($, e) => {
+    tail = e.props.tail
+    const { Text } = $.ui.resolve(e)
+    return h(Text, null, e.props.hint)
+  })
+
+  await $.session.measure(measure(42, 30))
+  await $.ui.render({
+    surface: 'terminal',
+    component: 'PromptHint',
+    props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
+  } as never)
+  expect(tail).toBe(' · ctx 42% · 5h 30%')
+})
