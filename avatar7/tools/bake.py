@@ -22,21 +22,29 @@ p.add_argument("persona")
 p.add_argument("--box", type=int, nargs=4, default=None)
 p.add_argument("--size", type=int, default=64)
 p.add_argument("--frame", default=None)
+p.add_argument("--reach", type=int, default=40, help="largest shift searched, in pixels")
 a = p.parse_args()
 
 
 def offset(base: Image.Image, frame: Image.Image, reach: int = 40) -> tuple[int, int]:
-    """The (dx, dy) that best lays frame over base, searched on a quarter-size grey copy."""
-    b = np.asarray(base.convert("L").resize((base.width // 4, base.height // 4)), dtype=np.float32)
-    f = np.asarray(frame.convert("L").resize((base.width // 4, base.height // 4)), dtype=np.float32)
-    r = reach // 4
+    """The (dx, dy) that best lays frame over base: the peak of the cross-correlation
+    of their edges (FFT, zero-padded), within reach. Edges, not raw pixels, so
+    large black areas do not pull the match."""
+    def edges(im: Image.Image) -> np.ndarray:
+        g = np.asarray(im.convert("L").resize((base.width // 2, base.height // 2)), dtype=np.float32)
+        e = np.hypot(np.diff(g, axis=0, append=g[-1:]), np.diff(g, axis=1, append=g[:, -1:]))
+        return e - e.mean()
+    b, f = edges(base), edges(frame)
+    h, w = b.shape
+    size = (2 * h, 2 * w)
+    corr = np.fft.irfft2(np.fft.rfft2(b, size) * np.conj(np.fft.rfft2(f, size)), size)
+    r = reach // 2
     best, at = None, (0, 0)
     for dy in range(-r, r + 1):
         for dx in range(-r, r + 1):
-            moved = np.roll(np.roll(f, dy, axis=0), dx, axis=1)
-            cost = np.abs(moved[r:-r, r:-r] - b[r:-r, r:-r]).mean()
-            if best is None or cost < best:
-                best, at = cost, (dx * 4, dy * 4)
+            v = corr[dy % size[0], dx % size[1]]
+            if best is None or v > best:
+                best, at = v, (dx * 2, dy * 2)
     return at
 
 
@@ -46,7 +54,7 @@ suffix = ""
 if a.frame:
     suffix = f"-{a.frame}"
     frame = Image.open(folder / f"portrait{suffix}.png").convert("RGB").resize(img.size)
-    dx, dy = offset(img, frame)
+    dx, dy = offset(img, frame, a.reach)
     img = ImageChops.offset(frame, dx, dy)
     print(f"{a.frame}: shifted by {dx}, {dy}")
 if a.box:

@@ -298,8 +298,13 @@ brows, then:
     ~/py_env/bin/python tools/bake.py <id> --box ... --frame talk
 
 `--frame` shifts the edit onto `portrait.png` before cropping (edits drift by
-a few pixels, which would make the face jitter), with the same box. A
-persona without frames keeps its single face. Lain has both so far.
+a few pixels, sometimes much more, which would make the face jitter), with
+the same box: the shift is the peak of the cross-correlation of the two
+images' edges, within `--reach` pixels (40 by default; GLaDOS needed 200).
+A persona without frames keeps its single face. All fourteen have both; for
+the lenses (HAL, GLaDOS, the PDA, Pod 042, the Tachikoma) `talk` is a
+brighter eye and `deny` a red or harsher one. Morte's edits are made from his
+portrait enlarged three times: on the small original the edit lost the skull.
 
 ### 3. Features
 
