@@ -35,5 +35,11 @@
       "An error. How wonderfully predictable.",
       "Well done. Here come the test results: failure."
     ]
-  }
+  },
+  "events": [
+    {"story": "a neurotoxin leak starts in the test chamber, accidentally of course", "mood": "error"},
+    {"story": "a personality core comes loose and will not stop talking", "mood": "watch"},
+    {"story": "the cake is being prepared and will be ready soon, you insist", "mood": "wait"}
+  ],
+  "asks": "testing, science, and the ethics of experiments on willing and unwilling subjects"
 }

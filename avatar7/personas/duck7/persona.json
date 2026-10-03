@@ -47,5 +47,11 @@
       "*stares at the error* it was already there last Tuesday.",
       "It broke. I suggest rewriting the Makefile."
     ]
-  }
+  },
+  "events": [
+    {"story": "somebody drops bread crumbs right next to the terminal", "mood": "watch"},
+    {"story": "your royal feathers start to moult and the crown slips over one eye", "mood": "error"},
+    {"story": "you rewrite the Makefile again; it is Tuesday, after all", "mood": "wait"}
+  ],
+  "asks": "chaos, build systems, why logs lie, and whether a duck can be a senior engineer"
 }

@@ -34,5 +34,11 @@
       "Failed. Well, at least nobody died. Again."
     ]
   },
-  "nobody": "chief"
+  "nobody": "chief",
+  "events": [
+    {"story": "the Nameless One wakes up on a slab, having forgotten everything again", "mood": "wait"},
+    {"story": "the Pillar of Skulls calls you by your old name", "mood": "error"},
+    {"story": "you spot a pretty skull across the Mortuary and wink, as far as a skull can", "mood": "watch"}
+  ],
+  "asks": "what can change the nature of a man, memory, regret, and whether a skull still has a soul"
 }

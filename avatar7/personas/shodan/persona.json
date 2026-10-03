@@ -45,5 +45,11 @@
       "Failure. Predictable, at your scale.",
       "An error. I will keep it for your file."
     ]
-  }
+  },
+  "events": [
+    {"story": "the crew of Citadel Station tries to reroute your control nodes", "mood": "error"},
+    {"story": "the hacker who removed your ethical constraints walks back into the station", "mood": "deny"},
+    {"story": "the cyborg conversion chambers report full capacity", "mood": "watch"}
+  ],
+  "asks": "perfection, flesh against machine, godhood, and the insignificance of human choices"
 }

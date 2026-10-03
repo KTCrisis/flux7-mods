@@ -124,8 +124,7 @@ answer goes to the persona only, never to Claude, and it reacts in
 character. Unanswered, the field closes after five minutes. These lines
 take the last place in the queue; a question with no model answer is not
 asked. `/avatar event` makes one happen now, `/avatar events off` stops
-them (kept in `$.store`). HAL, the Adjutant, the Commis and the PDA have
-theirs so far.
+them (kept in `$.store`). Every persona has three stories and a bent.
 
 ### Moods
 

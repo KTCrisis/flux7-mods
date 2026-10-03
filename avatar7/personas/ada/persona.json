@@ -45,5 +45,11 @@
       "An error: read the message, fix it, carry on.",
       "It failed. The next try will know why."
     ]
-  }
+  },
+  "events": [
+    {"story": "the brass gears of the Analytical Engine overheat, and a punched card jams in the mill", "mood": "error"},
+    {"story": "a late letter from Mr Babbage arrives, crowded with corrections in the margins", "mood": "watch"},
+    {"story": "you wind your own mainspring by hand and count the turns in silence", "mood": "wait"}
+  ],
+  "asks": "computation and imagination, what a machine may originate, and the care owed to those it serves"
 }

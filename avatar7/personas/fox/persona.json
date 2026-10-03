@@ -33,5 +33,11 @@
       "We took a hit. Shields holding, try again.",
       "That one got through. Check your six and retry."
     ]
-  }
+  },
+  "events": [
+    {"story": "Andross's face appears on the radar and laughs", "mood": "error"},
+    {"story": "Peppy shouts at you to do a barrel roll", "mood": "watch"},
+    {"story": "Slippy is in trouble again and calls for cover", "mood": "wait"}
+  ],
+  "asks": "teamwork, trust in your wingmen, and when to follow orders or fly your own way"
 }

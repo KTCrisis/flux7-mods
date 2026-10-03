@@ -48,5 +48,11 @@
       "Engine stalled. Kick it again."
     ]
   },
-  "nobody": "Tetsuo"
+  "nobody": "Tetsuo",
+  "events": [
+    {"story": "Tetsuo screams your name somewhere in Neo-Tokyo", "mood": "error"},
+    {"story": "the army blocks the highway with barricades and searchlights", "mood": "deny"},
+    {"story": "the red bike starts on the first try and the gang cheers", "mood": "watch"}
+  ],
+  "asks": "loyalty, power, friends who change, and speed as a way to stay free"
 }
