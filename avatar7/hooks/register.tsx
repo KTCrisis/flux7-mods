@@ -238,7 +238,6 @@ export const register: Register = (on, options) => {
   let frame = 0
   let mood: Mood = 'idle'
   let moodUntil = 0
-  let speakUntil = 0
   let typed = 0
   let lineLength = 0
   // Characters typed per frame, from which frame, and which line they belong to.
@@ -279,7 +278,6 @@ export const register: Register = (on, options) => {
     typed = 0
     typeRate = 2
     typeFrom = isQuiet ? frame : frame + HOLD_FRAMES
-    speakUntil = typeFrom + Math.ceil(text.length / 2) + 10
     lineSeq += 1
     return lineSeq
   }
@@ -293,7 +291,6 @@ export const register: Register = (on, options) => {
     if (seq === lineSeq) {
       typeRate = Math.max(length / frames, 0.2)
       typeFrom = frame + PLAY_LEAD_FRAMES
-      speakUntil = typeFrom + frames
     }
     return wav
   }
@@ -309,21 +306,10 @@ export const register: Register = (on, options) => {
     let r = face[i]
     let g = face[i + 1]
     let b = face[i + 2]
+    // No eye glow, blink or pulse for now: on several portraits the ellipses
+    // missed the eyes and read as smudges. `eyes` and `mouth` stay in each
+    // persona.json for a better effect.
     let k = 1
-
-    // Eyes: a slow glow; a face (one with a mouth) blinks now and then, the
-    // mouth itself stays still; a lens (no mouth) pulses while it speaks.
-    const isSpeakingNow = frame < speakUntil
-    const isBlink = who.mouth !== null && frame % 70 < 3
-    for (const eye of who.eyes) {
-      const dx = (x - eye.x) / eye.rx
-      const dy = (y - eye.y) / eye.ry
-      if (dx * dx + dy * dy <= 1.2) {
-        if (isBlink) k = 0.12
-        else if (who.mouth === null && isSpeakingNow) k = 1.1 + 0.6 * Math.abs(Math.sin(t * 9))
-        else k = 1.2 + 0.25 * Math.sin(t * 2)
-      }
-    }
 
     // Mood: pull the portrait toward the mood's color by its luminance.
     if (mood !== 'idle') {

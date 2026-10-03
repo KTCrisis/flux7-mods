@@ -130,10 +130,10 @@ changes those messages, update `MESH_DENY`.
 
 - `personas/<id>/face.rgb` is 64x64 raw RGB (3 bytes per pixel, row-major).
 - The face follows the pane: `fit()` takes the pane body width (`e.props.bodyColumns`) and the surface height, and `sample()` averages the portrait blocks each output pixel covers (64 down to 16 pixels a side). The scanlines are drawn at the output size.
-- `pixel(x, y)` reads the portrait and applies, in order: eye glow and blink
-  (or, with no mouth, eyes that pulse while speaking), the mouth opening while
-  speaking, the mood tint by luminance, scanlines, a rolling bar, and the
-  deny glitch.
+- `pixel(x, y)` reads the portrait and applies, in order: the mood tint by
+  luminance, the waiting breath, scanlines, a rolling bar, and the deny
+  glitch. The eye glow, blink and pulse are off for now: on several portraits
+  the ellipses missed the eyes and read as smudges.
 - `cells()` packs two pixel rows per terminal row with the upper half block
   `▀` (foreground = top pixel, background = bottom pixel), base64 as
   `RasterProps` expects.
@@ -249,9 +249,10 @@ is the grid enlarged x8):
 - `eyes`: a list of `{ x, y, rx, ry }`, center and radii in grid pixels. Two
   almonds for a face (`rx` 3 to 4, `ry` 1), one disc for a lens (`rx = ry = 4`).
 - `mouth`: `{ x, y, half }`, the line of the lips and its half width, which
-  marks a face: its eyes blink now and then and the mouth stays still (a
-  moving mouth read as cringe); or `null` for a lens or a slit, whose eyes
-  pulse while the avatar speaks and never blink.
+  marks a face; or `null` for a lens or a slit.
+
+Both are kept for an eye effect to come; nothing draws them today (the glow,
+blink and pulse were dropped, like the wind and the auras before them).
 
 ### 4. Personality (`persona.json`)
 
