@@ -16,3 +16,17 @@ test('/bell without argument reports the status', async ($, on) => {
   const r = await $.command.run({ command: 'bell', args: '' })
   expect(r.text).toBe('studio: nothing rendered since this session started.')
 })
+
+test('session start publishes its announce for avatar7, as calm news', async ($, on) => {
+  on('command.register', ($, e) => ({ value: { command: e.name } }) as never)
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('ui.status', () => undefined)
+  const writes: { plugin: string; key: string; value: { mood: string } }[] = []
+  on('state.set', ($, e) => {
+    writes.push(e as never)
+    return { isSet: true, version: 1 } as never
+  })
+  await $.session.start({ cwd: '/home/u' } as never)
+  const announce = writes.find(w => w.plugin === 'atelier-bell' && w.key === 'announce')
+  expect(announce?.value.mood).toBe('watch')
+})

@@ -67,10 +67,33 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 | `command.run` `avatar` | opens the pane, or loads another persona, stores it, speaks its greeting |
 | `command.run` `avatar-talk`, the `talk` Button | raise a flag; the frame clock, which holds the session's `$`, reads the last 6 messages (`$.session.messages()`, 300 characters each) and asks Haiku for one line, outside the tool-call rate limits |
 | `command.run` `avatar-mute` | flips the `isMuted` state |
-| `ui.toast` | a toast from atelier-bell, usage-bell or jukebox7 (`next.origin.plugin`) queues a line announcing it, past the rate limits; usage-bell's in amber |
+| `state.set` | another mod's write to its own `announce` key is recorded in `announcers`, by plugin name (see below) |
+| `ui.toast` | a toast from a recorded mod (`next.origin.plugin`) queues a line announcing it in that mod's mood, past the rate limits |
 | `tool.check` | an `ask` verdict on a real call (a settings rule, or mesh7's hook answering `ask` for Bash) sets the waiting face; the line comes only if the prompt is still up after ~2 s, since auto mode may settle the ask alone |
 | `tool.call` | lets the call run (`await next(e)`), then classifies the outcome and queues a line; a mesh7 answer `Approval required (id: …)` holds the face in `wait`, and the clock polls `GET /approvals` every ~1.5 s until the human decides |
 | `ui.render` `Pane` | draws the Raster and the line under it; a text fallback off the terminal |
+
+### Giving a mod a voice
+
+avatar7 knows no mod by name. A mod that wants its toasts spoken publishes,
+at session start, one value under its own name, declared in its own contract:
+
+```ts
+// types/index.d.ts
+export type Announce = { mood: 'watch' | 'error'; event: string }
+declare module 'claude-code' {
+  interface PluginState { 'my-mod': { announce: Announce } }
+}
+
+// hooks/register.ts, in session.start
+await $.state.set({ plugin: 'my-mod', key: 'announce' }, { mood: 'watch', event: 'a build finished' })
+```
+
+`mood` is the face (`watch` calm, `error` amber), `event` what happened, in
+words the line is written from; the toast text is added to it. avatar7 hears
+the write and keeps it across its own reloads; the mod never imports avatar7,
+and without it the value just sits unread. atelier-bell, usage-bell and
+jukebox7 do this.
 
 ### Moods
 

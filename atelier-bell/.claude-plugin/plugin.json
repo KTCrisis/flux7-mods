@@ -2,5 +2,6 @@
   "name": "atelier-bell",
   "version": "0.1.0",
   "description": "Tells you when an atelier finishes: flux7-studio renders, as toasts and a line under the prompt",
-  "license": "MIT"
+  "license": "MIT",
+  "types": "./types/index.d.ts"
 }

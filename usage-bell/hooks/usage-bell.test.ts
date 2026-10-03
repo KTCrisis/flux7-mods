@@ -110,3 +110,20 @@ test('/usage7 test rings a sample toast under usage-bell, which avatar7 voices',
   expect(r.text).toBe('usage-bell: test ring sent.')
   expect(origins).toEqual(['usage-bell'])
 })
+
+test('session start publishes its announce for avatar7, as a warning', async ($, on) => {
+  on('command.register', ($, e) => ({ value: { command: e.name } }) as never)
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('ui.status', () => undefined)
+  on('session.usage', () => {
+    throw new Error('no breakdown')
+  })
+  const writes: { plugin: string; key: string; value: { mood: string } }[] = []
+  on('state.set', ($, e) => {
+    writes.push(e as never)
+    return { isSet: true, version: 1 } as never
+  })
+  await $.session.start({ cwd: '/home/u' } as never)
+  const announce = writes.find(w => w.plugin === 'usage-bell' && w.key === 'announce')
+  expect(announce?.value.mood).toBe('error')
+})

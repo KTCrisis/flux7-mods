@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
+import { heard } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -68,4 +69,14 @@ test('rules in the persona color frame the face, the line and the controls', asy
   expect(controls).toContain('UP 00:00:00')
   expect([...face]).toHaveLength(48)
   expect([...controls]).toHaveLength(48)
+})
+
+test('an `announce` another mod publishes is kept, a malformed or foreign key is not', () => {
+  expect(heard({ plugin: 'usage-bell', key: 'announce', value: { mood: 'error', event: 'a limit is near' } })).toEqual({
+    mood: 'error',
+    event: 'a limit is near',
+  })
+  expect(heard({ plugin: 'other', key: 'announce', value: { mood: 'shout', event: 'x' } })).toBeUndefined()
+  expect(heard({ plugin: 'other', key: 'player', value: { mood: 'watch', event: 'x' } })).toBeUndefined()
+  expect(heard({ plugin: 'avatar7', key: 'announce', value: { mood: 'watch', event: 'x' } })).toBeUndefined()
 })

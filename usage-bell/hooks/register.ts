@@ -64,6 +64,8 @@ export const register: Register = on => {
   }
 
   on('session.start', async ($, e, next) => {
+    // For avatar7, when loaded: a limit near is a warning, in amber.
+    await $.state.set({ plugin: 'usage-bell', key: 'announce' }, { mood: 'error', event: 'the session is nearing a limit' })
     await $.command.register({ name: 'usage7', description: 'Context, rate limits and memory index, against their limits (test: a sample ring)' })
     // A status line pinned by an earlier version stays until cleared.
     $.ui.status(undefined)

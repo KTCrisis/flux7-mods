@@ -2,5 +2,6 @@
   "name": "usage-bell",
   "version": "0.1.0",
   "description": "Rings when the session nears a limit: context fill, rate-limit windows, the auto-memory index",
-  "license": "MIT"
+  "license": "MIT",
+  "types": "./types/index.d.ts"
 }

@@ -435,6 +435,8 @@ export const register: Register = on => {
     isBackground = kind.stdout === 'bg'
     if (isBackground) return next(e)
 
+    // For avatar7, when loaded: music put on is calm news.
+    await $.state.set({ plugin: 'jukebox7', key: 'announce' }, { mood: 'watch', event: 'the user asked for music, and you put it on' })
     await $.command.register({
       name: 'music',
       description: 'Play music from YouTube: /music <search>, /music pause, /music next, /music similar, /music stop, /music vol [+|-]<n>, /music alone for what plays',

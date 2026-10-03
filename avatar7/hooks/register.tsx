@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Line } from '../types'
+import type { Announce, Line } from '../types'
 
 const PANE = 'avatar7'
 const FACE = 'face'
@@ -40,6 +40,9 @@ const VOLUME_STEP = 10
 const onDuty = atom({ plugin: 'avatar7', key: 'avatar' } as const, '')
 // The on-duty persona's color, read by jukebox7 to light its pane alike.
 const tint = atom({ plugin: 'avatar7', key: 'color' } as const, '')
+// The mods that asked for a voice, by plugin name: each publishes its own
+// `announce` key, and the avatar hears the write.
+const announcers = atom({ plugin: 'avatar7', key: 'announcers' } as const, {} as Record<string, Announce>)
 
 // What mesh7 answers when it refuses a call (mcp/server.go, halt/halt.go).
 const MESH_DENY = /Policy denied|Approval denied|Denied by supervisor|Approval timed out|halted by operator/
@@ -133,6 +136,16 @@ const TALK_MESSAGES = 6
 const TALK_CHARS = 300
 
 type Mood = 'idle' | 'watch' | 'deny' | 'error' | 'wait'
+
+// A write another mod made, as an announce the avatar keeps, or undefined:
+// its own key `announce`, a calm or amber face, and the event in words.
+export const heard = (w: { plugin: string; key: string; value: unknown }): Announce | undefined => {
+  if (w.key !== 'announce' || w.plugin === 'avatar7') return undefined
+  const a = w.value as Partial<Announce> | undefined
+  return a !== undefined && (a.mood === 'watch' || a.mood === 'error') && typeof a.event === 'string'
+    ? { mood: a.mood, event: a.event }
+    : undefined
+}
 
 // A line to speak: an event in a mood, or the user's poke, which reads the
 // conversation first.
@@ -533,16 +546,22 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // atelier-bell's toasts (a render is ready), usage-bell's (a limit is near)
-  // and jukebox7's (music put on): the avatar announces them in its own voice,
-  // past the tool-call rate limits; a limit in amber.
-  const BELLS: Record<string, { mood: Mood; event: string }> = {
-    'atelier-bell': { mood: 'watch', event: 'an atelier finished its work' },
-    'usage-bell': { mood: 'error', event: 'the session is nearing a limit' },
-    jukebox7: { mood: 'watch', event: 'the user asked for music, and you put it on' },
-  }
+  // A mod that wants its toasts voiced publishes `announce` under its own
+  // name (atelier-bell, usage-bell, jukebox7...): the avatar keeps a record
+  // of each, so plugging a mod in is enough, and no mod depends on avatar7.
+  on('state.set', async ($, e, next) => {
+    const done = await next(e)
+    const w = e as { plugin: string; key: string; value: unknown }
+    const a = done.isSet ? heard(w) : undefined
+    if (a !== undefined) await update($, announcers, was => ({ ...was, [w.plugin]: a }))
+    return done
+  })
+
+  // Their toasts, announced in the avatar's own voice past the tool-call
+  // rate limits; a warning in amber.
   on('ui.toast', async ($, e, next) => {
-    const bell = next.origin.plugin === undefined ? undefined : BELLS[next.origin.plugin]
+    const from = next.origin.plugin
+    const bell = from === undefined || from === 'avatar7' ? undefined : (await read($, announcers))[from]
     if (bell !== undefined && who !== null) {
       if (heldId === null && askSince === null) {
         mood = bell.mood

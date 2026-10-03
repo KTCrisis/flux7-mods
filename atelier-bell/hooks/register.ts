@@ -21,6 +21,8 @@ export const register: Register = on => {
   let last = ''
 
   on('session.start', async ($, e, next) => {
+    // For avatar7, when loaded: a render ready is calm news.
+    await $.state.set({ plugin: 'atelier-bell', key: 'announce' }, { mood: 'watch', event: 'an atelier finished its work' })
     await $.command.register({ name: 'bell', description: 'What the ateliers are doing now (test: a sample ring)' })
     // A status line pinned by an earlier version stays until cleared.
     $.ui.status(undefined)

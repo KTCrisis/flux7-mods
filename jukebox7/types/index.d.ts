@@ -15,9 +15,12 @@ export type Player = {
   pausedAt: number | null
 }
 
+// What this mod asks of avatar7 when it toasts, if avatar7 is loaded.
+export type Announce = { mood: 'watch' | 'error'; event: string }
+
 declare module 'claude-code' {
   interface PluginState {
-    jukebox7: { player: Player; volume: number }
+    jukebox7: { player: Player; volume: number; announce: Announce }
     // Read only: avatar7 owns it and says which face is on duty.
     avatar7: { avatar: string; color: string }
   }
