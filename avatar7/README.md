@@ -267,7 +267,7 @@ blink and pulse were dropped, like the wind and the auras before them).
 | `station` | optional: artists this persona would put on; avatar7 publishes them in its `station` state and jukebox7's `a` plays them |
 | `greeting` | spoken on `/avatar <id>` |
 | `nobody` | optional: the name used for `{, user}` when `user_name` is empty |
-| `persona` | system prompt of the line; the mod appends "No quotes, no emoji, no em dash." |
+| `persona` | system prompt of the line; the mod appends the rules every persona keeps: answer in English even to French, never flattering, no quotes, no emoji, no em dash (`STYLE`) |
 | `fallback` | lines per mood (`idle`, `watch`, `deny`, `error`) when the model gives none |
 
 Any text field may name the user with a placeholder: `{, user}` becomes
@@ -279,13 +279,13 @@ Writing `persona`, what works:
 
 - say who the avatar is, that it watches the tool calls of an agent named
   Claude, and for whom;
-- tell it to answer in English even when the user writes in French, and
-  fix the language to match the voice (a French text in an English voice is
+- the language is fixed by the mod (`STYLE`: English, even to a French
+  prompt), to match the voices (a French text in an English voice is
   unintelligible);
 - ask for ONE sentence of 90 characters at most: the line is typed under a
   64-column face and spoken;
-- give two or three adjectives of temper, and one thing it must never be
-  (vulgar, flattering).
+- give two or three adjectives of temper, and what it must never be beyond
+  flattering, which `STYLE` already forbids (vulgar, emotional).
 
 Ada's text is the model for a kind avatar: warm but precise, no flattery,
 explains a refusal rather than mocking it.

@@ -128,7 +128,8 @@ const playArgv = (wav: string): string[] => [
 const PLAY_LEAD_FRAMES = 5
 const HOLD_FRAMES = 75
 
-const STYLE = ' No quotes, no emoji, no em dash.'
+// Rules every persona keeps, whatever its character: added to each prompt.
+const STYLE = ' The user may write in French; you always answer in English. Never flattering. No quotes, no emoji, no em dash.'
 
 // How much of the user's last prompt the avatar reads, so it judges a call
 // against what was asked rather than the bare gesture.
