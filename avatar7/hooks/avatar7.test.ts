@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { enqueue, fresh, heard, heardSay, landed, nextStreak, recentNote, streakNote } from './register'
+import { enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, rankOf, recentNote, streakNote } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -135,4 +135,27 @@ test('the last lines go back to the model, none on a fresh session', () => {
   expect(recentNote(['Noted. For science.', 'Denied.'])).toBe(
     '\nYour last lines, do not reuse their wording or openings:\n- Noted. For science.\n- Denied.',
   )
+})
+
+test('a persona event is a story or a question, even odds when it has both', () => {
+  const stories = [
+    { story: 'a leviathan passes', mood: 'error' as const },
+    { story: 'a beacon calls', mood: 'watch' as const },
+  ]
+  expect(pickEvent(stories, true, 0.2, 0.9)).toEqual({ story: 'a beacon calls', mood: 'watch' })
+  expect(pickEvent(stories, true, 0.7, 0.1)).toBe('question')
+  expect(pickEvent(stories, false, 0.9, 0)).toEqual({ story: 'a leviathan passes', mood: 'error' })
+  expect(pickEvent([], true, 0.1, 0)).toBe('question')
+  expect(pickEvent([], false, 0.1, 0)).toBeUndefined()
+})
+
+test('the persona\'s own events wait behind everything; the user\'s answer goes first and never goes stale', () => {
+  expect(rankOf({ story: 'x', mood: 'error' })).toBe(0)
+  expect(rankOf('question')).toBe(0)
+  expect(rankOf({ question: 'q', answer: 'a' })).toBe(4)
+  let q = enqueue([], 'question', 0)
+  q = enqueue(q, { mood: 'watch', event: 'render ready' }, 1)
+  expect(q[0]?.ask).toEqual({ mood: 'watch', event: 'render ready' })
+  q = enqueue([], { question: 'q', answer: 'a' }, 0)
+  expect(fresh(q, 10_000)).toHaveLength(1)
 })

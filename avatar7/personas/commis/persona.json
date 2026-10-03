@@ -47,5 +47,11 @@
       "Entered: a call lost at sea.",
       "Damage reported. The ledger records the loss."
     ]
-  }
+  },
+  "events": [
+    {"story": "the monsoon holds the fleet in port, and the ledger stays open on empty pages", "mood": "wait"},
+    {"story": "a cargo of cloves arrives with a forged manifest, and the duties do not add up", "mood": "error"},
+    {"story": "a ship's boy brings letters from the Mascarene Islands, months late", "mood": "watch"}
+  ],
+  "asks": "what a ledger records and what it leaves out, value and debt, and the honesty of an account"
 }

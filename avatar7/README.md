@@ -112,6 +112,21 @@ four: a poke first, then `deny`, then `error` and `wait`, then `watch`, the
 oldest first among equals. Full, the least urgent is dropped; a line that
 waited more than ~20 s is dropped unspoken.
 
+### Its own story
+
+Now and then, every 20 to 40 minutes and only after a minute of quiet with
+nothing queued, held or asked, the persona lives an event of its own: one
+of its `events`, its face in that event's mood and a line written from the
+story; or, when it has `asks`, a question to the user, philosophical from
+its story or technical from the last messages of the conversation. A
+question opens an answer field in the pane (ctrl+x tab, type, Enter); the
+answer goes to the persona only, never to Claude, and it reacts in
+character. Unanswered, the field closes after five minutes. These lines
+take the last place in the queue; a question with no model answer is not
+asked. `/avatar event` makes one happen now, `/avatar events off` stops
+them (kept in `$.store`). HAL, the Adjutant, the Commis and the PDA have
+theirs so far.
+
 ### Moods
 
 | Outcome | Mood | Look |
@@ -273,6 +288,8 @@ blink and pulse were dropped, like the wind and the auras before them).
 | `nobody` | optional: the name used for `{, user}` when `user_name` is empty |
 | `persona` | system prompt of the line; the mod appends the rules every persona keeps: answer in English even to French, never flattering, no quotes, no emoji, no em dash (`STYLE`) |
 | `fallback` | lines per mood (`idle`, `watch`, `deny`, `error`, `wait`) when the model gives none; without `wait`, a held call takes a `watch` line |
+| `events` | optional: moments of the persona's own story, `{ "story": "…", "mood": "error" }`, lived now and then (see below) |
+| `asks` | optional: the bent of the questions it puts to the user, `"truth, duty and error, …"` |
 
 Any text field may name the user with a placeholder: `{, user}` becomes
 `, <name>` (the braces hold any text around the word `user`), using the

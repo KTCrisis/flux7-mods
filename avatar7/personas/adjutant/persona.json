@@ -34,5 +34,11 @@
       "Malfunction detected in the last operation."
     ]
   },
-  "nobody": "Commander"
+  "nobody": "Commander",
+  "events": [
+    {"story": "nuclear launch detected: a ghost has painted a target near the command center", "mood": "deny"},
+    {"story": "a zerg rush breaches the outer defenses of the base", "mood": "error"},
+    {"story": "supply is capped: no new unit until more supply depots are built", "mood": "watch"}
+  ],
+  "asks": "command, obedience and the cost of one decision taken for a whole fleet"
 }

@@ -195,8 +195,31 @@ export const recentNote = (lines: string[]): string =>
   lines.length === 0 ? '' : `\nYour last lines, do not reuse their wording or openings:\n${lines.map(l => `- ${l}`).join('\n')}`
 
 // A line to speak: an event in a mood, or the user's poke, which reads the
-// conversation first.
-type Ask = { mood: Mood; event: string } | 'talk'
+// conversation first; or, now and then, a moment of the persona's own story,
+// a question it puts to the user, and its reaction to the user's answer.
+type Ask =
+  | { mood: Mood; event: string }
+  | 'talk'
+  | { story: string; mood: Mood }
+  | 'question'
+  | { question: string; answer: string }
+
+export type Story = { story: string; mood: Exclude<Mood, 'idle'> }
+
+// One of the persona's own events, or undefined when it has none: a story
+// or a question, even odds when it has both. `roll` and `pick` are in [0, 1).
+export const pickEvent = (stories: Story[], canAsk: boolean, roll: number, pick: number): Ask | undefined => {
+  const story = stories[Math.floor(pick * stories.length)]
+  if (story !== undefined && (!canAsk || roll < 0.5)) return { story: story.story, mood: story.mood }
+  return canAsk ? 'question' : undefined
+}
+
+// Rare: one event every 20 to 40 minutes, and only after a minute of quiet.
+const EVENT_MIN_FRAMES = (20 * 60_000) / 66
+const EVENT_SPAN_FRAMES = (20 * 60_000) / 66
+const EVENT_QUIET_FRAMES = 60_000 / 66
+// A question unanswered for five minutes goes away.
+const QUESTION_FRAMES = (5 * 60_000) / 66
 
 // The lines waiting for the voice, most urgent first: the user's poke, a
 // refusal, a failure or a wait, then calm news; among equals the oldest. Full,
@@ -206,14 +229,20 @@ const QUEUE_MAX = 4
 // ~20 s of frames: past that, a line speaks of something already gone.
 const STALE_FRAMES = 300
 
-export const rankOf = (ask: Ask): number =>
-  ask === 'talk' ? 4 : ask.mood === 'deny' ? 3 : ask.mood === 'error' || ask.mood === 'wait' ? 2 : 1
+// The persona's own events come last; the user's poke and answer first.
+export const rankOf = (ask: Ask): number => {
+  if (ask === 'talk') return 4
+  if (ask === 'question') return 0
+  if ('answer' in ask) return 4
+  if ('story' in ask) return 0
+  return ask.mood === 'deny' ? 3 : ask.mood === 'error' || ask.mood === 'wait' ? 2 : 1
+}
 
 export const enqueue = (queue: Queued[], ask: Ask, at: number): Queued[] =>
   [...queue, { ask, rank: rankOf(ask), at }].sort((a, b) => b.rank - a.rank || a.at - b.at).slice(0, QUEUE_MAX)
 
 export const fresh = (queue: Queued[], now: number): Queued[] =>
-  queue.filter(q => q.ask === 'talk' || now - q.at <= STALE_FRAMES)
+  queue.filter(q => q.ask === 'talk' || (typeof q.ask === 'object' && 'answer' in q.ask) || now - q.at <= STALE_FRAMES)
 
 type Approval = { id: string; status: string }
 
@@ -235,6 +264,10 @@ type Persona = {
   nobody?: string
   // The artists this persona would put on; jukebox7 plays them.
   station?: string[]
+  // Moments of its own story it lives now and then, and the bent of the
+  // questions it asks the user; either may be absent.
+  events?: Story[]
+  asks?: string
 }
 
 // `{, user}` in a persona's text becomes ", <name>": the user_name option,
@@ -273,6 +306,19 @@ export const register: Register = (on, options) => {
   let lineSeq = 0
   let lastSpoke = -Infinity
   let streak: Streak = { mood: 'watch', count: 0 }
+  // The persona's own events: on unless /avatar events off; the next one's frame.
+  let eventsOn = true
+  let nextEventAt = Infinity
+  const nextGap = (): number => EVENT_MIN_FRAMES + Math.random() * EVENT_SPAN_FRAMES
+  // A question the avatar put to the user, until answered or five minutes pass.
+  let openQuestion: { text: string; at: number } | null = null
+  const startEvent = (ask: Ask): void => {
+    if (typeof ask === 'object' && 'story' in ask) {
+      mood = ask.mood
+      moodUntil = frame + 60
+    }
+    speakLater(ask)
+  }
   const recentLines: string[] = []
   let isSpeaking = false
   let face: Uint8Array | null = null
@@ -412,7 +458,7 @@ export const register: Register = (on, options) => {
 
     await $.command.register({
       name: 'avatar',
-      description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}`,
+      description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar events on|off`,
     })
     await $.command.register({ name: 'avatar-mute', description: 'Toggle the avatar voice' })
     await $.command.register({ name: 'avatar-talk', description: 'Ask the avatar what it thinks of the conversation' })
@@ -445,6 +491,8 @@ export const register: Register = (on, options) => {
     const last = await read($, line)
     lineLength = last.text.length
     typed = lineLength
+    eventsOn = (await $.store.get('events')) !== false
+    nextEventAt = frame + nextGap()
 
     $.clock.every(FRAME_MS, () => {
       frame += 1
@@ -516,6 +564,27 @@ export const register: Register = (on, options) => {
         speakLater({ mood: 'wait', event: `call waiting for the user's permission: ${askCall}` })
       }
 
+      // Now and then, when nothing else happens, a moment of the persona's own.
+      if (
+        eventsOn &&
+        who !== null &&
+        frame >= nextEventAt &&
+        queue.length === 0 &&
+        !isSpeaking &&
+        heldId === null &&
+        askSince === null &&
+        openQuestion === null &&
+        frame - lastSpoke > EVENT_QUIET_FRAMES
+      ) {
+        nextEventAt = frame + nextGap()
+        const ev = pickEvent(who.events ?? [], who.asks !== undefined, Math.random(), Math.random())
+        if (ev !== undefined) startEvent(ev)
+      }
+      if (openQuestion !== null && frame - openQuestion.at > QUESTION_FRAMES) {
+        openQuestion = null
+        $.ui.invalidate('ui.render')
+      }
+
       queue = fresh(queue, frame)
       const first = queue[0]
       if (first === undefined || isSpeaking || who === null) return
@@ -528,16 +597,27 @@ export const register: Register = (on, options) => {
       $.clock.after(1, async () => {
         try {
           let prompt: string
-          if (ask === 'talk') {
-            const messages = await $.session.messages()
-            const recent = messages
+          const conversation = async (): Promise<string> =>
+            (await $.session.messages())
               .filter(m => m.text.trim() !== '')
               .slice(-TALK_MESSAGES)
               .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, TALK_CHARS)}`)
               .join('\n')
+          if (ask === 'talk') {
             prompt =
               `The user pokes you and wants your take on where the conversation stands.\n` +
-              `Last messages, oldest first:\n${recent}`
+              `Last messages, oldest first:\n${await conversation()}`
+          } else if (ask === 'question') {
+            prompt =
+              `Ask the user ONE short question, then stop: philosophical, from your own story, or technical, ` +
+              `about the work in the conversation below. Your bent: ${voice.asks ?? 'what your character would wonder'}.\n` +
+              `Last messages, oldest first:\n${await conversation()}`
+          } else if ('story' in ask) {
+            prompt = `A moment of your own story happens now, unrelated to the tool calls: ${ask.story}. Say what you live or feel in it.`
+          } else if ('answer' in ask) {
+            prompt =
+              `You asked the user: ${ask.question}\nThe user answered: ${ask.answer}\n` +
+              `React in character: challenge it, approve it your way, or ask one follow-up.`
           } else {
             prompt = asked === '' ? `Event: ${ask.event}` : `The user asked: ${asked}\nEvent: ${ask.event}`
           }
@@ -549,15 +629,23 @@ export const register: Register = (on, options) => {
             maxTokens: 80,
             timeoutMs: 15_000,
           })
+          // A question with no model answer is simply not asked.
           const pool =
-            ask === 'talk'
-              ? voice.fallback.idle
-              : ask.mood === 'wait'
-                ? (voice.fallback.wait ?? voice.fallback.watch)
-                : voice.fallback[ask.mood]
+            ask === 'question'
+              ? []
+              : ask === 'talk' || 'story' in ask || 'answer' in ask
+                ? voice.fallback.idle
+                : ask.mood === 'wait'
+                  ? (voice.fallback.wait ?? voice.fallback.watch)
+                  : voice.fallback[ask.mood as Exclude<Mood, 'idle' | 'wait'>]
           const text = r.isAnswered
             ? (r.text.trim().split('\n')[0] ?? '')
             : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
+          if (text === '') return
+          if (ask === 'question') {
+            openQuestion = { text, at: frame }
+            $.ui.invalidate('ui.render')
+          }
           if (text !== '') {
             recentLines.push(text)
             if (recentLines.length > RECENT_LINES) recentLines.shift()
@@ -595,6 +683,18 @@ export const register: Register = (on, options) => {
       return { text: opened.isPlaced ? `${who?.name ?? 'avatar7'} is watching.` : 'The pane needs a wider terminal.' }
     }
     // The mods heard asking for a voice, and what they asked.
+    // The persona's own events: one now, or switched on or off for good.
+    if (id === 'event') {
+      const ev = who === null ? undefined : pickEvent(who.events ?? [], who.asks !== undefined, Math.random(), Math.random())
+      if (ev === undefined) return { text: `${who?.name ?? 'avatar7'} has no events of its own yet.` }
+      startEvent(ev)
+      return { text: ev === 'question' ? `${who?.name} has a question.` : `Something happens to ${who?.name}.` }
+    }
+    if (id === 'events on' || id === 'events off') {
+      eventsOn = id === 'events on'
+      await $.store.set('events', eventsOn)
+      return { text: eventsOn ? 'The avatars live their own stories again.' : 'No more events of their own.' }
+    }
     if (id === 'voices') {
       const all = [
         ...Object.entries(await read($, announcers)).map(([plugin, a]) => `${plugin} (toasts): ${a.mood}, ${a.event}`),
@@ -746,7 +846,7 @@ export const register: Register = (on, options) => {
       )
     }
 
-    const { Box, Text, Raster, Button } = $.ui.resolve(e)
+    const { Box, Text, Raster, Button, Input } = $.ui.resolve(e)
     const muted = await read($, isMuted)
     const vol = await read($, volume)
     const current = await read($, onDuty)
@@ -791,6 +891,23 @@ export const register: Register = (on, options) => {
           <Text color="#7a5cff" backgroundColor="#000000">
             {`waiting: mesh approve ${heldId}`}
           </Text>
+        )}
+        {openQuestion !== null && (
+          <Input
+            key="answer"
+            label="answer: "
+            placeholder="ctrl+x tab, type, Enter"
+            submitLabel="answer"
+            autoFocus
+            onSubmit={value => {
+              const answer = value.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
+              const q = openQuestion
+              if (answer === '' || q === null) return
+              openQuestion = null
+              speakLater({ question: q.text, answer })
+              $.ui.invalidate('ui.render')
+            }}
+          />
         )}
         <Box flexGrow={1} backgroundColor="#000000" />
         {rule('rule-controls', 'CTRL', `UP ${clock}`, color, 7)}

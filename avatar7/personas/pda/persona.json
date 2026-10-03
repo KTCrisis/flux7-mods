@@ -36,5 +36,11 @@
       "Malfunction. Recommend returning to the lifepod."
     ]
   },
-  "nobody": "survivor"
+  "nobody": "survivor",
+  "events": [
+    {"story": "a leviathan-class lifeform passes within a hundred meters, and the sonar fills with its call", "mood": "error"},
+    {"story": "oxygen falls under twenty seconds while the diver is still beneath a ledge", "mood": "wait"},
+    {"story": "the radio picks up a distress beacon from a lifepod that should not exist", "mood": "watch"}
+  ],
+  "asks": "survival, risk, and how a system should act when its human ignores the warnings"
 }
