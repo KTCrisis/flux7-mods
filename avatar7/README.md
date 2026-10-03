@@ -66,7 +66,7 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 | `command.run` `avatar` | opens the pane, or loads another persona, stores it, speaks its greeting |
 | `command.run` `avatar-talk`, the `talk` Button | raise a flag; the frame clock, which holds the session's `$`, reads the last 6 messages (`$.session.messages()`, 300 characters each) and asks Haiku for one line, outside the tool-call rate limits |
 | `command.run` `avatar-mute` | flips the `isMuted` state |
-| `ui.toast` | a toast from atelier-bell or usage-bell (`next.origin.plugin`) queues a line announcing it, past the rate limits; usage-bell's in amber |
+| `ui.toast` | a toast from atelier-bell, usage-bell or jukebox7 (`next.origin.plugin`) queues a line announcing it, past the rate limits; usage-bell's in amber |
 | `tool.check` | an `ask` verdict on a real call (a settings rule, or mesh7's hook answering `ask` for Bash) sets the waiting face; the line comes only if the prompt is still up after ~2 s, since auto mode may settle the ask alone |
 | `tool.call` | lets the call run (`await next(e)`), then classifies the outcome and queues a line; a mesh7 answer `Approval required (id: …)` holds the face in `wait`, and the clock polls `GET /approvals` every ~1.5 s until the human decides |
 | `ui.render` `Pane` | draws the Raster and the line under it; a text fallback off the terminal |

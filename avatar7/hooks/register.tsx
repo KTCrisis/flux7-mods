@@ -36,6 +36,8 @@ const isMuted = atom({ plugin: 'avatar7', key: 'isMuted' } as const, false)
 // SAPI volume, 0 to 100, kept across sessions in $.store.
 const volume = atom({ plugin: 'avatar7', key: 'volume' } as const, 100)
 const VOLUME_STEP = 10
+// The avatar on duty, by its id: other mods read it (jukebox7 picks its music).
+const onDuty = atom({ plugin: 'avatar7', key: 'avatar' } as const, '')
 
 // What mesh7 answers when it refuses a call (mcp/server.go, halt/halt.go).
 const MESH_DENY = /Policy denied|Approval denied|Denied by supervisor|Approval timed out|halted by operator/
@@ -245,6 +247,7 @@ export const register: Register = (on, options) => {
 
     const stored = await $.store.get('avatar')
     const id = typeof stored === 'string' && AVATARS.includes(stored) ? stored : DEFAULT
+    await update($, onDuty, () => id)
     try {
       const dir = `${$.plugin.root}/personas/${id}`
       who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
@@ -368,6 +371,7 @@ export const register: Register = (on, options) => {
     const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
     face = Uint8Array.fromBase64(base64)
     await $.store.set('avatar', id)
+    await update($, onDuty, () => id)
     await $.ui.open({ id: PANE, title: who.name })
 
     const text = personalize(who.greeting, userName, who.nobody)
@@ -406,12 +410,13 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // atelier-bell's toasts (a render is ready) and usage-bell's (a limit is
-  // near): the avatar announces them in its own voice, past the tool-call rate
-  // limits; a limit in amber.
+  // atelier-bell's toasts (a render is ready), usage-bell's (a limit is near)
+  // and jukebox7's (music put on): the avatar announces them in its own voice,
+  // past the tool-call rate limits; a limit in amber.
   const BELLS: Record<string, { mood: Mood; event: string }> = {
     'atelier-bell': { mood: 'watch', event: 'an atelier finished its work' },
     'usage-bell': { mood: 'error', event: 'the session is nearing a limit' },
+    jukebox7: { mood: 'watch', event: 'the user asked for music, and you put it on' },
   }
   on('ui.toast', async ($, e, next) => {
     const bell = next.origin.plugin === undefined ? undefined : BELLS[next.origin.plugin]
@@ -499,9 +504,11 @@ export const register: Register = (on, options) => {
     const vol = await read($, volume)
     size = fit(e.props.bodyColumns, e.props.scroll.bodyRows)
     return (
-      // viewport.rows is the whole surface: taller than the pane, which clips the rest.
-      <Box flexDirection="column" flexGrow={1} width="100%" height={e.viewport?.rows ?? H / 2 + 2} backgroundColor="#000000">
-        <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />
+      // The body's own height, so the controls can sit on its last row.
+      <Box flexDirection="column" flexGrow={1} width="100%" height={e.props.scroll.bodyRows} backgroundColor="#000000">
+        <Box flexDirection="row" justifyContent="center" width="100%" backgroundColor="#000000">
+          <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />
+        </Box>
         <Text color={color} backgroundColor="#000000">
           {shown.length > 0 ? `> ${shown}` : '> ...'}
         </Text>
@@ -510,6 +517,7 @@ export const register: Register = (on, options) => {
             {`waiting: mesh approve ${heldId}`}
           </Text>
         )}
+        <Box flexGrow={1} backgroundColor="#000000" />
         <Box flexDirection="row" gap={2} backgroundColor="#000000">
           <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => (queued = 'talk')} />
           <Button
