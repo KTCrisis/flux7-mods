@@ -19,7 +19,7 @@ sessions.
 | `/avatar` | open the pane |
 | `/avatar <id>` | switch avatar (`shodan`, `hal`, `glados`, `ada`), greet, remember the choice across sessions |
 | `/avatar-talk` | ask the avatar what it thinks of the conversation; the `talk` button under the face (hotkey `t` while the pane has the focus) does the same |
-| `/avatar-mute` | toggle the voice for this session |
+| `/avatar-mute` | toggle the voice for this session; the `mute` / `unmute` button under the face (hotkey `m`) does the same |
 
 The pane opens by itself at session start when the terminal is at least 144
 columns wide; below that, `/avatar` seats it. The plugin folder is watched:

@@ -421,6 +421,7 @@ export const register: Register = (on, options) => {
     }
 
     const { Box, Text, Raster, Button } = $.ui.resolve(e)
+    const muted = await read($, isMuted)
     size = fit(e.props.bodyColumns, e.props.scroll.bodyRows)
     return (
       // viewport.rows is the whole surface: taller than the pane, which clips the rest.
@@ -429,7 +430,17 @@ export const register: Register = (on, options) => {
         <Text color={color} backgroundColor="#000000">
           {shown.length > 0 ? `> ${shown}` : '> ...'}
         </Text>
-        <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => (isPoked = true)} />
+        <Box flexDirection="row" gap={2} backgroundColor="#000000">
+          <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => (isPoked = true)} />
+          <Button
+            key="mute"
+            label={muted ? 'unmute' : 'mute'}
+            hotkey="m"
+            plain
+            dimColor
+            onPress={() => update($, isMuted, was => !was)}
+          />
+        </Box>
       </Box>
     )
   })
