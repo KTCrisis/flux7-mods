@@ -285,6 +285,22 @@ mush, crop tighter or re-render with more contrast.
 | lain | `140 60 880 800` |
 | tachikoma | `112 160 912 960` |
 
+### 2b. Frames (optional)
+
+A persona may have two more faces, drawn instead of the portrait: `talk`
+(mouth open), alternated with the portrait at an uneven pace while the voice
+is heard, and `deny` (a frown), worn on a refusal or a failure. Make each
+with flux7-studio's edit mode from the persona's render, asking to keep the
+same face, hair, light and framing and to change only the mouth or the
+brows, then:
+
+    cp ~/ComfyUI/output/kf_000NN_.png personas/<id>/portrait-talk.png
+    ~/py_env/bin/python tools/bake.py <id> --box ... --frame talk
+
+`--frame` shifts the edit onto `portrait.png` before cropping (edits drift by
+a few pixels, which would make the face jitter), with the same box. A
+persona without frames keeps its single face. Lain has both so far.
+
 ### 3. Features
 
 Read the eyes and the mouth on `face-preview.png` and divide by 8 (the preview

@@ -308,14 +308,39 @@ type Persona = {
 }
 
 // A visiting persona: its text and its face, read from its folder.
-type Guest = { id: string; persona: Persona; face: Uint8Array }
+// A persona's faces: the portrait, and the optional frames baked beside it
+// (tools/bake.py --frame): mouth open for speaking, a frown for a refusal.
+type Faces = { base: Uint8Array; talk: Uint8Array | null; deny: Uint8Array | null }
+
+async function loadFaces($: Engine, dir: string): Promise<Faces> {
+  const read = async (name: string): Promise<Uint8Array | null> => {
+    try {
+      return Uint8Array.fromBase64((await $.fs.read(`${dir}/${name}`, { as: 'bytes' })).base64)
+    } catch {
+      return null
+    }
+  }
+  const base = await read('face.rgb')
+  if (base === null) throw new Error(`${dir}/face.rgb unreadable`)
+  return { base, talk: await read('face-talk.rgb'), deny: await read('face-deny.rgb') }
+}
+
+// Which face to draw now: the frown on a refusal or a failure, the mouth
+// flapping at an uneven pace while the voice is heard, else the portrait.
+export const pickFace = <T,>(faces: { base: T; talk: T | null; deny: T | null }, mood: string, isSpeaking: boolean, flap: number): T =>
+  (mood === 'deny' || mood === 'error') && faces.deny !== null
+    ? faces.deny
+    : isSpeaking && faces.talk !== null && flap < 0.55
+      ? faces.talk
+      : faces.base
+
+type Guest = { id: string; persona: Persona; faces: Faces }
 
 async function loadGuest($: Engine, id: string): Promise<Guest | null> {
   try {
     const dir = `${$.plugin.root}/personas/${id}`
     const persona = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
-    const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
-    return { id, persona, face: Uint8Array.fromBase64(base64) }
+    return { id, persona, faces: await loadFaces($, dir) }
   } catch {
     return null
   }
@@ -381,7 +406,9 @@ export const register: Register = (on, options) => {
   }
   const recentLines: string[] = []
   let isSpeaking = false
-  let face: Uint8Array | null = null
+  let faces: Faces | null = null
+  // Until when the voice is heard, in frames: the mouth moves meanwhile.
+  let speakUntil = 0
   // A visiting persona during a dialogue, and whether its face is on screen.
   let guest: Guest | null = null
   let isGuestShown = false
@@ -430,6 +457,7 @@ export const register: Register = (on, options) => {
     if (seq === lineSeq) {
       typeRate = Math.max(length / frames, 0.2)
       typeFrom = frame + PLAY_LEAD_FRAMES
+      speakUntil = typeFrom + frames
     }
     return { wav, ms }
   }
@@ -439,7 +467,8 @@ export const register: Register = (on, options) => {
     const isGlitch = mood === 'deny' && noise(frame, y >> 2) < 0.35
     const gx = isGlitch ? Math.min(W - 1, Math.max(0, x + Math.round((noise(y, frame) - 0.5) * 10))) : x
 
-    const img = isGuestShown && guest !== null ? guest.face : face
+    const shown = isGuestShown && guest !== null ? guest.faces : faces
+    const img = shown === null ? null : pickFace(shown, mood, frame < speakUntil, noise(frame >> 2, 7))
     if (img === null || who === null) return noise(x * 7 + frame, y) < 0.3 ? 0x1a2a22 : 0x020806
 
     const i = (y * W + gx) * 3
@@ -540,8 +569,7 @@ export const register: Register = (on, options) => {
       whoId = id
       await update($, tint, () => who?.color ?? '')
       await update($, station, () => ({ name: who?.name ?? '', artists: who?.station ?? [] }))
-      const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
-      face = Uint8Array.fromBase64(base64)
+      faces = await loadFaces($, dir)
     } catch {
       $.ui.log(`avatar7: personas/${id} unreadable, run tools/bake.py ${id}`)
     }
@@ -571,8 +599,7 @@ export const register: Register = (on, options) => {
           whoId = id
           await update($, tint, () => who?.color ?? '')
           await update($, station, () => ({ name: who?.name ?? '', artists: who?.station ?? [] }))
-          const { base64 } = await $.fs.read(`${dir}/face.rgb`, { as: 'bytes' })
-          face = Uint8Array.fromBase64(base64)
+          faces = await loadFaces($, dir)
           await $.store.set('avatar', id)
           await update($, onDuty, () => id)
           await $.ui.open({ id: PANE, title: who.name })

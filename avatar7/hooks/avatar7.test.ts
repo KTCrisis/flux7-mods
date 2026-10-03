@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
+import { pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -182,4 +182,15 @@ test('a multi-speaker Piper voice passes its speaker as the last argument; a sin
   expect(synthArgv('lain', lain, 100).at(-1)).toBe('86')
   const hal = { voice: 'David', rate: 0, piper: { voice: 'en_US-norman-medium' } } as never
   expect(synthArgv('hal', hal, 100).at(-1)).toBe('')
+})
+
+test('the frown wins on a refusal, the mouth flaps while speaking, a persona without frames keeps its portrait', () => {
+  const all = { base: 'base', talk: 'talk', deny: 'deny' }
+  expect(pickFace(all, 'deny', true, 0)).toBe('deny')
+  expect(pickFace(all, 'error', false, 0.9)).toBe('deny')
+  expect(pickFace(all, 'watch', true, 0.2)).toBe('talk')
+  expect(pickFace(all, 'watch', true, 0.8)).toBe('base')
+  expect(pickFace(all, 'idle', false, 0.2)).toBe('base')
+  const bare = { base: 'base', talk: null, deny: null }
+  expect(pickFace(bare, 'deny', true, 0.1)).toBe('base')
 })
