@@ -4,6 +4,36 @@ Claude Code mods: plugins of function hooks that run inside one session
 (panes, bands, status line, tool-call hooks). Fleet-wide views stay in deck7;
 what lives here sees a single session, from the inside, as events happen.
 
+## How they fit together
+
+avatar7 is the stage; the other mods are utilities that also give it
+something to play. Each one does its own job alone (a pane, a toast, a
+status line), and when avatar7 is loaded, what it noticed becomes a face and
+a spoken line.
+
+No mod imports another. They meet only in the session's state (`$.state`):
+each writes under its own name, and whoever cares listens to the write.
+
+| Key | Written by | Read by | Meaning |
+| --- | --- | --- | --- |
+| `<mod>.announce` | atelier-bell, usage-bell, jukebox7 | avatar7 | voice my toasts, in this mood, from this event |
+| `<mod>.say` | mesh7-pane | avatar7 | say this now, no toast needed |
+| `avatar7.avatar`, `color`, `station` | avatar7 | jukebox7 | the persona on duty, its color, its music |
+| `avatar7.isVoicing` | avatar7 | jukebox7 | a line is being heard: lower the music |
+
+The mod gives the fact; the persona gives the voice. avatar7 picks the face
+from the mood, and Haiku writes the line from the event in the persona's
+manner, so a new mod writes no dialogue. Every line, from a tool call, a
+toast, a `say` or a poke, goes through one queue ordered by urgency: a
+refusal is heard before calm news.
+
+Unplug any mod, avatar7 included, and the others keep working; only the
+voice goes. The same rule as mesh7, at the scale of a terminal: no part
+commands another, and what happens is made visible.
+
+To give a new mod a voice, see
+[avatar7/README.md, Giving a mod a voice](avatar7/README.md#giving-a-mod-a-voice).
+
 ## Mods
 
 | Mod | What it does |
