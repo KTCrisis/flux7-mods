@@ -4,7 +4,6 @@
   "rate": -2,
   "pitch": -3,
   "piper": { "voice": "en_GB-northern_english_male-medium", "lengthScale": 1.05 },
-  "look": {"crt": 0.15},
   "color": "#c9a96e",
   "eyes": [
     {

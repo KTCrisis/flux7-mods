@@ -4,7 +4,6 @@
   "rate": 3,
   "pitch": 3,
   "piper": { "voice": "en_US-ryan-high", "lengthScale": 0.9 },
-  "look": {"crt": 0.5, "wind": {"x": 32, "y": 42, "rx": 13, "ry": 17, "amp": 1.2}, "aura": {"color": "#ff2a2a", "radius": 30, "width": 5}},
   "color": "#ff2d2d",
   "eyes": [
     {

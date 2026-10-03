@@ -183,13 +183,12 @@ A render takes about 25 to 50 s on Krea 2 turbo.
 `--box` crops the 1024x1024 original before the reduction; keep it square and
 tight around the face (the shipped boxes are in the table below). The tool
 boosts contrast by 1.25, reduces with Lanczos to 64x64, and writes
-`face.rgb` and `face-preview.png`, sharpened after the reduction (`--sharpen 90`, an unsharp mask; 0 turns it off). Look at the preview: if the features are
+`face.rgb` and `face-preview.png`. Look at the preview: if the features are
 mush, crop tighter or re-render with more contrast.
 
 | id | box |
 | --- | --- |
-| shodan | `112 100 912 900` |
-| ada | `112 100 912 900 --sharpen 0` (a pale face, kept soft) |
+| shodan, ada | `112 100 912 900` |
 | hal | `150 150 874 874` |
 | duck7 | none (full frame) |
 | pod042 | `64 20 960 916` |
@@ -221,7 +220,6 @@ is the grid enlarged x8):
 | `rate` | SAPI rate, -10 to 10 |
 | `pitch` | optional: SAPI pitch, -10 to 10; set, the voice goes through the SAPI COM object, which takes it as XML (duck7: 10) |
 | `piper` | optional: `{ "voice": "en_GB-alan-medium", "lengthScale": 0.95, "fx": "…" }`, a [Piper](https://github.com/OHF-Voice/piper1-gpl) neural voice run on the CPU in WSL, its WAV played by Windows; `fx` is an ffmpeg audio filter (GLaDOS's metal, SHODAN's glitch, duck7's pitch). Every persona names one; SAPI speaks when Piper or the model is missing |
-| `look` | optional: `crt` 0 to 1 (scanlines, a band rolling down every 4 s, darker corners, flicker; 0.5 by default), `wind` `{ x, y, rx, ry, amp }` (what lies outside that face ellipse sways: hair, cables), `aura` `{ color, radius, width }` (a flickering ring of light on the dark around the figure) |
 | `color` | color of the line under the face |
 | `greeting` | spoken on `/avatar <id>` |
 | `nobody` | optional: the name used for `{, user}` when `user_name` is empty |
