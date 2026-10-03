@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Announce, Line, MeshHealth, Station } from '../types'
+import type { Announce, Line, Say, Station } from '../types'
 
 const PANE = 'avatar7'
 const FACE = 'face'
@@ -141,16 +141,6 @@ const TALK_CHARS = 300
 
 type Mood = 'idle' | 'watch' | 'deny' | 'error' | 'wait'
 
-// What changed in mesh7's health between two of mesh7-pane's readings, as a
-// line to speak, or undefined when nothing did (the pane writes every poll).
-export const meshShift = (before: MeshHealth, after: MeshHealth): { mood: 'deny' | 'error' | 'watch'; event: string } | undefined => {
-  if (after.halt !== '' && after.halt !== before.halt) return { mood: 'deny', event: `mesh7 EMERGENCY STOP: ${after.halt}` }
-  if (after.halt === '' && before.halt !== '') return { mood: 'watch', event: 'mesh7 emergency stop lifted, tools run again' }
-  if (!after.isUp && before.isUp) return { mood: 'error', event: 'mesh7 went down, every tool call now fails closed' }
-  if (after.isUp && !before.isUp) return { mood: 'watch', event: 'mesh7 is back up' }
-  return undefined
-}
-
 // Whether a write landed. The host answers a plain write without `isSet`
 // (2.1.288, despite StateSetResult): only a write another one beat says false.
 export const landed = (done: unknown): boolean => (done as { isSet?: boolean } | undefined)?.isSet !== false
@@ -165,9 +155,38 @@ export const heard = (w: { plugin: string; key: string; value: unknown }): Annou
     : undefined
 }
 
+// A `say` another mod published: speak it now, no toast needed.
+export const heardSay = (w: { plugin: string; key: string; value: unknown }): Say | undefined => {
+  if (w.key !== 'say' || w.plugin === 'avatar7') return undefined
+  const a = w.value as Partial<Say> | undefined
+  return a !== undefined &&
+    (a.mood === 'watch' || a.mood === 'error' || a.mood === 'deny' || a.mood === 'wait') &&
+    typeof a.event === 'string' &&
+    typeof a.at === 'number'
+    ? { mood: a.mood, event: a.event, at: a.at }
+    : undefined
+}
+
 // A line to speak: an event in a mood, or the user's poke, which reads the
 // conversation first.
 type Ask = { mood: Mood; event: string } | 'talk'
+
+// The lines waiting for the voice, most urgent first: the user's poke, a
+// refusal, a failure or a wait, then calm news; among equals the oldest. Full,
+// the least urgent goes; a line that waited too long is dropped unspoken.
+type Queued = { ask: Ask; rank: number; at: number }
+const QUEUE_MAX = 4
+// ~20 s of frames: past that, a line speaks of something already gone.
+const STALE_FRAMES = 300
+
+export const rankOf = (ask: Ask): number =>
+  ask === 'talk' ? 4 : ask.mood === 'deny' ? 3 : ask.mood === 'error' || ask.mood === 'wait' ? 2 : 1
+
+export const enqueue = (queue: Queued[], ask: Ask, at: number): Queued[] =>
+  [...queue, { ask, rank: rankOf(ask), at }].sort((a, b) => b.rank - a.rank || a.at - b.at).slice(0, QUEUE_MAX)
+
+export const fresh = (queue: Queued[], now: number): Queued[] =>
+  queue.filter(q => q.ask === 'talk' || now - q.at <= STALE_FRAMES)
 
 type Approval = { id: string; status: string }
 
@@ -234,8 +253,13 @@ export const register: Register = (on, options) => {
   let whoId = ''
   let size = W
   let asked = ''
-  // The next line to speak; the clock, which holds the session's $, speaks it.
-  let queued: Ask | null = null
+  // The lines to speak; the clock, which holds the session's $, speaks them.
+  let queue: Queued[] = []
+  const speakLater = (ask: Ask): void => {
+    queue = enqueue(queue, ask, frame)
+  }
+  // The last `say` of each mod, for /avatar voices.
+  const saidHere = new Map<string, Say>()
   // An avatar picked in the pane or by /avatar; the clock swaps it in.
   let pendingAvatar: string | null = null
   let isPicking = false
@@ -464,7 +488,7 @@ export const register: Register = (on, options) => {
             const now: Mood = found.status === 'approved' ? 'watch' : found.status === 'denied' ? 'deny' : 'error'
             mood = now
             moodUntil = frame + 30
-            queued = { mood: now, event: `the human's decision on the held call ${heldCall}: ${found.status.toUpperCase()}` }
+            speakLater({ mood: now, event: `the human's decision on the held call ${heldCall}: ${found.status.toUpperCase()}` })
           } catch {
             // mesh7 down or unreadable: try again at the next poll.
           } finally {
@@ -473,13 +497,15 @@ export const register: Register = (on, options) => {
         })
       }
 
-      if (askSince !== null && frame - askSince === ASK_FRAMES && queued === null) {
-        queued = { mood: 'wait', event: `call waiting for the user's permission: ${askCall}` }
+      if (askSince !== null && frame - askSince === ASK_FRAMES && queue.length === 0) {
+        speakLater({ mood: 'wait', event: `call waiting for the user's permission: ${askCall}` })
       }
 
-      if (queued === null || isSpeaking || who === null) return
-      const ask = queued
-      queued = null
+      queue = fresh(queue, frame)
+      const first = queue[0]
+      if (first === undefined || isSpeaking || who === null) return
+      queue = queue.slice(1)
+      const ask = first.ask
       isSpeaking = true
       lastSpoke = frame
       const voice = who
@@ -550,13 +576,11 @@ export const register: Register = (on, options) => {
     }
     // The mods heard asking for a voice, and what they asked.
     if (id === 'voices') {
-      const all = Object.entries(await read($, announcers))
-      return {
-        text:
-          all.length === 0
-            ? 'No mod has asked for a voice in this session.'
-            : all.map(([plugin, a]) => `${plugin}: ${a.mood}, ${a.event}`).join('\n'),
-      }
+      const all = [
+        ...Object.entries(await read($, announcers)).map(([plugin, a]) => `${plugin} (toasts): ${a.mood}, ${a.event}`),
+        ...[...saidHere].map(([plugin, a]) => `${plugin} (say): ${a.mood}, ${a.event}`),
+      ]
+      return { text: all.length === 0 ? 'No mod has asked for a voice in this session.' : all.join('\n') }
     }
     if (!AVATARS.includes(id)) return { text: `Unknown avatar. Choose one of: ${AVATARS.join(', ')}.` }
 
@@ -565,7 +589,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'avatar-talk' }, async () => {
-    queued = 'talk'
+    speakLater('talk')
     return { text: `${who?.name ?? 'avatar7'} reads the conversation.` }
   })
 
@@ -589,6 +613,17 @@ export const register: Register = (on, options) => {
   on('state.set', async ($, e, next) => {
     const done = await next(e)
     const w = e as { plugin: string; key: string; value: unknown }
+    const s = landed(done) ? heardSay(w) : undefined
+    if (s !== undefined) {
+      saidHere.set(w.plugin, s)
+      if (who !== null) {
+        if (heldId === null && askSince === null) {
+          mood = s.mood
+          moodUntil = frame + (s.mood === 'watch' ? 12 : 30)
+        }
+        speakLater({ mood: s.mood, event: s.event })
+      }
+    }
     const a = landed(done) ? heard(w) : undefined
     if (a !== undefined) {
       heardHere.set(w.plugin, a)
@@ -597,22 +632,6 @@ export const register: Register = (on, options) => {
       } catch (err) {
         $.ui.log(`avatar7 could not keep ${w.plugin}.announce: ${String(err)}`, { to: 'debug' })
       }
-    }
-    return done
-  })
-
-  // mesh7-pane, when loaded, polls mesh7's health: a fall, an emergency stop
-  // and their end reach the face, which otherwise sees only its own calls.
-  let meshWas: MeshHealth | null = null
-  on('state.set', { plugin: 'mesh7-pane', key: 'health' }, async ($, e, next) => {
-    const done = await next(e)
-    const now = e.value
-    const shift = meshWas === null ? undefined : meshShift(meshWas, now)
-    meshWas = now
-    if (shift !== undefined && who !== null) {
-      mood = shift.mood
-      moodUntil = frame + (shift.mood === 'watch' ? 12 : 30)
-      queued = shift
     }
     return done
   })
@@ -627,7 +646,7 @@ export const register: Register = (on, options) => {
         mood = bell.mood
         moodUntil = frame + 30
       }
-      queued = { mood: bell.mood, event: `${bell.event}: ${e.text}` }
+      speakLater({ mood: bell.mood, event: `${bell.event}: ${e.text}` })
     }
     return next(e)
   })
@@ -658,7 +677,7 @@ export const register: Register = (on, options) => {
       heldCall = call
       mood = 'wait'
       moodUntil = Infinity
-      queued = { mood: 'wait', event: `call HELD for human approval: ${call}` }
+      speakLater({ mood: 'wait', event: `call HELD for human approval: ${call}` })
       return ran
     }
 
@@ -672,8 +691,8 @@ export const register: Register = (on, options) => {
     }
 
     const quiet = now === 'watch' ? 45_000 / FRAME_MS : 5_000 / FRAME_MS
-    if (isSpeaking || queued !== null || frame - lastSpoke < quiet) return ran
-    queued = {
+    if (isSpeaking || queue.length > 0 || frame - lastSpoke < quiet) return ran
+    speakLater({
       mood: now,
       event:
         now === 'deny'
@@ -681,7 +700,7 @@ export const register: Register = (on, options) => {
           : now === 'error'
             ? `call FAILED: ${call}`
             : `call succeeded: ${call}`,
-    }
+    })
 
     return ran
   })
@@ -767,7 +786,7 @@ export const register: Register = (on, options) => {
           </Box>
         )}
         <Box flexDirection="row" gap={2} backgroundColor="#000000">
-          <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => (queued = 'talk')} />
+          <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => speakLater('talk')} />
           <Button
             key="avatars"
             label={isPicking ? 'close' : 'avatars'}

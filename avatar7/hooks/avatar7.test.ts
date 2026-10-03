@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { heard, landed, meshShift } from './register'
+import { enqueue, fresh, heard, heardSay, landed } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -88,11 +88,29 @@ test('a write the host answers without isSet still counts; only isSet false does
   expect(landed({ isSet: false, version: 4 })).toBe(false)
 })
 
-test('mesh7 falling, halting and coming back each make one line; a steady reading none', () => {
-  const up = { isUp: true, version: '0.19.0', halt: '' }
-  expect(meshShift(up, up)).toBeUndefined()
-  expect(meshShift(up, { ...up, isUp: false })?.mood).toBe('error')
-  expect(meshShift({ ...up, isUp: false }, up)?.mood).toBe('watch')
-  expect(meshShift(up, { ...up, halt: 'global: incident' })).toEqual({ mood: 'deny', event: 'mesh7 EMERGENCY STOP: global: incident' })
-  expect(meshShift({ ...up, halt: 'global: incident' }, up)?.mood).toBe('watch')
+test('a `say` another mod publishes is kept with its mood and time; a malformed one is not', () => {
+  expect(heardSay({ plugin: 'mesh7-pane', key: 'say', value: { mood: 'deny', event: 'mesh7 EMERGENCY STOP', at: 5 } })).toEqual({
+    mood: 'deny',
+    event: 'mesh7 EMERGENCY STOP',
+    at: 5,
+  })
+  expect(heardSay({ plugin: 'other', key: 'say', value: { mood: 'deny', event: 'x' } })).toBeUndefined()
+  expect(heardSay({ plugin: 'other', key: 'say', value: { mood: 'shout', event: 'x', at: 1 } })).toBeUndefined()
+  expect(heardSay({ plugin: 'avatar7', key: 'say', value: { mood: 'watch', event: 'x', at: 1 } })).toBeUndefined()
+})
+
+test('the queue speaks the most urgent first, the oldest among equals, and drops the least urgent when full', () => {
+  let q = enqueue([], { mood: 'watch', event: 'render ready' }, 1)
+  q = enqueue(q, { mood: 'watch', event: 'music on' }, 2)
+  q = enqueue(q, { mood: 'deny', event: 'mesh7 halted' }, 3)
+  q = enqueue(q, { mood: 'error', event: 'context full' }, 4)
+  expect(q.map(x => (x.ask === 'talk' ? 'talk' : x.ask.event))).toEqual(['mesh7 halted', 'context full', 'render ready', 'music on'])
+  q = enqueue(q, 'talk', 5)
+  expect(q.map(x => (x.ask === 'talk' ? 'talk' : x.ask.event))).toEqual(['talk', 'mesh7 halted', 'context full', 'render ready'])
+})
+
+test('a line that waited too long is dropped, a poke never', () => {
+  const q = enqueue(enqueue([], { mood: 'watch', event: 'old news' }, 0), 'talk', 0)
+  expect(fresh(q, 300)).toHaveLength(2)
+  expect(fresh(q, 301).map(x => x.ask)).toEqual(['talk'])
 })

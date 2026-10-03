@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { Engine, Register } from 'claude-code'
 
-import type { Decision, Health, Pending, Verdict } from '../types'
+import type { Decision, Health, Pending, Say, Verdict } from '../types'
 
 const PANE = 'mesh7-pane'
 const MESH = 'http://localhost:9090'
@@ -52,9 +52,29 @@ const ago = (iso: string, now: number): string => {
   return s < 120 ? `${s}s` : `${Math.round(s / 60)}m`
 }
 
+// What changed in mesh7's health between two polls, as a line for avatar7,
+// or undefined when nothing did.
+export const meshShift = (before: Health, after: Health): Omit<Say, 'at'> | undefined => {
+  if (after.halt !== '' && after.halt !== before.halt) return { mood: 'deny', event: `mesh7 EMERGENCY STOP: ${after.halt}` }
+  if (after.halt === '' && before.halt !== '') return { mood: 'watch', event: 'mesh7 emergency stop lifted, tools run again' }
+  if (!after.isUp && before.isUp) return { mood: 'error', event: 'mesh7 went down, every tool call now fails closed' }
+  if (after.isUp && !before.isUp) return { mood: 'watch', event: 'mesh7 is back up' }
+  return undefined
+}
+
+// The health of a poll kept, and a shift since the one before told to
+// avatar7 under this mod's `say` key; none before the first, so a load is silent.
+async function report($: Engine, before: Health | null, now: Health): Promise<Health> {
+  const shift = before === null ? undefined : meshShift(before, now)
+  await update($, health, () => now)
+  if (shift !== undefined) await $.state.set({ plugin: 'mesh7-pane', key: 'say' }, { ...shift, at: Date.now() })
+  return now
+}
+
 export const register: Register = on => {
   let seen = ''
   let isFirst = true
+  let was: Health | null = null
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -103,7 +123,7 @@ export const register: Register = on => {
 
         await update($, decisions, () => list)
         await update($, pending, () => waiting)
-        await update($, health, () => ({ isUp: true, version, halt }))
+        was = await report($, was, { isUp: true, version, halt })
 
         const allow = list.filter(d => d.verdict === 'allow').length
         const deny = list.filter(d => d.verdict === 'deny').length
@@ -113,7 +133,7 @@ export const register: Register = on => {
             : `mesh7 ${allow} allow · ${deny} deny · ${waiting.length} pending`,
         )
       } catch {
-        await update($, health, was => ({ ...was, isUp: false }))
+        was = await report($, was, { ...(await read($, health)), isUp: false })
         $.ui.status('mesh7 DOWN: tools fail closed')
       }
     })

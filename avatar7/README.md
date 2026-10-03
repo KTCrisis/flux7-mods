@@ -67,8 +67,7 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 | `command.run` `avatar` | opens the pane, or loads another persona, stores it, speaks its greeting |
 | `command.run` `avatar-talk`, the `talk` Button | raise a flag; the frame clock, which holds the session's `$`, reads the last 6 messages (`$.session.messages()`, 300 characters each) and asks Haiku for one line, outside the tool-call rate limits |
 | `command.run` `avatar-mute` | flips the `isMuted` state |
-| `state.set` | another mod's write to its own `announce` key is recorded in `announcers`, by plugin name (see below) |
-| `state.set` `mesh7-pane` `health` | with mesh7-pane loaded: mesh7 going down (amber), an emergency stop (deny), and their end (calm) each queue a line; mesh7-pane's own toasts stay unvoiced, the calls already speak |
+| `state.set` | another mod's write to its own `announce` key is recorded in `announcers`, by plugin name; a write to its own `say` key queues a line at once (see below) |
 | `ui.toast` | a toast from a recorded mod (`next.origin.plugin`) queues a line announcing it in that mod's mood, past the rate limits |
 | `tool.check` | an `ask` verdict on a real call (a settings rule, or mesh7's hook answering `ask` for Bash) sets the waiting face; the line comes only if the prompt is still up after ~2 s, since auto mode may settle the ask alone |
 | `tool.call` | lets the call run (`await next(e)`), then classifies the outcome and queues a line; a mesh7 answer `Approval required (id: …)` holds the face in `wait`, and the clock polls `GET /approvals` every ~1.5 s until the human decides |
@@ -95,6 +94,23 @@ words the line is written from; the toast text is added to it. avatar7 hears
 the write and keeps it across its own reloads; the mod never imports avatar7,
 and without it the value just sits unread. atelier-bell, usage-bell and
 jukebox7 do this. `/avatar voices` lists the mods heard so far.
+
+A mod that wants a line without a toast writes its own `say` key instead,
+each time it has something to say:
+
+```ts
+export type Say = { mood: 'watch' | 'error' | 'deny' | 'wait'; event: string; at: number }
+await $.state.set({ plugin: 'my-mod', key: 'say' }, { mood: 'deny', event: 'the deploy was refused', at: Date.now() })
+```
+
+`at` makes the same event twice two writes. mesh7-pane does this for mesh7
+going down (`error`), an emergency stop (`deny`) and their end (`watch`); its
+DENY and HUMAN toasts stay unvoiced, the calls already speak.
+
+Every line, from a call, a toast, a `say` or a poke, goes through one queue of
+four: a poke first, then `deny`, then `error` and `wait`, then `watch`, the
+oldest first among equals. Full, the least urgent is dropped; a line that
+waited more than ~20 s is dropped unspoken.
 
 ### Moods
 

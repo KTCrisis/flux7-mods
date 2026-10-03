@@ -7,10 +7,12 @@ export type Line = { text: string; at: number }
 // persona without one.
 export type Station = { name: string; artists: string[] }
 
-// mesh7 as mesh7-pane last saw it: up or down, and an emergency stop's scope.
-export type MeshHealth = { isUp: boolean; version: string; halt: string }
-
 export type Announce = { mood: 'watch' | 'error'; event: string }
+
+// What a mod asks the avatar to say now, with no toast: published under the
+// mod's own `say` key, the face to wear, what happened, and when (ms), so the
+// same event twice is still two writes. The avatar queues it by urgency.
+export type Say = { mood: 'watch' | 'error' | 'deny' | 'wait'; event: string; at: number }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -27,7 +29,5 @@ declare module 'claude-code' {
       // The on-duty persona's music, from its persona.json: jukebox7 plays it.
       station: Station
     }
-    // Read only: mesh7-pane owns it, when loaded; avatar7 hears its changes.
-    'mesh7-pane': { health: MeshHealth }
   }
 }
