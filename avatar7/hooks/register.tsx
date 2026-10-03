@@ -406,15 +406,21 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // atelier-bell's toasts (a render is ready): the avatar announces them in
-  // its own voice, past the tool-call rate limits.
+  // atelier-bell's toasts (a render is ready) and usage-bell's (a limit is
+  // near): the avatar announces them in its own voice, past the tool-call rate
+  // limits; a limit in amber.
+  const BELLS: Record<string, { mood: Mood; event: string }> = {
+    'atelier-bell': { mood: 'watch', event: 'an atelier finished its work' },
+    'usage-bell': { mood: 'error', event: 'the session is nearing a limit' },
+  }
   on('ui.toast', async ($, e, next) => {
-    if (next.origin.plugin === 'atelier-bell' && who !== null) {
+    const bell = next.origin.plugin === undefined ? undefined : BELLS[next.origin.plugin]
+    if (bell !== undefined && who !== null) {
       if (heldId === null && askSince === null) {
-        mood = 'watch'
+        mood = bell.mood
         moodUntil = frame + 30
       }
-      queued = { mood: 'watch', event: `an atelier finished its work: ${e.text}` }
+      queued = { mood: bell.mood, event: `${bell.event}: ${e.text}` }
     }
     return next(e)
   })
