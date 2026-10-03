@@ -26,6 +26,11 @@ ambient, lofi, black metal, darksynth, idm, indie rock, video games. A genre
 is a radio: a random artist from its list, a random song of theirs; next and
 the end of a song roll again.
 
+A pick searches YouTube Music's songs tab, which holds tracks only: no
+interview, gameplay or full OST. Its listing gives no length, so the bar
+shows the elapsed time alone; plain YouTube, kept to two to twenty minutes,
+is the fallback when it finds nothing.
+
 On the terminal the pane is black down to its last row, framed in the
 avatar's color, and the room left under the player fills with a green code
 rain in the manner of Ghost in the Shell: half-width katakana and digits,

@@ -55,7 +55,7 @@ export const GENRES: { key: string; label: string; artists: string[] }[] = [
     label: 'black metal',
     artists: ['Dissection', 'Cradle of Filth Dusk and Her Embrace', 'Emperor', 'Dimmu Borgir Enthrone Darkness Triumphant', 'Agalloch', 'Ulver Bergtatt', 'Arcturus', 'Blut Aus Nord', 'Wolves in the Throne Room'],
   },
-  { key: '4', label: 'darksynth', artists: ['Fixions', 'Mega Drive', 'Danger', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead'] },
+  { key: '4', label: 'darksynth', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead'] },
   { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel'] },
   {
     key: '6',
@@ -76,13 +76,13 @@ export const GENRES: { key: string; label: string; artists: string[] }[] = [
 export const STATIONS: Record<string, { name: string; artists: string[] }> = {
   shodan: { name: 'SHODAN', artists: ['System Shock soundtrack', 'Skinny Puppy', 'Autechre', 'Venetian Snares', 'Perturbator', 'Blut Aus Nord', 'Atari Teenage Riot', 'Deus Ex soundtrack'] },
   hal: { name: 'HAL 9000', artists: ['Boards of Canada', 'Brian Eno', 'Kenji Kawai Ghost in the Shell', 'Loscil', 'Aphex Twin Selected Ambient Works Volume II', 'Arovane', 'Ulver Perdition City'] },
-  glados: { name: 'GLaDOS', artists: ['Aphex Twin', 'Plaid', 'Squarepusher', 'Portal 2 soundtrack', 'Kettel', 'Ceephax Acid Crew', 'The Unicorns', 'Danger'] },
+  glados: { name: 'GLaDOS', artists: ['Aphex Twin', 'Plaid', 'Squarepusher', 'Portal 2 soundtrack', 'Kettel', 'Ceephax Acid Crew', 'The Unicorns', 'Danger 11h30'] },
   ada: { name: 'Ada', artists: ['Jeremy Soule Oblivion', 'Múm', 'Helios', 'Sufjan Stevens', 'Joanna Newsom Ys', 'Broadcast', 'Arcturus', 'Agalloch'] },
   commis: { name: 'The Commis', artists: ['Grandaddy', 'Sparklehorse', 'Elliott Smith', 'Neutral Milk Hotel', 'Agalloch', 'Jeremy Soule Skyrim', 'Jeremy Soule Morrowind', 'Modest Mouse'] },
   duck7: { name: 'duck7', artists: ['Venetian Snares', 'Pixies', 'Modest Mouse', 'The Unicorns', 'Sewerslvt', 'Machine Girl', 'Of Montreal', 'Eels'] },
-  kaneda: { name: 'Kaneda', artists: ['Geinoh Yamashirogumi Akira', 'Carpenter Brut', 'Danger', 'Fixions', 'Pixies', 'Atari Teenage Riot', 'Perturbator', 'Mega Drive'] },
+  kaneda: { name: 'Kaneda', artists: ['Geinoh Yamashirogumi Akira', 'Carpenter Brut', 'Danger 11h30', 'Fixions', 'Pixies', 'Atari Teenage Riot', 'Perturbator', 'Mega Drive'] },
   pod042: { name: 'Pod 042', artists: ['NieR Automata soundtrack Keiichi Okabe', 'NieR Replicant soundtrack', 'Mega Drive', 'Dan Terminus', 'Plaid', 'Boards of Canada', 'Fixions'] },
-  fox: { name: 'Fox McCloud', artists: ['Hajime Wakai Star Fox 64', 'Star Fox SNES soundtrack', 'Mega Drive', 'Daft Punk', 'Kavinsky', 'Danger', 'Lazerhawk', 'Gunship'] },
+  fox: { name: 'Fox McCloud', artists: ['Hajime Wakai Star Fox 64', 'Star Fox SNES soundtrack', 'Mega Drive', 'Daft Punk', 'Kavinsky', 'Danger 11h30', 'Lazerhawk', 'Gunship'] },
   adjutant: { name: 'Adjutant', artists: ['Glenn Stafford StarCraft', 'Derek Duke StarCraft', 'Kenji Kawai Ghost in the Shell', 'Front Line Assembly', 'Autechre', 'Deus Ex soundtrack', 'Loscil', 'Perturbator'] },
   morte: { name: 'Morte', artists: ['Mark Morgan Planescape Torment', 'Mark Morgan Fallout', 'Dead Can Dance', 'Tom Waits', 'Agalloch', 'Danny Elfman', 'Arcturus', 'Ulver'] },
 }
@@ -150,6 +150,21 @@ const search = (query: string): string[] => [
   '--print',
   '%(id)s\t%(title)s\t%(duration)s',
   `ytsearch${SEARCH_SIZE}:${query}`,
+]
+
+// A station pick searches YouTube Music's songs tab: only tracks, never an
+// interview, a gameplay video or a full OST, at the cost of the durations
+// (the flat listing gives none). Plain YouTube, length-filtered, is the
+// fallback when it finds nothing.
+export const musicSearch = (query: string): string[] => [
+  'yt-dlp',
+  '--flat-playlist',
+  '--no-warnings',
+  '--playlist-end',
+  String(SEARCH_SIZE),
+  '--print',
+  '%(id)s\t%(title)s\t%(duration)s',
+  `https://music.youtube.com/search?q=${encodeURIComponent(query)}#songs`,
 ]
 
 // Audio only, no window: yt-dlp streams the best audio into Windows' VLC
@@ -290,8 +305,14 @@ async function playGenre($: Engine, label: string): Promise<Track | undefined> {
   if (artist === undefined) return undefined
   $.ui.status(`music: looking for ${STATIONS[label]?.name ?? label}, ${artist}…`)
   const was = (await read($, player)).tracks
-  const found = await $.process.run(search(artist), { timeoutMs: 20_000 })
-  const songs = found.exitCode === 0 ? parseTracks(found.stdout).filter(isSong) : []
+  const music = await $.process.run(musicSearch(artist), { timeoutMs: 20_000 })
+  let songs = music.exitCode === 0 ? parseTracks(music.stdout).filter(t => t.seconds === null || isSong(t)) : []
+  // Its titles carry no artist; the query names it.
+  songs = songs.map(t => ({ ...t, title: `${artist} - ${t.title}` }))
+  if (songs.length === 0) {
+    const found = await $.process.run(search(artist), { timeoutMs: 20_000 })
+    songs = found.exitCode === 0 ? parseTracks(found.stdout).filter(isSong) : []
+  }
   const fresh = songs.filter(t => !was.some(w => w.id === t.id))
   const track = anyOf(fresh.length > 0 ? fresh : songs)
   if (track === undefined) {

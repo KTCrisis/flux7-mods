@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, clampVolume, rain } from './register'
+import { parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, clampVolume, rain, musicSearch, parseTracks } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -142,4 +142,10 @@ test('the code rain fills the given size, one glyph per cell, every other column
     expect([...line].filter((_, c) => c % 2 === 1).every(ch => ch === ' ')).toBe(true)
   }
   expect(grid.flat().some(r => r.level === 2)).toBe(true)
+})
+
+test('a station pick searches the songs tab of YouTube Music, query encoded', () => {
+  const argv = musicSearch('Mark Morgan Planescape Torment')
+  expect(argv.at(-1)).toBe('https://music.youtube.com/search?q=Mark%20Morgan%20Planescape%20Torment#songs')
+  expect(parseTracks('q_0Rgrl0zLw\tDeionarra\'s Theme\tNA')).toEqual([{ id: 'q_0Rgrl0zLw', title: "Deionarra's Theme", seconds: null }])
 })
