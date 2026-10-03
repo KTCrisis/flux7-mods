@@ -4,7 +4,7 @@
   "rate": -1,
   "piper": { "voice": "en_US-kristin-medium", "lengthScale": 1.0 },
   "color": "#2ee6e6",
-  "station": ["Simon Chylinski Subnautica", "Subnautica Below Zero soundtrack", "Loscil Submers", "Biosphere Substrata", "Austin Wintory Abzu", "Brian Eno Apollo", "Boards of Canada", "Hammock"],
+  "station": ["Simon Chylinski Subnautica", "Subnautica Below Zero soundtrack", "Loscil Submers", "Biosphere Substrata", "Austin Wintory Abzu", "Brian Eno Apollo", "Boards of Canada", "Hammock", "Philip Glass", "Max Richter"],
   "eyes": [
     {
       "x": 32,

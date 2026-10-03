@@ -56,7 +56,7 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
   {
     key: '1',
     label: 'ambient',
-    artists: ['Boards of Canada', 'Loscil', 'Helios', 'Múm', 'Kenji Kawai Ghost in the Shell', 'Rafael Anton Irisarri', 'Ulver Perdition City', 'Brian Eno', 'bean3'], discover: ['Grouper', 'Tim Hecker', 'William Basinski', 'Stars of the Lid', 'Hiroshi Yoshimura', 'Chihei Hatakeyama', 'Biosphere', 'Huerco S.'],
+    artists: ['Boards of Canada', 'Loscil', 'Helios', 'Múm', 'Kenji Kawai Ghost in the Shell', 'Rafael Anton Irisarri', 'Ulver Perdition City', 'Brian Eno', 'bxnwxghxrn'], discover: ['Grouper', 'Tim Hecker', 'William Basinski', 'Stars of the Lid', 'Hiroshi Yoshimura', 'Chihei Hatakeyama', 'Biosphere', 'Huerco S.'],
   },
   { key: '2', label: 'lofi', artists: ['Nujabes', 'Prefuse 73', 'cLOUDDEAD', 'DJ Shadow', 'Bonobo', 'Tomppabeats', 'Why?'], discover: ['Madlib', 'J Dilla', 'Flying Lotus', 'Knxwledge', 'Odd Nosdam', 'Jel Anticon', 'Blockhead', 'Elaquent'] },
   {
@@ -64,12 +64,12 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
     label: 'black metal',
     artists: ['Dissection', 'Cradle of Filth Dusk and Her Embrace', 'Emperor', 'Dimmu Borgir Enthrone Darkness Triumphant', 'Agalloch', 'Ulver Bergtatt', 'Arcturus', 'Blut Aus Nord', 'Wolves in the Throne Room'], discover: ['Deathspell Omega', 'Mgła', 'Panopticon', 'Alcest', 'Oranssi Pazuzu', 'Wiegedood', 'Cult of Luna', 'Russian Circles'],
   },
-  { key: '4', label: 'darksynth', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk'] },
-  { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel'], discover: ['Richard Devine', 'Proem', 'Lusine', 'Funckarma', 'Sewerslvt', 'Machine Girl', 'Rival Consoles', 'Max Cooper'] },
+  { key: '4', label: 'darksynth', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead', 'Master Boot Record'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk'] },
+  { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel', 'Jega'], discover: ['Richard Devine', 'Proem', 'Lusine', 'Funckarma', 'Sewerslvt', 'Machine Girl', 'Rival Consoles', 'Max Cooper'] },
   {
     key: '6',
     label: 'indie rock',
-    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT'], discover: ['Car Seat Headrest', 'Alex G', 'Duster Stratosphere', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra'],
+    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT', 'Ratatat'], discover: ['Car Seat Headrest', 'Alex G', 'Duster Stratosphere', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra'],
   },
   {
     key: '7',
@@ -78,6 +78,18 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
       'NieR Automata soundtrack Keiichi Okabe', 'Jeremy Soule Skyrim', 'Jeremy Soule Morrowind', 'Jeremy Soule Oblivion',
       'Akira Yamaoka Silent Hill', 'Deus Ex soundtrack', 'Christopher Larkin Hollow Knight', 'C418 Minecraft', 'Cyberpunk 2077 soundtrack',
     ], discover: ['Disasterpeace Fez', 'Lena Raine Celeste', 'Darren Korb Bastion', 'Austin Wintory Journey', 'Ben Prunty FTL', 'Toby Fox Undertale', 'Mick Gordon Doom', 'Hideki Naganuma'],
+  },
+  {
+    key: '8',
+    label: 'modern classical',
+    artists: ['Joe Hisaishi', 'Philip Glass', 'Max Richter', 'Kenji Kawai Ghost in the Shell', 'Ryuichi Sakamoto', 'Jóhann Jóhannsson'],
+    discover: ['Ólafur Arnalds', 'Nils Frahm', 'Arvo Pärt', 'Hildur Guðnadóttir', 'Steve Reich', 'Michael Nyman', 'Hania Rani', 'A Winged Victory for the Sullen'],
+  },
+  {
+    key: '9',
+    label: 'hip-hop',
+    artists: ['Wu-Tang Clan', 'Jedi Mind Tricks', 'cLOUDDEAD', 'Sage Francis', 'Danger Mouse', 'Why?'],
+    discover: ['MF DOOM', 'Cannibal Ox', 'Aesop Rock', 'Company Flow', 'Armand Hammer', 'billy woods', 'clipping.', 'Deltron 3030'],
   },
 ]
 
