@@ -560,7 +560,8 @@ export const register: Register = on => {
     if (intent.action === 'none') return next(e)
 
     if (intent.action !== 'play') {
-      if ((await read($, player)).pgid === null) return { drop: 'jukebox7: nothing is playing from here.' }
+      // Nothing plays: a bare stop, pause or next was meant for the assistant.
+      if ((await read($, player)).pgid === null) return next(e)
       if (intent.action === 'stop') {
         await stop($)
         $.ui.toast('music stopped')

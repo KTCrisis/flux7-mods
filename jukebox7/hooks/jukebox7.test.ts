@@ -79,10 +79,11 @@ test('Haiku saying none lets the prompt through', async ($, on) => {
   expect(argv).toEqual([])
 })
 
-test('pause sends no signal when nothing was started here', async ($, on) => {
-  const { argv } = engine(on, '{"action":"toggle"}')
-  const r = await $.prompt.submit(typed('coupe la musique'))
-  expect(r.drop).toContain('nothing is playing')
+test('a control word with nothing playing sends no signal and reaches the assistant', async ($, on) => {
+  const { argv } = engine(on, '{"action":"stop"}')
+  const r = await $.prompt.submit(typed('stop'))
+  expect(r.drop).toBeUndefined()
+  expect(r.text).toBe('stop')
   expect(argv).toEqual([])
 })
 
