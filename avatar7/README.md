@@ -155,7 +155,7 @@ reduction is contrast and a large central subject, so the prompt asks for:
 - a pure black or dark background;
 - high contrast and one dominant glow color.
 
-The eleven shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
+The twelve shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
 random unless given; the actual seed is in the PNG metadata):
 
 | id | style | prompt |
@@ -171,6 +171,7 @@ random unless given; the actual seed is in the PNG metadata):
 | fox | none, seed 1994 | frontal portrait of a cocky anthropomorphic fox fighter pilot, orange and white fur, sharp green eyes looking straight at the viewer with a confident smirk, a radio headset with a small microphone over the muzzle, green flight jacket collar with a white scarf, starfield and a blue cockpit glow behind, 1990s video game box art style, bold outlines, head centered and filling the frame, dark background, high contrast |
 | adjutant | none, seed 1999 | frontal symmetric portrait of a pale female android face, bald, porcelain white skin with thin seams, blank glowing pale blue eyes staring straight ahead, thick black cables and tubes plugged into the skull and neck, holographic blue scanlines and monitor glow, military command interface, face centered and filling the frame, pure black background, high contrast, cold cyan blue light, 1998 science fiction video game cinematic |
 | morte | none, seed 2009 | frontal portrait of a floating grinning human skull, cracked yellowed bone, empty dark eye sockets with tiny glowing embers, wide toothy grin with chattering teeth, mischievous expression, no body, faint purple and green planar haze, ink and watercolor dark fantasy illustration in the style of 1999 Planescape role-playing game art, skull centered and filling the frame, black background, high contrast |
+| pda | none, seed 2018 | frontal symmetric view of a rugged handheld survival PDA device floating in dark deep ocean water, a round glowing screen in the center showing a single luminous cyan signal ring like an eye, concentric rings, small status lights on a scratched white and orange casing, faint bubbles and bioluminescent particles around, device centered and filling the frame, pure black abyssal background, high contrast, cold cyan and teal glow, 2018 underwater survival video game interface |
 
 A render takes about 25 to 50 s on Krea 2 turbo.
 
@@ -198,6 +199,7 @@ mush, crop tighter or re-render with more contrast.
 | fox | `112 60 912 860` |
 | adjutant | `92 10 932 850` |
 | morte | `50 30 970 950` |
+| pda | `130 120 890 880` |
 
 ### 3. Features
 

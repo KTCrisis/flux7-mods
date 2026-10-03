@@ -7,7 +7,7 @@ const PANE = 'avatar7'
 const FACE = 'face'
 const FRAME_MS = 66
 const DEFAULT = 'shodan'
-const AVATARS = ['shodan', 'hal', 'glados', 'ada', 'duck7', 'pod042', 'kaneda', 'commis', 'fox', 'adjutant', 'morte']
+const AVATARS = ['shodan', 'hal', 'glados', 'ada', 'duck7', 'pod042', 'kaneda', 'commis', 'fox', 'adjutant', 'morte', 'pda']
 
 // Portraits are baked by tools/bake.py into W x H raw RGB pixels; each cell
 // is an upper half block, so two pixel rows per cell row.
@@ -71,8 +71,11 @@ const speakScript = (who: { voice: string; rate: number; pitch?: number }, vol: 
 // .venv with piper-tts, voices/<name>.onnx. A private voice at
 // custom/<avatar id>.onnx wins over the persona's (its own pace, no filter
 // unless custom/<id>.fx holds one): voices one keeps out of the repo.
+// Synthesis and playback are two runs so the line can be typed with the voice:
+// this one prints the WAV's path and its length in seconds, or speaks through
+// SAPI itself and prints nothing when Piper is missing.
 const PIPER = '$HOME/.local/share/piper'
-export const speakArgv = (id: string, who: Persona, vol: number): string[] => [
+export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
   'bash',
   '-c',
   [
@@ -88,10 +91,7 @@ export const speakArgv = (id: string, who: Persona, vol: number): string[] => [
     '    f=$(mktemp --suffix=.wav)',
     '    ffmpeg -loglevel error -y -i "$w" -af "$5" "$f" && mv "$f" "$w"',
     '  fi',
-    // SAPI plays the WAV: SoundPlayer on a \\wsl.localhost path can fall
-    // silent (returns at once, no error) while SAPI still reads it.
-    `  "${POWERSHELL}" -NoProfile -Command "\\$v=New-Object -ComObject SAPI.SpVoice; \\$s=New-Object -ComObject SAPI.SpFileStream; \\$s.Open('$(wslpath -w "$w")'); [void]\\$v.SpeakStream(\\$s); \\$s.Close()"`,
-    '  rm -f "$w"',
+    `  "${PIPER}/.venv/bin/python" -c 'import sys, wave; w = wave.open(sys.argv[1]); print(sys.argv[1]); print(w.getnframes() / w.getframerate())' "$w"`,
     'else',
     `  printf %s "$t" | "${POWERSHELL}" -NoProfile -Command "$4"`,
     'fi',
@@ -104,6 +104,22 @@ export const speakArgv = (id: string, who: Persona, vol: number): string[] => [
   who.piper?.fx ?? '',
   id,
 ]
+
+// SAPI plays the WAV: SoundPlayer on a \\wsl.localhost path can fall silent
+// (returns at once, no error) while SAPI still reads it.
+const playArgv = (wav: string): string[] => [
+  'bash',
+  '-c',
+  `"${POWERSHELL}" -NoProfile -Command "\\$v=New-Object -ComObject SAPI.SpVoice; \\$s=New-Object -ComObject SAPI.SpFileStream; \\$s.Open('$(wslpath -w "$1")'); [void]\\$v.SpeakStream(\\$s); \\$s.Close()"; rm -f "$1"`,
+  'avatar7-play',
+  wav,
+]
+
+// The line waits for its voice: typed from when SAPI starts the WAV (PowerShell
+// takes ~0.3 s to get there), over the audio's length. Without a WAV within
+// HOLD_FRAMES (Piper missing, SAPI speaking itself) it is typed anyway.
+const PLAY_LEAD_FRAMES = 5
+const HOLD_FRAMES = 75
 
 const STYLE = ' No quotes, no emoji, no em dash.'
 
@@ -173,6 +189,10 @@ export const register: Register = (on, options) => {
   let speakUntil = 0
   let typed = 0
   let lineLength = 0
+  // Characters typed per frame, from which frame, and which line they belong to.
+  let typeRate = 2
+  let typeFrom = 0
+  let lineSeq = 0
   let lastSpoke = -Infinity
   let isSpeaking = false
   let face: Uint8Array | null = null
@@ -193,6 +213,31 @@ export const register: Register = (on, options) => {
   // A call put to the permission prompt (a mesh7 hook's `ask`, a settings rule).
   let askSince: number | null = null
   let askCall = ''
+
+  // A new line under the face: held until its voice is ready, unless muted.
+  const startLine = (text: string, isQuiet: boolean): number => {
+    lineLength = text.length
+    typed = 0
+    typeRate = 2
+    typeFrom = isQuiet ? frame : frame + HOLD_FRAMES
+    speakUntil = typeFrom + Math.ceil(text.length / 2) + 10
+    lineSeq += 1
+    return lineSeq
+  }
+
+  // The WAV synthArgv made, its line then typed over the audio's length while
+  // SAPI plays it; '' when SAPI already spoke.
+  const voiced = (seq: number, stdout: string, length: number): string => {
+    const [wav = '', seconds = ''] = stdout.trim().split('\n')
+    const frames = Math.round((Number(seconds) * 1000) / FRAME_MS)
+    if (wav === '' || !(frames > 0)) return ''
+    if (seq === lineSeq) {
+      typeRate = Math.max(length / frames, 0.2)
+      typeFrom = frame + PLAY_LEAD_FRAMES
+      speakUntil = typeFrom + frames
+    }
+    return wav
+  }
 
   const pixel = (x: number, y: number): number => {
     const t = frame * (FRAME_MS / 1000)
@@ -336,25 +381,26 @@ export const register: Register = (on, options) => {
           await $.ui.open({ id: PANE, title: who.name })
   
           const text = personalize(who.greeting, userName, who.nobody)
-          lineLength = text.length
-          typed = 0
-          speakUntil = frame + Math.ceil(text.length / 2) + 10
+          const isQuiet = await read($, isMuted)
+          const seq = startLine(text, isQuiet)
           await update($, line, () => ({ text, at: frame }) satisfies Line)
-          if (!(await read($, isMuted))) {
+          if (!isQuiet) {
             const voice = who
             $.clock.after(1, async () => {
-              await $.process.run(speakArgv(id, voice, await read($, volume)), {
+              const made = await $.process.run(synthArgv(id, voice, await read($, volume)), {
                 stdin: text,
                 timeoutMs: 30_000,
               })
+              const wav = voiced(seq, made.stdout, text.length)
+              if (wav !== '') await $.process.run(playArgv(wav), { timeoutMs: 60_000 })
             })
           }
         })()
       }
       if (frame > moodUntil && mood !== 'idle') mood = 'idle'
       void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
-      if (typed < lineLength) {
-        typed = Math.min(lineLength, typed + 2)
+      if (typed < lineLength && frame >= typeFrom) {
+        typed = Math.min(lineLength, typed + typeRate)
         $.ui.invalidate('ui.render')
       } else if (frame % REFIT_FRAMES === 0) {
         $.ui.invalidate('ui.render')
@@ -425,15 +471,16 @@ export const register: Register = (on, options) => {
           const text = r.isAnswered
             ? (r.text.trim().split('\n')[0] ?? '')
             : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
-          lineLength = text.length
-          typed = 0
-          speakUntil = frame + Math.ceil(text.length / 2) + 10
+          const isQuiet = await read($, isMuted)
+          const seq = startLine(text, isQuiet)
           await update($, line, () => ({ text, at: frame }) satisfies Line)
-          if (!(await read($, isMuted))) {
-            await $.process.run(speakArgv(await read($, onDuty), voice, await read($, volume)), {
+          if (!isQuiet) {
+            const made = await $.process.run(synthArgv(await read($, onDuty), voice, await read($, volume)), {
               stdin: text,
               timeoutMs: 30_000,
             })
+            const wav = voiced(seq, made.stdout, text.length)
+            if (wav !== '') await $.process.run(playArgv(wav), { timeoutMs: 60_000 })
           }
         } finally {
           isSpeaking = false
@@ -552,7 +599,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const last = await read($, line)
-    const shown = last.text.slice(0, typed)
+    const shown = last.text.slice(0, Math.floor(typed))
     const color = who?.color ?? '#00ff9c'
 
     if (e.surface !== 'terminal') {
