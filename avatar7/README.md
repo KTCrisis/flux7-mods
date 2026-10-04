@@ -331,7 +331,7 @@ with "wide flat horizontal panoramic composition, the scene fills the lower
 two thirds, dark empty sky above, no people, no text"), saved as
 `personas/<id>/scene.png`, then:
 
-    python3 tools/bake_scene.py <id>
+    python3 tools/bake_scene.py <id>   # --sharpen 120 by default, 0 for none
 
 writes `scene.rgb` (512x192) and `scene-preview.png`; name it in `ambient`:
 `{"kind": "scene", "color": "...", "file": "scene.rgb", "width": 512, "height": 192, "animate": [...]}`.
