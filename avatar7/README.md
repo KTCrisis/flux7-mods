@@ -3,7 +3,8 @@
 A machine face in a Claude Code pane. It watches every tool call of the
 session, changes color with the outcome, and comments in one spoken line, in
 the voice and temper of the chosen avatar: SHODAN, HAL 9000, a GLaDOS-like lab
-AI, or Ada, a benevolent brass automaton.
+AI, Ada, a benevolent brass automaton, Nova, a Miami night radio host, and
+ten more. A backdrop of its world fills the black around the face.
 
 It is a mod: a plugin of function hooks that runs inside one Claude Code
 session. It sees the session's events at the source and nothing of other
@@ -174,6 +175,27 @@ refuses reads as a failure, and a held one as a success.
 - The clock calls `$.ui.blit` every 66 ms, which repaints the mounted Raster
   without a render pass.
 
+### Ambient
+
+The black around the face holds each persona's backdrop and weather
+(`hooks/ambient.ts`, `ambient` in `persona.json`): a margin either side of the
+face and a band under the text, three more Rasters repainted every third
+frame (5 a second), about 1 ms each on a 160-column pane.
+
+- A `scene` layer is a wide studio render baked by `tools/bake_scene.py`,
+  fitted to the pane's width and anchored to the band's bottom, its top fading
+  into the black. `animate` picks what moves in it: `beacons` (red lights
+  blink), `neon` (saturated signs flicker), `windows` (points of light go dark
+  and come back).
+- The layers above it add their light: `rain`, `rise` (bubbles, embers,
+  steam), `wind`, `stars`, `bolt` (rare, frequent on a refusal), `pulse`
+  (wires), `grid` (an outrun floor, `floor` its depth as a share of the
+  width), `skyline` (a box-drawing city, unused since the scenes). Each takes
+  `color`, `density`, `speed`. Every pixel is a function of its place and
+  time through hashed noise; nothing is kept per drop.
+- The ambient's clock runs twice as fast on an error or a refusal and half as
+  fast while a human decides. During a visit the guest's ambient shows.
+
 `Image` (real pixels) would be sharper but needs the kitty graphics protocol
 (kitty, Ghostty); Windows Terminal shows only its alt text, hence the Raster.
 
@@ -259,6 +281,7 @@ renders from a prompt:
 | morte | edit, seed 2009 | Boogu Edit (`mode: edit`) of a Planescape: Torment still of Morte: "keep this exact floating skull with its bulging eyes and open toothy jaw, turn it to face the viewer straight on, centered and filling the frame, replace the whole background with pure black, keep the painted 1999 game art style", then a second edit of that (seed 2009) setting it in the dim Planescape Mortuary: stone vaults, purple and green planar haze, a distant candle |
 | pda | none, seed 2018 | frontal symmetric view of a rugged handheld survival PDA device floating in dark deep ocean water, a round glowing screen in the center showing a single luminous cyan signal ring like an eye, concentric rings, small status lights on a scratched white and orange casing, faint bubbles and bioluminescent particles around, device centered and filling the frame, pure black abyssal background, high contrast, cold cyan and teal glow, 2018 underwater survival video game interface |
 | lain | `libre`, seed 1998 | frontal portrait of a quiet teenage girl with a short brown bob haircut, one long lock of hair on her left side held by a small X shaped clip, large pale grey eyes staring straight at the viewer, pale skin lit by the faint glow of an old CRT monitor, tangled cables and telephone wires blurred in the darkness behind, late 1990s anime cel animation style, melancholic and distant, face centered and filling the frame, black background, high contrast, cold blue glow with a touch of red |
+| nova | `libre`, seed 1986 | frontal portrait of a late-night radio DJ woman in 1986 Miami, voluminous dark curly hair, large retro headphones around her neck, aviator sunglasses pushed up on her head, calm half-lidded confident eyes looking straight at the viewer, a faint knowing smile, a chrome studio microphone at the edge of the frame, magenta and cyan neon light on her face, synthwave airbrush art style, face centered and filling the frame, dark background, high contrast |
 | tachikoma | `libre`, seed 2002 | frontal view of a small cobalt blue spider-like AI think-tank robot facing the viewer, a round bulbous abdomen pod behind, three large round glowing optical sensors clustered on its front like curious eyes, two small manipulator arms, glossy rounded armor, childlike curious pose, late 1990s anime mecha cel style, robot centered and filling the frame, black background, high contrast, cyan and white glow |
 
 A render takes about 25 to 50 s on Krea 2 turbo.
@@ -290,6 +313,19 @@ mush, crop tighter or re-render with more contrast.
 | pda | `130 120 890 880` |
 | lain | `140 60 880 800` |
 | tachikoma | `112 160 912 960` |
+| nova | `160 50 880 770` |
+
+### 2a. Scene (optional)
+
+A wide render for the band under the text (1536x576, Krea 2, the prompt ends
+with "wide flat horizontal panoramic composition, the scene fills the lower
+two thirds, dark empty sky above, no people, no text"), saved as
+`personas/<id>/scene.png`, then:
+
+    python3 tools/bake_scene.py <id>
+
+writes `scene.rgb` (384x144) and `scene-preview.png`; name it in `ambient`:
+`{"kind": "scene", "color": "...", "file": "scene.rgb", "width": 384, "height": 144, "animate": [...]}`.
 
 ### 2b. Frames (optional)
 
@@ -412,5 +448,6 @@ Morte's and GLaDOS's, edited from stills of their games.
 - **The Tachikoma**: *Ghost in the Shell: Stand Alone Complex*, Production
   I.G, 2002, after Masamune Shirow; its fallback name for an unnamed user is
   Batou.
+- **Nova** is our own, the late-night host of a Miami FM station in 1986.
 - **duck7** is our own: the crowned mallard of the status line, a claude-buddy
   companion, given a face.

@@ -4,7 +4,7 @@
   "rate": -2,
   "piper": { "voice": "en_US-amy-medium", "lengthScale": 1.12, "fx": "aresample=22050,asetrate=22050*0.9,aresample=22050,asplit[a][b];[b]asetrate=22050*0.5,aresample=22050,atempo=2.0,lowpass=f=700,volume=0.4[lo];[a][lo]amix=inputs=2:normalize=0,flanger=delay=3:depth=3:speed=0.3,aecho=0.8:0.6:60|130:0.35|0.2,acrusher=bits=10:mode=log:aa=1,highpass=f=80,volume=1.4" },
   "color": "#00ff9c",
-  "ambient": [{"kind": "rain", "color": "#00ff9c", "density": 0.25, "speed": 24}, {"kind": "bolt", "color": "#c8fff0"}],
+  "ambient": [{"kind": "scene", "color": "#00ff9c", "file": "scene.rgb", "width": 384, "height": 144, "animate": ["windows"]}, {"kind": "rain", "color": "#00ff9c", "density": 0.25, "speed": 24}, {"kind": "bolt", "color": "#c8fff0"}],
   "station": ["System Shock soundtrack", "Skinny Puppy", "Autechre", "Venetian Snares", "Perturbator", "Blut Aus Nord", "Atari Teenage Riot", "Deus Ex soundtrack", "Dimmu Borgir Enthrone Darkness Triumphant", "Crystal Castles"],
   "eyes": [
     {

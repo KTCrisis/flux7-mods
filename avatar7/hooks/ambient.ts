@@ -3,7 +3,7 @@
 // and the ambient's own time through hashed noise, so no drop is kept; only
 // the skyline and the current bolt are cached, per field size.
 
-export type AmbientKind = 'rain' | 'rise' | 'wind' | 'stars' | 'bolt' | 'skyline' | 'pulse' | 'scene'
+export type AmbientKind = 'rain' | 'rise' | 'wind' | 'stars' | 'bolt' | 'skyline' | 'pulse' | 'scene' | 'grid'
 
 // density: the share of columns, rows or pixels that carry something (0-1);
 // speed: pixels a second for what moves, the twinkle's pace for stars.
@@ -20,6 +20,12 @@ export type AmbientLayer = {
   width?: number
   height?: number
   pixels?: Uint8Array
+  // What moves in a scene: blinking red beacons, flickering neon signs,
+  // windows going dark; none when absent, the backdrop then stays still.
+  animate?: ('beacons' | 'neon' | 'windows')[]
+  // grid: the floor's depth on screen, as a share of the field's width (a
+  // scene's height follows the width, so the horizon stays on its sea line).
+  floor?: number
 }
 
 // The field the layers draw on: the pane's width in pixels, and the face's
@@ -146,6 +152,7 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
   const h = Math.max(1, Math.round((sh * w) / sw))
   const rgbOut = new Uint32Array(w * h)
   const sort = new Uint8Array(w * h)
+  const lums = new Float32Array(w * h)
   for (let y = 0; y < h; y++) {
     const y0 = Math.floor((y * sh) / h)
     const y1 = Math.max(y0 + 1, Math.floor(((y + 1) * sh) / h))
@@ -186,7 +193,19 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
       const lum = (0.3 * r + 0.59 * g + 0.11 * b) / n
       const at = y * w + x
       rgbOut[at] = scale(best >= 0 ? bestColor : mean, fade)
-      sort[at] = best >= 0 ? bestSort : lum > 70 ? WINDOW : STILL
+      sort[at] = best >= 0 ? bestSort : STILL
+      lums[at] = lum
+    }
+  }
+  // A window is a point of light: brighter than the pixels around it, not a
+  // lit wall or a patch of sky, which would go dark in specks.
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const at = y * w + x
+      if (sort[at] !== STILL || lums[at] < 60) continue
+      let around = 0
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) around += lums[at + dy * w + dx]
+      if (lums[at] > 1.35 * ((around - lums[at]) / 8)) sort[at] = WINDOW
     }
   }
   sceneOf = px
@@ -203,7 +222,12 @@ const scenePixel = (layer: AmbientLayer, f: Field, x: number, y: number, t: numb
   if (sy < 0 || x >= s.width) return -1
   const at = sy * s.width + x
   let k = SCENE
-  switch (s.sort[at]) {
+  const moves = layer.animate ?? []
+  const sort = s.sort[at]
+  if (!(sort === BEACON ? moves.includes('beacons') : sort === NEON_SIGN ? moves.includes('neon') : sort === WINDOW && moves.includes('windows'))) {
+    return scale(s.rgb[at], k)
+  }
+  switch (sort) {
     case BEACON:
       k *= (t * 0.8 + hash(x >> 1, sy >> 1, 77)) % 1 < 0.6 ? 1 : 0.2
       break
@@ -211,7 +235,7 @@ const scenePixel = (layer: AmbientLayer, f: Field, x: number, y: number, t: numb
       k *= hash(x >> 2, Math.floor(t * 6), 78) < 0.03 ? 0.3 : 1
       break
     case WINDOW:
-      k *= hash(x, sy, Math.floor(t / 4 + hash(x, sy, 79) * 7)) < 0.1 ? 0.4 : 1
+      k *= hash(x, sy, Math.floor(t / 4 + hash(x, sy, 79) * 7)) < 0.15 ? 0.45 : 1
       break
   }
   return scale(s.rgb[at], k)
@@ -275,6 +299,23 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
     case 'scene':
       // Drawn in color by scenePixel.
       return 0
+    case 'grid': {
+      // An outrun floor: rows closer together toward the horizon, scrolling
+      // toward the viewer; rays fanning out from its middle.
+      const horizon = f.height - Math.max(2, Math.round(f.width * (layer.floor ?? 0.1)))
+      if (y < horizon) return 0
+      if (y === horizon) return 1
+      const depth = (y - horizon) / (f.height - horizon)
+      // One pixel row spans this much of the floor: a line lands on the row
+      // that holds it, so lines stay one pixel thin up to the horizon.
+      const near = 4 / depth
+      const far = 4 / ((y - horizon + 1) / (f.height - horizon))
+      const shift = t * (speed ?? 1.5)
+      const isRow = Math.floor(near + shift) !== Math.floor(far + shift)
+      const ray = ((x - f.width / 2) * depth) / 6
+      const isRay = Math.abs(ray - Math.round(ray)) < 0.5 * depth / 6 + 0.04
+      return isRow || isRay ? 0.35 + 0.65 * depth : 0
+    }
     case 'pulse': {
       // Wires every 9 rows, a bright pulse running along each.
       if (y % 9 !== 4) return 0
@@ -286,8 +327,16 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
   }
 }
 
-// The color of a field pixel: the last layer that lights it wins, black when
-// none does. `isStorm` raises bolts on a refusal.
+// Light added to light, each channel capped: a faint drop over a bright sky
+// brightens it a little instead of punching a dark hole in it.
+const add = (a: number, b: number): number =>
+  (Math.min(255, ((a >> 16) & 0xff) + ((b >> 16) & 0xff)) << 16) |
+  (Math.min(255, ((a >> 8) & 0xff) + ((b >> 8) & 0xff)) << 8) |
+  Math.min(255, (a & 0xff) + (b & 0xff))
+
+// The color of a field pixel: a scene lays its backdrop, the layers above
+// add their light to it; black when nothing does. `isStorm` raises bolts on
+// a refusal.
 export const ambientPixel = (layers: AmbientLayer[], f: Field, x: number, y: number, t: number, isStorm: boolean): number => {
   let out = 0
   for (const layer of layers) {
@@ -297,7 +346,7 @@ export const ambientPixel = (layers: AmbientLayer[], f: Field, x: number, y: num
       continue
     }
     const k = light(layer, f, x, y, t, isStorm)
-    if (k > 0) out = scale(rgb(layer.color), k * DIM)
+    if (k > 0) out = add(out, scale(rgb(layer.color), k * DIM))
   }
   return out
 }
