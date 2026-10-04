@@ -301,10 +301,8 @@ brows, then:
 a few pixels, sometimes much more, which would make the face jitter), with
 the same box: the shift is the peak of the cross-correlation of the two
 images' edges, within `--reach` pixels (40 by default; GLaDOS needed 200).
-A persona without frames keeps its single face. Lain, duck7, Kaneda, the
-Tachikoma and the PDA have both (for the lenses `talk` is a brighter eye and
-`deny` a red one). The others were tried and dropped: their edits moved or
-rescaled the subject enough to jump at every flap, even aligned.
+Only a few personas are animated: Lain, duck7, Kaneda, the Tachikoma and
+the PDA. The others keep a single face.
 
 ### 3. Features
 
