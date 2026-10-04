@@ -693,11 +693,6 @@ export const register: Register = (on, options) => {
     const kind = await $.process.run(['sh', '-c', 'printf %s "$CLAUDE_CODE_SESSION_KIND"'])
     if (kind.stdout === 'bg') return next(e)
 
-    // Open first, before the personas load: the pane opened first is the
-    // one shown, and mesh7-pane or jukebox7 would take that place. The title
-    // follows once the persona is read.
-    void $.ui.open({ id: PANE, title: 'avatar7' })
-
     await $.command.register({
       name: 'avatar',
       description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar duo [id], /avatar events on|off, /avatar visits on|off`,
@@ -930,8 +925,13 @@ export const register: Register = (on, options) => {
       })
     })
 
+    // Opened after the plugins beneath have started: the pane opened last is
+    // the one shown, and mesh7-pane or jukebox7 would take that place. Once
+    // more a moment later, should one of them open late.
+    const started = await next(e)
     void $.ui.open({ id: PANE, title: who?.name ?? 'avatar7' })
-    return next(e)
+    $.clock.after(1500, () => void $.ui.open({ id: PANE, title: who?.name ?? 'avatar7' }))
+    return started
   })
 
   on('command.run', { command: 'avatar' }, async ($, e) => {
