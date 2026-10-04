@@ -23,17 +23,20 @@ const engine = (on: On, intent: string, kind = '', fails: (argv: string[]) => bo
     return { value: { exitCode: fails(a) ? 7 : 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
   })
   on('clock.now', () => ({ value: 1_000_000 }) as never)
-  on('ui.status', () => undefined)
+  on('ui.status', () => ({ value: undefined }) as never)
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('ui.close', () => ({ value: undefined }) as never)
   on('ui.toast', ($, e) => {
     toasts.push(e.text)
+    return { value: undefined } as never
   })
   on('prompt.submit', ($, e) => ({ text: e.text }))
   return { argv, toasts, say: next => (said.intent = next) }
 }
 
 const typed = (text: string) => ({ text, wait: false, origin: { kind: 'composer' } }) as never
+// /music as the user types it.
+const music = (args: string) => ({ command: 'music', args, origin: { kind: 'composer' } }) as never
 
 test('a prompt without a music word reaches the session untouched', async ($, on) => {
   const { argv } = engine(on, '{"action":"play","query":"x","long":true}')
@@ -129,8 +132,8 @@ test('louder and quieter move the volume by steps, kept within 0 and 125', async
   const r = await $.prompt.submit(typed('monte le son'))
   expect(r.drop).toBe('jukebox7: volume 90%')
   expect(argv.at(-1)).toEqual(volumeArgv(90))
-  expect((await $.command.run({ command: 'music', args: 'vol 200' })).text).toBe('Volume 125%.')
-  expect((await $.command.run({ command: 'music', args: 'vol -130' })).text).toBe('Volume 0%.')
+  expect((await $.command.run(music('vol 200'))).text).toBe('Volume 125%.')
+  expect((await $.command.run(music('vol -130'))).text).toBe('Volume 0%.')
   expect(volumeArgv(125).at(-1)).toContain('val=320')
   expect(clampVolume(-5)).toBe(0)
 })
@@ -222,9 +225,9 @@ test('a track listed without duration asks yt-dlp for its own, for the progress 
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
   })
   on('clock.now', () => ({ value: 1_000_000 }) as never)
-  on('ui.status', () => undefined)
+  on('ui.status', () => ({ value: undefined }) as never)
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
-  on('ui.toast', () => undefined)
+  on('ui.toast', () => ({ value: undefined }) as never)
   on('prompt.submit', ($, e) => ({ text: e.text }))
   await $.prompt.submit(typed('joue I Was Born des Unicorns'))
   expect(argv).toContainEqual(durationArgv('e9OLLTKryiA'))
@@ -254,7 +257,7 @@ test('next walks songs only, and past the last one the list ends instead of wrap
   const { argv } = engine(on, '{"action":"play","query":"ambient music","long":true}')
   await $.prompt.submit(typed('joue moi un peu de musique ambient'))
   // The 12000 s mix is no song: nothing follows Tranquility.
-  const end = await $.command.run({ command: 'music', args: 'next' })
+  const end = await $.command.run(music('next'))
   expect(end.text).toBe('End of the list.')
   expect(argv.filter(a => a[0] === 'bash' && a.at(-1) === 'DRFHklnN-SM')).toHaveLength(1)
   expect(argv.some(a => a.at(-1) === 'A8ChCZExAsw')).toBe(false)
@@ -263,8 +266,8 @@ test('next walks songs only, and past the last one the list ends instead of wrap
 test('a pause VLC does not answer leaves the state playing', async ($, on) => {
   engine(on, '{"action":"play","query":"ambient music","long":true}', '', a => a.some(x => x.includes('pl_forcepause')))
   await $.prompt.submit(typed('joue moi un peu de musique ambient'))
-  const r = await $.command.run({ command: 'music', args: 'pause' })
+  const r = await $.command.run(music('pause'))
   expect(r.text).toBe('VLC did not answer; nothing changed.')
-  const again = await $.command.run({ command: 'music', args: '' })
+  const again = await $.command.run(music(''))
   expect(again.text).toContain('Playing')
 })

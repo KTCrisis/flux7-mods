@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Engine, Register } from 'claude-code'
+import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import type { Player, Say, Track } from '../types'
 
@@ -430,7 +430,9 @@ async function toggle($: Engine): Promise<Player | undefined> {
   return q
 }
 
-const isAvatarVoicing = async ($: Engine): Promise<boolean> => (await $.state.get({ plugin: 'avatar7', key: 'isVoicing' })) === true
+async function isAvatarVoicing($: Engine): Promise<boolean> {
+  return (await $.state.get({ plugin: 'avatar7', key: 'isVoicing' })).value === true
+}
 
 async function louder($: Engine, delta: number): Promise<number> {
   const v = clampVolume((await read($, volume)) + delta)
@@ -537,7 +539,7 @@ export const rain = (columns: number, rows: number, tick: number): { level: 0 | 
       const head = (Math.floor((tick * speed) / 2) + hash(c * 29 + 3)) % span
       const behind = head - r
       const level: 0 | 1 | 2 = c % 2 === 1 || behind < 0 || behind > TRAIL ? 0 : behind === 0 ? 2 : 1
-      const ch = level === 0 ? ' ' : GLYPHS[hash(c * 131 + r * 17 + Math.floor(tick / 3)) % GLYPHS.length]
+      const ch = level === 0 ? ' ' : (GLYPHS[hash(c * 131 + r * 17 + Math.floor(tick / 3)) % GLYPHS.length] ?? ' ')
       const last = runs[runs.length - 1]
       if (last !== undefined && last.level === level) last.text += ch
       else runs.push({ level, text: ch })
@@ -807,9 +809,9 @@ export const register: Register = on => {
         </Box>
         <Box flexDirection="column" flexGrow={1} paddingX={1} backgroundColor={BLACK}>
           {rain(rainColumns, rainRows, frame).map((runs, r) => (
-            <Text key={r} backgroundColor={BLACK}>
+            <Text key={String(r)} backgroundColor={BLACK}>
               {runs.map((run, i) => (
-                <Text key={i} color={run.level === 2 ? '#e8fff4' : accent} dimColor={run.level === 1}>
+                <Text key={String(i)} color={run.level === 2 ? '#e8fff4' : accent} dimColor={run.level === 1}>
                   {run.text}
                 </Text>
               ))}

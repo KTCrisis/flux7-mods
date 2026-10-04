@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Engine, Register } from 'claude-code'
+import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import type { Announce, Line, Say, Station } from '../types'
 import { ambientCells, ambientPixel, QUAD, type AmbientLayer, type Field } from './ambient'
@@ -733,9 +733,9 @@ export const register: Register = (on, options) => {
     if (img === null || who === null) return noise(x * 7 + frame, y) < 0.3 ? 0x1a2a22 : 0x020806
 
     const i = (y * W + gx) * 3
-    let r = img[i]
-    let g = img[i + 1]
-    let b = img[i + 2]
+    let r = img[i] ?? 0
+    let g = img[i + 1] ?? 0
+    let b = img[i + 2] ?? 0
     // No eye glow, blink or pulse for now: on several portraits the ellipses
     // missed the eyes and read as smudges. `eyes` and `mouth` stay in each
     // persona.json for a better effect.
@@ -980,7 +980,7 @@ export const register: Register = (on, options) => {
           } else if (r.cmd === 'visits') {
             visitsOn = !visitsOn
             await $.store.set('visits', visitsOn)
-          } else {
+          } else if (r.cmd === 'volume') {
             const step = r.step * VOLUME_STEP
             const v = await update($, volume, was => Math.min(100, Math.max(0, was + step)))
             await $.store.set('volume', v)
@@ -1109,6 +1109,9 @@ export const register: Register = (on, options) => {
               prompt =
                 `You asked the user: ${ask.question}\nThe user answered: ${ask.answer}\n` +
                 `React in character: challenge it, approve it your way, or ask one follow-up.`
+            } else if ('greet' in ask) {
+              // Spoken as written, before any call here.
+              return ask.greet
             } else {
               prompt = asked === '' ? `Event: ${ask.event}` : `The user asked: ${asked}\nEvent: ${ask.event}`
             }
@@ -1132,7 +1135,7 @@ export const register: Register = (on, options) => {
           if (text === '') return
           // An opinion that ends on a question opens the answer field too.
           // A chat's question is answered by the next chat.
-          if (isChat && typeof ask === 'object' && 'chat' in ask) {
+          if (typeof ask === 'object' && 'chat' in ask) {
             const past = [...(chats.get(voiceId) ?? []), `User: ${ask.chat}`, `${voice.name}: ${text}`]
             chats.set(voiceId, past.slice(-CHAT_LINES))
           }
@@ -1140,10 +1143,8 @@ export const register: Register = (on, options) => {
             openQuestion = { text, at: frame }
             $.ui.invalidate('ui.render')
           }
-          if (text !== '') {
-            recentLines.push(text)
-            if (recentLines.length > RECENT_LINES) recentLines.shift()
-          }
+          recentLines.push(text)
+          if (recentLines.length > RECENT_LINES) recentLines.shift()
           const isDuo = typeof ask === 'object' && 'duo' in ask
           const shown = isDuo ? `${voice.name}: ${text}` : text
           const isQuiet = await read($, isMuted)

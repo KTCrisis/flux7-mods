@@ -25,7 +25,7 @@ const engine = (on: On, kind: string, seen?: (argv: string[]) => void): { comman
   on('fs.read', () => {
     throw new Error('no file here')
   })
-  on('ui.log', () => undefined)
+  on('ui.log', () => ({ value: undefined }) as never)
   on('ui.open', ($, e) => {
     panes.push((e as { id: string }).id)
     return { value: { isPlaced: true } } as never
@@ -108,9 +108,9 @@ test('the queue speaks the most urgent first, the oldest among equals, and drops
   q = enqueue(q, { mood: 'watch', event: 'music on' }, 2)
   q = enqueue(q, { mood: 'deny', event: 'mesh7 halted' }, 3)
   q = enqueue(q, { mood: 'error', event: 'context full' }, 4)
-  expect(q.map(x => (x.ask === 'talk' ? 'talk' : x.ask.event))).toEqual(['mesh7 halted', 'context full', 'render ready', 'music on'])
+  expect(q.map(x => (x.ask === 'talk' ? 'talk' : typeof x.ask === 'object' && 'event' in x.ask ? x.ask.event : '?'))).toEqual(['mesh7 halted', 'context full', 'render ready', 'music on'])
   q = enqueue(q, 'talk', 5)
-  expect(q.map(x => (x.ask === 'talk' ? 'talk' : x.ask.event))).toEqual(['talk', 'mesh7 halted', 'context full', 'render ready'])
+  expect(q.map(x => (x.ask === 'talk' ? 'talk' : typeof x.ask === 'object' && 'event' in x.ask ? x.ask.event : '?'))).toEqual(['talk', 'mesh7 halted', 'context full', 'render ready'])
 })
 
 test('a line that waited too long is dropped, a poke never', () => {
@@ -242,7 +242,7 @@ test('a listed command earns a line with what it means; any other passes in sile
 })
 
 test('the ambient draws only where a layer lights, and stays dim', async () => {
-  const f = { width: 40, height: 60 }
+  const f = { width: 40, height: 60, sceneTop: 0, sceneBottom: 60 }
   expect(ambientPixel([], f, 5, 5, 1, false)).toBe(0)
   const rain = [{ kind: 'rain' as const, color: '#00ff9c', density: 1 }]
   let lit = 0
@@ -297,7 +297,7 @@ test('a /clear keeps a relay held by force; any other end gives it back', async 
   await $.session.start({ cwd: '/home/u' } as never)
   await $.session.end({ reason: 'clear' } as never)
   expect(released).toEqual(['test-session'])
-  await $.command.run({ command: 'avatar', args: 'remote on' })
+  await $.command.run({ command: 'avatar', args: 'remote on' } as never)
   await $.session.end({ reason: 'clear' } as never)
   expect(released).toEqual(['test-session'])
   await $.session.end({ reason: 'prompt_input_exit' } as never)

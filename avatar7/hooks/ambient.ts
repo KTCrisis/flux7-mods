@@ -104,6 +104,7 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
   const rgbOut = new Uint32Array(w * h)
   const sort = new Uint8Array(w * h)
   const lums = new Float32Array(w * h)
+  const lumAt = (at: number): number => lums[at] ?? 0
   for (let y = 0; y < h; y++) {
     const y0 = Math.min(sh - 1, Math.floor((y + top) / k))
     const y1 = Math.max(y0 + 1, Math.min(sh, Math.floor((y + 1 + top) / k)))
@@ -124,9 +125,9 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
       for (let sy = y0; sy < y1; sy++) {
         for (let sx = x0; sx < x1; sx++) {
           const i = (sy * sw + sx) * 3
-          const pr = px[i]
-          const pg = px[i + 1]
-          const pb = px[i + 2]
+          const pr = px[i] ?? 0
+          const pg = px[i + 1] ?? 0
+          const pb = px[i + 2] ?? 0
           r += pr
           g += pg
           b += pb
@@ -160,17 +161,17 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
       const at = y * w + x
       if (sort[at] !== NEON_SIGN) continue
       let beside = 0
-      for (const dy of [-2, 0, 2]) beside += lums[at + dy * w - SIDE] + lums[at + dy * w + SIDE]
-      if (lums[at] < 1.3 * (beside / 6)) sort[at] = STILL
+      for (const dy of [-2, 0, 2]) beside += lumAt(at + dy * w - SIDE) + lumAt(at + dy * w + SIDE)
+      if (lumAt(at) < 1.3 * (beside / 6)) sort[at] = STILL
     }
   }
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
       const at = y * w + x
-      if (sort[at] !== STILL || lums[at] < 60) continue
+      if (sort[at] !== STILL || lumAt(at) < 60) continue
       let around = 0
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) around += lums[at + dy * w + dx]
-      if (lums[at] > 1.35 * ((around - lums[at]) / 8)) sort[at] = WINDOW
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) around += lumAt(at + dy * w + dx)
+      if (lumAt(at) > 1.35 * ((around - lumAt(at)) / 8)) sort[at] = WINDOW
     }
   }
   sceneOf = px
@@ -190,7 +191,7 @@ const scenePixel = (layer: AmbientLayer, f: Field, x: number, y: number, t: numb
   const moves = layer.animate ?? NO_MOVES
   const sort = s.sort[at]
   if (!(sort === BEACON ? moves.includes('beacons') : sort === NEON_SIGN ? moves.includes('neon') : sort === WINDOW && moves.includes('windows'))) {
-    return scale(s.rgb[at], k)
+    return scale(s.rgb[at] ?? 0, k)
   }
   switch (sort) {
     case BEACON:
@@ -203,7 +204,7 @@ const scenePixel = (layer: AmbientLayer, f: Field, x: number, y: number, t: numb
       k *= hash(x, sy, Math.floor(t / 4 + hash(x, sy, 79) * 7)) < 0.15 ? 0.45 : 1
       break
   }
-  return scale(s.rgb[at], k)
+  return scale(s.rgb[at] ?? 0, k)
 }
 
 // A bolt strikes in a slot of 0.4 s: rarely on its own, every slot while
@@ -255,7 +256,7 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
     case 'bolt': {
       const path = bolt(f, t, isStorm)
       if (path === null) return 0
-      const d = Math.abs(path[y] - x)
+      const d = Math.abs((path[y] ?? -9) - x)
       return d === 0 ? 1 : d === 1 ? 0.25 : 0
     }
     case 'scene':
@@ -337,17 +338,21 @@ const QUADRANTS = [0x20, 0x2598, 0x259d, 0x2580, 0x2596, 0x258c, 0x259e, 0x259b,
 const distance = (a: number, b: number): number =>
   Math.abs(((a >> 16) & 0xff) - ((b >> 16) & 0xff)) + Math.abs(((a >> 8) & 0xff) - ((b >> 8) & 0xff)) + Math.abs((a & 0xff) - (b & 0xff))
 
-const mean = (colors: number[]): number => {
+// The mean color of the quarters in `mask` (bit m: quarter m), 0 for none.
+const meanOf = (q: readonly number[], mask: number): number => {
   let r = 0
   let g = 0
   let b = 0
-  for (const c of colors) {
+  let n = 0
+  for (let m = 0; m < 4; m++) {
+    if ((mask & (1 << m)) === 0) continue
+    const c = q[m] ?? 0
     r += (c >> 16) & 0xff
     g += (c >> 8) & 0xff
     b += c & 0xff
+    n += 1
   }
-  const n = colors.length
-  return (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n)
+  return n === 0 ? 0 : (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n)
 }
 
 // A Raster's cells for the field's rectangle at column x0 and pixel row y0,
@@ -371,7 +376,7 @@ export const ambientCells = (layers: AmbientLayer[], f: Field, x0: number, y0: n
       let far = -1
       for (let m = 0; m < 4; m++) {
         for (let n = m + 1; n < 4; n++) {
-          const d = distance(q[m], q[n])
+          const d = distance(q[m] ?? 0, q[n] ?? 0)
           if (d > far) {
             far = d
             a = m
@@ -379,20 +384,17 @@ export const ambientCells = (layers: AmbientLayer[], f: Field, x0: number, y0: n
           }
         }
       }
+      // Each quarter joins the nearer lead; no array per cell.
+      const qa = q[a] ?? 0
+      const qb = q[b] ?? 0
       let mask = 0
-      const lit: number[] = []
-      const dark: number[] = []
       for (let m = 0; m < 4; m++) {
-        if (distance(q[m], q[a]) <= distance(q[m], q[b])) {
-          mask |= 1 << m
-          lit.push(q[m])
-        } else {
-          dark.push(q[m])
-        }
+        const c = q[m] ?? 0
+        if (distance(c, qa) <= distance(c, qb)) mask |= 1 << m
       }
-      words[i] = QUADRANTS[mask]
-      words[i + 1] = mean(lit)
-      words[i + 2] = dark.length > 0 ? mean(dark) : 0
+      words[i] = QUADRANTS[mask] ?? 0
+      words[i + 1] = meanOf(q, mask)
+      words[i + 2] = meanOf(q, ~mask & 0xf)
     }
   }
   return new Uint8Array(words.buffer).toBase64()
