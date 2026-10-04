@@ -2,12 +2,12 @@
 """Carry avatar7's voice to another machine on the tailnet.
 
 While this runs, avatar7 drops each WAV it would play into SPOOL; a browser tab
-open on http://<tailnet ip>:8796/ hears it a moment later. Bound to the
+open on http://<tailnet ip>:8797/ hears it a moment later. Bound to the
 tailnet address only, never the LAN. The spool is created on start and
 removed on exit; while it exists, void stays silent and the voice goes there.
 Started and stopped by /avatar remote on|off.
 
-    python3 avatar7/tools/relay.py [--port 8796] [--host <ip>]
+    python3 avatar7/tools/relay.py [--port 8797] [--host <ip>]
 """
 
 import argparse
@@ -133,7 +133,7 @@ def sweep():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default=None, help="address to bind (default: this machine's tailnet IPv4)")
-    ap.add_argument("--port", type=int, default=8796)
+    ap.add_argument("--port", type=int, default=8797)
     args = ap.parse_args()
     host = args.host or tailnet_ip()
 

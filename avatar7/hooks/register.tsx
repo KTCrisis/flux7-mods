@@ -998,7 +998,7 @@ export const register: Register = (on, options) => {
         await $.clock.sleep(1500)
       }
       const ip = await $.process.run(['sh', '-c', 'tailscale ip -4 | head -1'])
-      return { text: `The voice leaves this machine: open http://${ip.stdout.trim()}:8796/ on the other one and click listen.` }
+      return { text: `The voice leaves this machine: open http://${ip.stdout.trim()}:8797/ on the other one and click listen.` }
     }
     if (!AVATARS.includes(id)) return { text: `Unknown avatar. Choose one of: ${AVATARS.join(', ')}.` }
 

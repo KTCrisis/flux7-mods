@@ -40,7 +40,7 @@ It is deliberately not in the global `CLAUDE_CODE_PLUGIN_DIRS`: a plain
 A session driven from elsewhere (remote control, a phone, another PC) keeps
 its mods on the host: the pane and the voice stay there. `/avatar remote on`
 starts `tools/relay.py` detached; while it runs, each WAV goes to its spool
-instead of the speakers, and a browser tab on `http://<host>:8796/` plays it
+instead of the speakers, and a browser tab on `http://<host>:8797/` plays it
 (click `listen` once: browsers play nothing before a gesture). `/avatar remote
 off` stops the relay and gives the voice back to the host. Piper voices only:
 a persona speaking through SAPI itself has no WAV to send.
