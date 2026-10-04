@@ -3,12 +3,24 @@
 // and the ambient's own time through hashed noise, so no drop is kept; only
 // the skyline and the current bolt are cached, per field size.
 
-export type AmbientKind = 'rain' | 'rise' | 'wind' | 'stars' | 'bolt' | 'skyline' | 'pulse'
+export type AmbientKind = 'rain' | 'rise' | 'wind' | 'stars' | 'bolt' | 'skyline' | 'pulse' | 'scene'
 
 // density: the share of columns, rows or pixels that carry something (0-1);
 // speed: pixels a second for what moves, the twinkle's pace for stars.
 // palette: for the skyline, the neon colors its buildings pick among.
-export type AmbientLayer = { kind: AmbientKind; color: string; density?: number; speed?: number; palette?: string[] }
+// scene: a backdrop baked by tools/bake_scene.py, `file` of `width` x `height`
+// pixels, its bytes attached as `pixels` when the persona loads.
+export type AmbientLayer = {
+  kind: AmbientKind
+  color: string
+  density?: number
+  speed?: number
+  palette?: string[]
+  file?: string
+  width?: number
+  height?: number
+  pixels?: Uint8Array
+}
 
 // The field the layers draw on: the pane's width in pixels, and the face's
 // height plus the band under the text, two pixels per row.
@@ -110,6 +122,101 @@ const skylineCell = (layer: AmbientLayer, f: Field, x: number, y: number, t: num
   return null
 }
 
+// A scene fitted to the field's width, anchored to its bottom, its top fading
+// into the black; each pixel sorted once so the right ones move: red lights
+// on the antennas blink, neon signs flicker, windows go dark and light again.
+const STILL = 0
+const BEACON = 1
+const NEON_SIGN = 2
+const WINDOW = 3
+// The backdrop stays a little under full light, behind the face.
+const SCENE = 0.8
+type Scene = { width: number; height: number; rgb: Uint32Array; sort: Uint8Array }
+let sceneOf: Uint8Array | null = null
+let sceneWidth = 0
+let scene: Scene = { width: 0, height: 0, rgb: new Uint32Array(0), sort: new Uint8Array(0) }
+
+const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
+  const px = layer.pixels
+  const sw = layer.width ?? 0
+  const sh = layer.height ?? 0
+  if (px === undefined || sw === 0 || sh === 0) return null
+  if (px === sceneOf && f.width === sceneWidth) return scene
+  const w = f.width
+  const h = Math.max(1, Math.round((sh * w) / sw))
+  const rgbOut = new Uint32Array(w * h)
+  const sort = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.floor((y * sh) / h)
+    const y1 = Math.max(y0 + 1, Math.floor(((y + 1) * sh) / h))
+    const fade = Math.min(1, y / (h * 0.25))
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.floor((x * sw) / w)
+      const x1 = Math.max(x0 + 1, Math.floor(((x + 1) * sw) / w))
+      // The block's mean, but a beacon or a sign keeps its strongest pixel:
+      // averaged, a light one pixel wide would sink into the night.
+      let r = 0
+      let g = 0
+      let b = 0
+      let best = -1
+      let bestColor = 0
+      let bestSort = STILL
+      for (let sy = y0; sy < y1; sy++) {
+        for (let sx = x0; sx < x1; sx++) {
+          const i = (sy * sw + sx) * 3
+          const pr = px[i]
+          const pg = px[i + 1]
+          const pb = px[i + 2]
+          r += pr
+          g += pg
+          b += pb
+          const max = Math.max(pr, pg, pb)
+          const sat = max === 0 ? 0 : (max - Math.min(pr, pg, pb)) / max
+          const isBeacon = pr > 140 && pg < pr * 0.5 && pb < pr * 0.5
+          const isSign = !isBeacon && sat > 0.45 && max > 150
+          if ((isBeacon || isSign) && max > best) {
+            best = max
+            bestColor = (pr << 16) | (pg << 8) | pb
+            bestSort = isBeacon ? BEACON : NEON_SIGN
+          }
+        }
+      }
+      const n = (x1 - x0) * (y1 - y0)
+      const mean = ((Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n)) >>> 0
+      const lum = (0.3 * r + 0.59 * g + 0.11 * b) / n
+      const at = y * w + x
+      rgbOut[at] = scale(best >= 0 ? bestColor : mean, fade)
+      sort[at] = best >= 0 ? bestSort : lum > 70 ? WINDOW : STILL
+    }
+  }
+  sceneOf = px
+  sceneWidth = w
+  scene = { width: w, height: h, rgb: rgbOut, sort }
+  return scene
+}
+
+// The scene's color at a field pixel, or -1 where it does not reach.
+const scenePixel = (layer: AmbientLayer, f: Field, x: number, y: number, t: number): number => {
+  const s = fitScene(layer, f)
+  if (s === null) return -1
+  const sy = y - (f.height - s.height)
+  if (sy < 0 || x >= s.width) return -1
+  const at = sy * s.width + x
+  let k = SCENE
+  switch (s.sort[at]) {
+    case BEACON:
+      k *= (t * 0.8 + hash(x >> 1, sy >> 1, 77)) % 1 < 0.6 ? 1 : 0.2
+      break
+    case NEON_SIGN:
+      k *= hash(x >> 2, Math.floor(t * 6), 78) < 0.03 ? 0.3 : 1
+      break
+    case WINDOW:
+      k *= hash(x, sy, Math.floor(t / 4 + hash(x, sy, 79) * 7)) < 0.1 ? 0.4 : 1
+      break
+  }
+  return scale(s.rgb[at], k)
+}
+
 // A bolt strikes in a slot of 0.4 s: rarely on its own, every slot while
 // `isStorm`. Its path is cached for the slot.
 let boltFor = ''
@@ -165,6 +272,9 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
     case 'skyline':
       // Drawn by cells (skylineCell), not by pixels.
       return 0
+    case 'scene':
+      // Drawn in color by scenePixel.
+      return 0
     case 'pulse': {
       // Wires every 9 rows, a bright pulse running along each.
       if (y % 9 !== 4) return 0
@@ -181,6 +291,11 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
 export const ambientPixel = (layers: AmbientLayer[], f: Field, x: number, y: number, t: number, isStorm: boolean): number => {
   let out = 0
   for (const layer of layers) {
+    if (layer.kind === 'scene') {
+      const c = scenePixel(layer, f, x, y, t)
+      if (c >= 0) out = c
+      continue
+    }
     const k = light(layer, f, x, y, t, isStorm)
     if (k > 0) out = scale(rgb(layer.color), k * DIM)
   }

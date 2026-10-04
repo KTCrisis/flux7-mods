@@ -394,12 +394,25 @@ export const pickFace = <T,>(faces: { base: T; talk: T | null; deny: T | null },
       ? faces.talk
       : faces.base
 
+// A scene layer's backdrop, read from the persona's folder beside its faces.
+async function loadScenes($: Engine, dir: string, persona: Persona): Promise<Persona> {
+  for (const layer of persona.ambient ?? []) {
+    if (layer.kind !== 'scene' || layer.file === undefined) continue
+    try {
+      layer.pixels = Uint8Array.fromBase64((await $.fs.read(`${dir}/${layer.file}`, { as: 'bytes' })).base64)
+    } catch {
+      $.ui.log(`avatar7: ${dir}/${layer.file} unreadable, run tools/bake_scene.py`)
+    }
+  }
+  return persona
+}
+
 type Guest = { id: string; persona: Persona; faces: Faces }
 
 async function loadGuest($: Engine, id: string): Promise<Guest | null> {
   try {
     const dir = `${$.plugin.root}/personas/${id}`
-    const persona = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
+    const persona = await loadScenes($, dir, JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona)
     return { id, persona, faces: await loadFaces($, dir) }
   } catch {
     return null
@@ -662,7 +675,7 @@ export const register: Register = (on, options) => {
     await update($, onDuty, () => id)
     try {
       const dir = `${$.plugin.root}/personas/${id}`
-      who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
+      who = await loadScenes($, dir, JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona)
       whoId = id
       await update($, tint, () => who?.color ?? '')
       await update($, station, () => ({ name: who?.name ?? '', artists: who?.station ?? [] }))
@@ -692,7 +705,7 @@ export const register: Register = (on, options) => {
         pendingAvatar = null
         void (async () => {
           const dir = `${$.plugin.root}/personas/${id}`
-          who = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
+          who = await loadScenes($, dir, JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona)
           whoId = id
           await update($, tint, () => who?.color ?? '')
           await update($, station, () => ({ name: who?.name ?? '', artists: who?.station ?? [] }))
