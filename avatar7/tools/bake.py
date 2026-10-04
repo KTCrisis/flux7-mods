@@ -13,7 +13,7 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageChops, ImageEnhance
+from PIL import Image, ImageEnhance
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -55,7 +55,10 @@ if a.frame:
     suffix = f"-{a.frame}"
     frame = Image.open(folder / f"portrait{suffix}.png").convert("RGB").resize(img.size)
     dx, dy = offset(img, frame, a.reach)
-    img = ImageChops.offset(frame, dx, dy)
+    # Shifted onto black: ImageChops.offset would wrap the strip that leaves
+    # one edge back in at the other, and the face's edge would jump.
+    img = Image.new("RGB", frame.size)
+    img.paste(frame, (dx, dy))
     print(f"{a.frame}: shifted by {dx}, {dy}")
 if a.box:
     img = img.crop(tuple(a.box))

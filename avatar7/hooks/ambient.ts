@@ -43,7 +43,19 @@ const hash = (a: number, b: number, c = 0): number => {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296
 }
 
-const rgb = (hex: string): number => parseInt(hex.replace('#', ''), 16) || 0xffffff
+// Parsed once per color, not per pixel. Black stays black; `#abc` is
+// `#aabbcc`; anything else unreadable is white.
+const colors = new Map<string, number>()
+const rgb = (hex: string): number => {
+  let c = colors.get(hex)
+  if (c === undefined) {
+    let h = hex.replace('#', '')
+    if (h.length === 3) h = [...h].map(d => d + d).join('')
+    c = /^[0-9a-f]{6}$/i.test(h) ? parseInt(h, 16) : 0xffffff
+    colors.set(hex, c)
+  }
+  return c
+}
 
 const scale = (c: number, k: number): number =>
   (Math.min(255, Math.round(((c >> 16) & 0xff) * k)) << 16) |
@@ -69,6 +81,8 @@ const NEON_SIGN = 2
 const WINDOW = 3
 // The backdrop stays a little under full light, behind the face.
 const SCENE = 0.8
+// A scene without animate: one shared empty list, not one per pixel.
+const NO_MOVES: NonNullable<AmbientLayer['animate']> = []
 type Scene = { width: number; height: number; rgb: Uint32Array; sort: Uint8Array }
 let sceneOf: Uint8Array | null = null
 let sceneWidth = 0
@@ -173,7 +187,7 @@ const scenePixel = (layer: AmbientLayer, f: Field, x: number, y: number, t: numb
   if (sy < 0 || sy >= s.height || x >= s.width) return -1
   const at = sy * s.width + x
   let k = SCENE
-  const moves = layer.animate ?? []
+  const moves = layer.animate ?? NO_MOVES
   const sort = s.sort[at]
   if (!(sort === BEACON ? moves.includes('beacons') : sort === NEON_SIGN ? moves.includes('neon') : sort === WINDOW && moves.includes('windows'))) {
     return scale(s.rgb[at], k)
