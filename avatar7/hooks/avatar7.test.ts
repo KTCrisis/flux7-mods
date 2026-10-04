@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
-import { withPrivate, pickFace } from './register'
+import { withPrivate } from './register'
+import { facePixel, faceSample, faceCells, pickFace, TINT, type View } from './draw'
 import { commandEvent, heard, heardSay, landed, nextStreak, streakNote } from './hearing'
 import { speakScript, synthArgv } from './voice'
 import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona } from './speech'
@@ -514,4 +515,68 @@ test('SAPI speaks a pitched voice through XML, the text escaped; volume stays wi
   expect(synthArgv('fox', who, -5)[5]).toBe('0')
   // Without a Piper voice, $1 is empty and SAPI speaks the line itself.
   expect(synthArgv('hal', { voice: 'Microsoft David', rate: 0 } as never, 100)[4]).toBe('')
+})
+
+// A uniform grey portrait (100, 100, 100), drawn at 64: one portrait pixel
+// per output pixel; at frame 0 the bright sweep sits on row 0.
+const grey = (level = 100): Uint8Array => new Uint8Array(64 * 64 * 3).fill(level)
+const view = (over: Partial<View> = {}): View => ({
+  frame: 0,
+  frameMs: 66,
+  mood: 'idle',
+  faces: { base: grey(), talk: null, deny: null },
+  persona: { color: '#00ff9c' },
+  isHeard: false,
+  size: 64,
+  layers: [],
+  field: { width: 64, height: 64, sceneTop: 0, sceneBottom: 64 },
+  ambLeft: 0,
+  ambT: 0,
+  ...over,
+})
+const rgbOf = (c: number) => [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff]
+
+test('the face draws its portrait with scanlines: odd rows at 70 %, the sweep brighter', () => {
+  expect(rgbOf(faceSample(view(), 10, 2))).toEqual([100, 100, 100])
+  expect(rgbOf(faceSample(view(), 10, 3))).toEqual([70, 70, 70])
+  expect(rgbOf(faceSample(view(), 10, 0))).toEqual([135, 135, 135])
+  // No persona loaded yet: static, dark.
+  expect([0x1a2a22, 0x020806]).toContain(facePixel(view({ persona: null }), 5, 5))
+})
+
+test('a mood pulls the portrait toward its color; a refusal frowns when it can', () => {
+  const [r = 0, g = 0, b = 0] = rgbOf(facePixel(view({ mood: 'watch' }), 10, 10))
+  // Cyan: green and blue rise above red, which the mix lowers.
+  expect(r).toBeLessThan(100)
+  expect(g).toBeGreaterThan(r)
+  expect(b).toBeGreaterThan(r)
+  const frown = { base: grey(), talk: null, deny: grey(200) }
+  const p = facePixel(view({ mood: 'error', faces: frown }), 10, 10)
+  expect(rgbOf(p)[0]).toBeGreaterThan(100)
+})
+
+test('over a scene the face is framed like a comm window: bright corners, faint edges, the mood\'s color', () => {
+  const scene = { layers: [{ kind: 'stars' as const, color: '#ffffff' }] }
+  expect(faceSample(view(scene), 0, 0)).toBe(0x00ff9c)
+  const faint = rgbOf(faceSample(view(scene), 32, 0))
+  expect(faint).toEqual([0, 77, 47])
+  expect(faceSample(view({ ...scene, mood: 'deny' }), 63, 63)).toBe(TINT.deny)
+  // Without a scene there is no frame: the portrait runs to the edge.
+  expect(rgbOf(faceSample(view(), 32, 2))).toEqual([100, 100, 100])
+})
+
+test('a dark portrait lets the scene through; a bright one hides it', () => {
+  const scene = [{ kind: 'stars' as const, color: '#ffffff', density: 1 }]
+  const dark = view({ faces: { base: grey(0), talk: null, deny: null }, layers: scene })
+  const bright = view({ layers: scene })
+  let through = 0
+  for (let x = 1; x < 63; x++) for (let y = 2; y < 62; y += 2) if (faceSample(dark, x, y) !== 0) through++
+  expect(through).toBeGreaterThan(0)
+  expect(rgbOf(faceSample(bright, 10, 2))).toEqual([100, 100, 100])
+})
+
+test('the cells cover the face in upper half blocks, two pixels each', () => {
+  const words = new Uint32Array(Uint8Array.fromBase64(faceCells(view({ size: 16 }))).buffer)
+  expect(words.length).toBe(16 * 8 * 3)
+  for (let i = 0; i < words.length; i += 3) expect(words[i]).toBe(0x2580)
 })

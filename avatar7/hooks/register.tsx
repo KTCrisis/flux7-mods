@@ -50,6 +50,7 @@ import {
 } from './speech'
 import { ASKED_CHARS, commandEvent, heard, heardSay, landed, nextStreak, streakNote, type Streak } from './hearing'
 import { detachedArgv, PLAY_START_MS, SAPI_PLAY, synthArgv } from './voice'
+import { faceCells, H, noise, TINT, W, type Faces, type View } from './draw'
 import { begin, end, isHeard, restored, silent, start, typeOn, voiced, type Typing } from './line'
 import { answered, ask as askFace, calm, hold, isWaiting, react, release, tick, type Face, type Mood } from './mood'
 
@@ -67,14 +68,7 @@ const SCENE_OVERFLOW_ROWS = 6
 const DEFAULT = 'shodan'
 const AVATARS = ['shodan', 'hal', 'glados', 'ada', 'duck7', 'pod042', 'kaneda', 'commis', 'fox', 'adjutant', 'morte', 'pda', 'lain', 'tachikoma', 'nova']
 
-// Portraits are baked by tools/bake.py into W x H raw RGB pixels; each cell
-// is an upper half block, so two pixel rows per cell row.
-const W = 64
-const H = 64
 const MIN_SIZE = 16
-
-// The comm window's corner brackets, in face pixels.
-const BRACKET = 7
 
 // Rows kept under the face for the line, which may wrap once, the pending
 // approval, the buttons and the two rules between them.
@@ -211,11 +205,9 @@ async function relayEnd($: Engine, r: Relay, reason: string): Promise<void> {
   if (givesOnEnd(r, reason)) await relayGive($, r)
 }
 
-// A visiting persona: its text and its face, read from its folder.
-// A persona's faces: the portrait, and the optional frames baked beside it
-// (tools/bake.py --frame): mouth open for speaking, a frown for a refusal.
-type Faces = { base: Uint8Array; talk: Uint8Array | null; deny: Uint8Array | null }
-
+// A persona's faces (draw.ts): the portrait, and the optional frames baked
+// beside it (tools/bake.py --frame): mouth open for speaking, a frown for a
+// refusal.
 async function loadFaces($: Engine, dir: string): Promise<Faces> {
   const read = async (name: string): Promise<Uint8Array | null> => {
     try {
@@ -229,14 +221,6 @@ async function loadFaces($: Engine, dir: string): Promise<Faces> {
   return { base, talk: await read('face-talk.rgb'), deny: await read('face-deny.rgb') }
 }
 
-// Which face to draw now: the frown on a refusal or a failure, the mouth
-// flapping at an uneven pace while the voice is heard, else the portrait.
-export const pickFace = <T,>(faces: { base: T; talk: T | null; deny: T | null }, mood: string, isSpeaking: boolean, flap: number): T =>
-  (mood === 'deny' || mood === 'error') && faces.deny !== null
-    ? faces.deny
-    : isSpeaking && faces.talk !== null && flap < 0.55
-      ? faces.talk
-      : faces.base
 
 // A scene layer's backdrop, read from the persona's folder beside its faces.
 async function loadScenes($: Engine, dir: string, persona: Persona): Promise<Persona> {
@@ -310,20 +294,6 @@ async function loadGuest($: Engine, id: string): Promise<Guest | null> {
 }
 
 
-const TINT: Record<Mood, number> = {
-  idle: 0x000000,
-  watch: 0x00e5ff,
-  deny: 0xff2a6d,
-  error: 0xffb000,
-  wait: 0x7a5cff,
-}
-
-// Cheap deterministic noise for the glitch.
-const noise = (a: number, b: number): number => {
-  let n = (a * 374761393 + b * 668265263) | 0
-  n = Math.imul(n ^ (n >>> 13), 1274126177)
-  return ((n ^ (n >>> 16)) >>> 0) / 4294967296
-}
 
 // What a line needs from the session around it, read when the line is picked.
 type Speaking = {
@@ -490,103 +460,25 @@ export const register: Register = (on, options) => {
   const names: Record<string, string> = {}
   let lastModel = ''
 
-  const pixel = (x: number, y: number): number => {
-    const t = frame * (FRAME_MS / 1000)
-    const isGlitch = face.mood === 'deny' && noise(frame, y >> 2) < 0.35
-    const gx = isGlitch ? Math.min(W - 1, Math.max(0, x + Math.round((noise(y, frame) - 0.5) * 10))) : x
-
-    const shown = stage.isGuestShown && stage.guest !== null ? stage.guest.faces : faces
-    const img = shown === null ? null : pickFace(shown, face.mood, isHeard(stage.typing, frame), noise(frame >> 2, 7))
-    if (img === null || who === null) return noise(x * 7 + frame, y) < 0.3 ? 0x1a2a22 : 0x020806
-
-    const i = (y * W + gx) * 3
-    let r = img[i] ?? 0
-    let g = img[i + 1] ?? 0
-    let b = img[i + 2] ?? 0
-    // No eye glow, blink or pulse for now: on several portraits the ellipses
-    // missed the eyes and read as smudges. `eyes` and `mouth` stay in each
-    // persona.json for a better effect.
-    let k = 1
-
-    // Mood: pull the portrait toward the mood's color by its luminance.
-    if (face.mood !== 'idle') {
-      const lum = (0.3 * r + 0.59 * g + 0.11 * b) / 255
-      const tint = TINT[face.mood]
-      const mix = face.mood === 'watch' ? 0.3 : face.mood === 'wait' ? 0.45 : 0.65
-      r = r * (1 - mix) + ((tint >> 16) & 0xff) * lum * 1.3 * mix
-      g = g * (1 - mix) + ((tint >> 8) & 0xff) * lum * 1.3 * mix
-      b = b * (1 - mix) + (tint & 0xff) * lum * 1.3 * mix
+  // The face's frame, as draw.ts takes it: whoever is shown (the guest
+  // during a visit), its mood and weather, read once per frame.
+  const view = (): View => {
+    const isGuest = stage.isGuestShown && stage.guest !== null
+    return {
+      frame,
+      frameMs: FRAME_MS,
+      mood: face.mood,
+      faces: isGuest && stage.guest !== null ? stage.guest.faces : faces,
+      persona: isGuest && stage.guest !== null ? stage.guest.persona : who,
+      isHeard: isHeard(stage.typing, frame),
+      size,
+      layers: ambientLayers(),
+      field: ambField,
+      ambLeft,
+      ambT,
     }
-
-    // Holding its breath while a human decides.
-    if (face.mood === 'wait') k *= 0.8 + 0.2 * Math.sin(t * 2.5)
-
-    // Snow when glitching; the scanlines are drawn at the output size.
-    if (isGlitch && noise(x, y + frame) < 0.04) return 0xffffff
-
-    const c = (v: number) => Math.min(255, Math.round(v * k))
-    return (c(r) << 16) | (c(g) << 8) | c(b)
   }
-
-  // One output pixel averages the block of portrait pixels it covers, so the
-  // face shrinks with the pane and keeps its features.
-  const sample = (ox: number, oy: number): number => {
-    const x0 = Math.floor((ox * W) / size)
-    const x1 = Math.max(x0 + 1, Math.floor(((ox + 1) * W) / size))
-    const y0 = Math.floor((oy * H) / size)
-    const y1 = Math.max(y0 + 1, Math.floor(((oy + 1) * H) / size))
-    let r = 0
-    let g = 0
-    let b = 0
-    for (let y = y0; y < y1; y++) {
-      for (let x = x0; x < x1; x++) {
-        const p = pixel(x, y)
-        r += (p >> 16) & 0xff
-        g += (p >> 8) & 0xff
-        b += p & 0xff
-      }
-    }
-    const n = (x1 - x0) * (y1 - y0)
-    const frameOf = stage.isGuestShown && stage.guest !== null ? stage.guest.persona : who
-    let k = oy % 2 === 1 ? 0.7 : 1
-    if (oy === Math.floor((frame * 0.8 * size) / H) % size) k *= 1.35
-    const c = (v: number) => Math.min(255, Math.round((v / n) * k))
-    const drawn = (c(r) << 16) | (c(g) << 8) | c(b)
-    // A comm window's frame: bright brackets at the corners, a faint line
-    // along the edges, in the persona's color or the mood's.
-    const edge = Math.min(ox, oy, size - 1 - ox, size - 1 - oy)
-    if (edge === 0 && ambientLayers().length > 0) {
-      const isCorner = Math.min(ox, size - 1 - ox) < BRACKET && Math.min(oy, size - 1 - oy) < BRACKET
-      const tone = face.mood === 'idle' ? parseInt((frameOf?.color ?? '#00ff9c').slice(1), 16) : TINT[face.mood]
-      const kk = isCorner ? 1 : 0.3
-      return (Math.round(((tone >> 16) & 0xff) * kk) << 16) | (Math.round(((tone >> 8) & 0xff) * kk) << 8) | Math.round((tone & 0xff) * kk)
-    }
-    // The portrait's dark background lets the scene behind it through, by
-    // degrees so its edge does not ring.
-    const layers = ambientLayers()
-    if (layers.length === 0) return drawn
-    const cutout = frameOf?.cutout ?? 12
-    const alpha = Math.min(1, Math.max(0, ((0.3 * r + 0.59 * g + 0.11 * b) / n - cutout) / (cutout * 2 + 4)))
-    if (alpha === 1) return drawn
-    const back = ambientPixel(layers, ambField, (ambLeft + ox) * QUAD, oy, ambT, face.mood === 'deny')
-    const mix = (shift: number) =>
-      Math.round(((drawn >> shift) & 0xff) * alpha + ((back >> shift) & 0xff) * (1 - alpha)) << shift
-    return mix(16) | mix(8) | mix(0)
-  }
-
-  const cells = (): string => {
-    const rows = size / 2
-    const words = new Uint32Array(size * rows * 3)
-    for (let row = 0; row < rows; row++) {
-      for (let x = 0; x < size; x++) {
-        const i = (row * size + x) * 3
-        words[i] = 0x2580
-        words[i + 1] = sample(x, row * 2)
-        words[i + 2] = sample(x, row * 2 + 1)
-      }
-    }
-    return new Uint8Array(words.buffer).toBase64()
-  }
+  const cells = (): string => faceCells(view())
 
   // The weather of whoever is shown: the guest's during a visit.
   const ambientLayers = (): AmbientLayer[] =>
