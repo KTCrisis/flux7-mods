@@ -28,9 +28,10 @@ export type AmbientLayer = {
 // The field the layers draw on: the pane's width, two pixels per column, and
 // the face's height plus the band under the text, two pixels per row. A cell
 // is drawn as a quadrant block (2x2), so its pixels are half as wide as tall:
-// QUAD of them across make one square. A scene covers the field from its top
-// down to `sceneBottom`: behind the face, then a few rows past the text.
-export type Field = { width: number; height: number; sceneBottom: number }
+// QUAD of them across make one square. A scene covers the field from
+// `sceneTop` down to `sceneBottom`: from the face's middle, then a few rows
+// past the text.
+export type Field = { width: number; height: number; sceneTop: number; sceneBottom: number }
 export const QUAD = 2
 
 // How bright the weather may get against the face: it stays behind it.
@@ -77,12 +78,12 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
   const px = layer.pixels
   const sw = layer.width ?? 0
   const sh = layer.height ?? 0
-  if (px === undefined || sw === 0 || sh === 0 || f.width === 0 || f.sceneBottom <= 0) return null
-  if (px === sceneOf && f.width === sceneWidth && f.sceneBottom === scene.height) return scene
+  const h = f.sceneBottom - f.sceneTop
+  if (px === undefined || sw === 0 || sh === 0 || f.width === 0 || h <= 0) return null
+  if (px === sceneOf && f.width === sceneWidth && h === scene.height) return scene
   // Cover the region, as a CSS background does: scaled until both sides fill
   // it, centered across, the ground kept and the sky cropped.
   const w = f.width
-  const h = f.sceneBottom
   const k = Math.max(w / QUAD / sw, h / sh)
   const left = (sw * k - w / QUAD) / 2
   const top = sh * k - h
@@ -168,8 +169,8 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
 const scenePixel = (layer: AmbientLayer, f: Field, x: number, y: number, t: number): number => {
   const s = fitScene(layer, f)
   if (s === null) return -1
-  const sy = y
-  if (sy >= s.height || x >= s.width) return -1
+  const sy = y - f.sceneTop
+  if (sy < 0 || sy >= s.height || x >= s.width) return -1
   const at = sy * s.width + x
   let k = SCENE
   const moves = layer.animate ?? []

@@ -12,7 +12,8 @@ const AMBIENT_FRAMES = 3
 const AMB_LEFT = 'amb-left'
 const AMB_RIGHT = 'amb-right'
 const AMB_BAND = 'amb-band'
-// The scene stands behind the face and runs this many rows past the text.
+// The scene rises behind the face to its middle and runs this many rows past
+// the text.
 const SCENE_OVERFLOW_ROWS = 6
 const DEFAULT = 'shodan'
 const AVATARS = ['shodan', 'hal', 'glados', 'ada', 'duck7', 'pod042', 'kaneda', 'commis', 'fox', 'adjutant', 'morte', 'pda', 'lain', 'tachikoma', 'nova']
@@ -503,7 +504,7 @@ export const register: Register = (on, options) => {
   let ambLeft = 0
   let ambRight = 0
   let ambBand = 0
-  let ambField: Field = { width: 0, height: 0, sceneBottom: 0 }
+  let ambField: Field = { width: 0, height: 0, sceneTop: 0, sceneBottom: 0 }
   let ambT = 0
   let asked = ''
   // The lines to speak; the clock, which holds the session's $, speaks them.
@@ -1158,7 +1159,7 @@ export const register: Register = (on, options) => {
     ambLeft = isAmbient ? Math.floor((cols - size) / 2) : 0
     ambRight = isAmbient ? cols - size - ambLeft : 0
     ambBand = isAmbient ? Math.max(0, e.props.scroll.bodyRows - size / 2 - 4) : 0
-    ambField = { width: cols * QUAD, height: size + TEXT_ROWS * 2 + ambBand * 2, sceneBottom: size + TEXT_ROWS * 2 + Math.min(ambBand, SCENE_OVERFLOW_ROWS) * 2 }
+    ambField = { width: cols * QUAD, height: size + TEXT_ROWS * 2 + ambBand * 2, sceneTop: size / 2, sceneBottom: size + TEXT_ROWS * 2 + Math.min(ambBand, SCENE_OVERFLOW_ROWS) * 2 }
     const ambient = (key: string, x0: number, y0: number, columns: number, rows: number) => (
       <Raster key={key} columns={columns} rows={rows} cells={ambientCells(layers, ambField, x0, y0, columns, rows, ambT, mood === 'deny')} />
     )

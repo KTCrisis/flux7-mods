@@ -185,8 +185,8 @@ quadrant block (`▖▗▘▝▚▞...`): four pixels, two colors chosen as chaf
 twice the face's horizontal resolution.
 
 - A `scene` layer is a wide studio render baked by `tools/bake_scene.py`. It
-  stands behind the face across the pane (cropped like a CSS cover, sky
-  first) and runs six rows past the text before fading out. The portrait's
+  rises behind the face to its middle, across the pane (cropped like a CSS
+  cover, sky first), and runs six rows past the text before fading out. The portrait's
   dark background lets it through by degrees: `cutout` in `persona.json`
   (default 12, on 0-255 luminance) is lowered for a face with dark hair.
   Framed as a comm window: bright brackets at the corners, a faint line
