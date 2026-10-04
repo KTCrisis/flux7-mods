@@ -4,7 +4,8 @@
   "rate": -1,
   "piper": { "voice": "en_US-lessac-high", "lengthScale": 1.08, "fx": "aresample=22050,asetrate=22050*0.9,aresample=22050,atempo=1.05,equalizer=f=180:t=q:w=1:g=3,lowpass=f=7000,acompressor=threshold=0.15:ratio=3:attack=10:release=120,aecho=0.8:0.35:45:0.12" },
   "color": "#ff3ea5",
-  "ambient": [{"kind": "scene", "color": "#ff3ea5", "file": "scene.rgb", "width": 512, "height": 192, "animate": ["neon"]}, {"kind": "grid", "color": "#ff3ea5", "floor": 0.08, "speed": 1.5}],
+  "cutout": 3,
+  "ambient": [{"kind": "scene", "color": "#ff3ea5", "file": "scene.rgb", "width": 512, "height": 192, "animate": ["neon"]}, {"kind": "grid", "color": "#ff3ea5", "sea": 0.17, "speed": 1.5}],
   "station": ["Kavinsky", "The Midnight", "FM-84", "Timecop1983", "College", "Lazerhawk", "Miami Nights 1984", "Com Truise", "Gunship", "Mitch Murder", "Jan Hammer Miami Vice", "Electric Youth"],
   "eyes": [
     { "x": 22, "y": 30, "rx": 3, "ry": 1 },

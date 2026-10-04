@@ -191,8 +191,8 @@ twice the face's horizontal resolution.
   and come back).
 - The layers above it add their light: `rain`, `rise` (bubbles, embers,
   steam), `wind`, `stars`, `bolt` (rare, frequent on a refusal), `pulse`
-  (wires), `grid` (an outrun floor, `floor` its depth as a share of the
-  width). Each takes
+  (wires), `grid` (an outrun floor from the scene's sea line, `sea` as a share of
+  the scene's height, down to the pane's bottom). Each takes
   `color`, `density`, `speed`. Every pixel is a function of its place and
   time through hashed noise; nothing is kept per drop.
 - The ambient's clock runs twice as fast on an error or a refusal and half as

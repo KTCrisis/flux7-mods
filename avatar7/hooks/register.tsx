@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Engine, Register } from 'claude-code'
 
 import type { Announce, Line, Say, Station } from '../types'
-import { ambientCells, QUAD, type AmbientLayer, type Field } from './ambient'
+import { ambientCells, ambientPixel, QUAD, type AmbientLayer, type Field } from './ambient'
 
 const PANE = 'avatar7'
 const FACE = 'face'
@@ -12,6 +12,8 @@ const AMBIENT_FRAMES = 3
 const AMB_LEFT = 'amb-left'
 const AMB_RIGHT = 'amb-right'
 const AMB_BAND = 'amb-band'
+// The scene stands behind the face and runs this many rows past the text.
+const SCENE_OVERFLOW_ROWS = 6
 const DEFAULT = 'shodan'
 const AVATARS = ['shodan', 'hal', 'glados', 'ada', 'duck7', 'pod042', 'kaneda', 'commis', 'fox', 'adjutant', 'morte', 'pda', 'lain', 'tachikoma', 'nova']
 
@@ -365,6 +367,9 @@ type Persona = {
   friends?: string[]
   // Pixel weather in the black around the face (hooks/ambient.ts).
   ambient?: AmbientLayer[]
+  // The portrait's luminance (0-255) under which the scene shows through it;
+  // lower for a face with dark hair, which would otherwise turn see-through.
+  cutout?: number
 }
 
 // A visiting persona: its text and its face, read from its folder.
@@ -495,7 +500,7 @@ export const register: Register = (on, options) => {
   let ambLeft = 0
   let ambRight = 0
   let ambBand = 0
-  let ambField: Field = { width: 0, height: 0 }
+  let ambField: Field = { width: 0, height: 0, sceneBottom: 0 }
   let ambT = 0
   let asked = ''
   // The lines to speak; the clock, which holds the session's $, speaks them.
@@ -604,7 +609,19 @@ export const register: Register = (on, options) => {
     let k = oy % 2 === 1 ? 0.7 : 1
     if (oy === Math.floor((frame * 0.8 * size) / H) % size) k *= 1.35
     const c = (v: number) => Math.min(255, Math.round((v / n) * k))
-    return (c(r) << 16) | (c(g) << 8) | c(b)
+    const face = (c(r) << 16) | (c(g) << 8) | c(b)
+    // The portrait's dark background lets the scene behind it through, by
+    // degrees so its edge does not ring.
+    const layers = ambientLayers()
+    if (layers.length === 0) return face
+    const shown = isGuestShown && guest !== null ? guest.persona : who
+    const cutout = shown?.cutout ?? 12
+    const alpha = Math.min(1, Math.max(0, ((0.3 * r + 0.59 * g + 0.11 * b) / n - cutout) / (cutout * 2 + 4)))
+    if (alpha === 1) return face
+    const back = ambientPixel(layers, ambField, (ambLeft + ox) * QUAD, oy, ambT, mood === 'deny')
+    const mix = (shift: number) =>
+      Math.round(((face >> shift) & 0xff) * alpha + ((back >> shift) & 0xff) * (1 - alpha)) << shift
+    return mix(16) | mix(8) | mix(0)
   }
 
   const cells = (): string => {
@@ -1129,7 +1146,7 @@ export const register: Register = (on, options) => {
     ambLeft = isAmbient ? Math.floor((cols - size) / 2) : 0
     ambRight = isAmbient ? cols - size - ambLeft : 0
     ambBand = isAmbient ? Math.max(0, e.props.scroll.bodyRows - size / 2 - 4) : 0
-    ambField = { width: cols * QUAD, height: size + TEXT_ROWS * 2 + ambBand * 2 }
+    ambField = { width: cols * QUAD, height: size + TEXT_ROWS * 2 + ambBand * 2, sceneBottom: size + TEXT_ROWS * 2 + Math.min(ambBand, SCENE_OVERFLOW_ROWS) * 2 }
     const ambient = (key: string, x0: number, y0: number, columns: number, rows: number) => (
       <Raster key={key} columns={columns} rows={rows} cells={ambientCells(layers, ambField, x0, y0, columns, rows, ambT, mood === 'deny')} />
     )

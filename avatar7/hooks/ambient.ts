@@ -21,16 +21,17 @@ export type AmbientLayer = {
   // What moves in a scene: blinking red beacons, flickering neon signs,
   // windows going dark; none when absent, the backdrop then stays still.
   animate?: ('beacons' | 'neon' | 'windows')[]
-  // grid: the floor's depth on screen, as a share of the field's width (a
-  // scene's height follows the width, so the horizon stays on its sea line).
-  floor?: number
+  // grid: where its horizon sits, as a share of the scene's height up from
+  // the scene's bottom (its sea line); the floor runs down to the field's.
+  sea?: number
 }
 
 // The field the layers draw on: the pane's width, two pixels per column, and
 // the face's height plus the band under the text, two pixels per row. A cell
 // is drawn as a quadrant block (2x2), so its pixels are half as wide as tall:
-// QUAD of them across make one square.
-export type Field = { width: number; height: number }
+// QUAD of them across make one square. A scene covers the field from its top
+// down to `sceneBottom`: behind the face, then a few rows past the text.
+export type Field = { width: number; height: number; sceneBottom: number }
 export const QUAD = 2
 
 // How bright the weather may get against the face: it stays behind it.
@@ -68,29 +69,37 @@ const NEON_SIGN = 2
 const WINDOW = 3
 // The backdrop stays a little under full light, behind the face.
 const SCENE = 0.8
-type Scene = { width: number; height: number; rgb: Uint32Array; sort: Uint8Array }
+// fitted: the whole scene's height once scaled, cropped sky included.
+type Scene = { width: number; height: number; fitted: number; rgb: Uint32Array; sort: Uint8Array }
 let sceneOf: Uint8Array | null = null
 let sceneWidth = 0
-let scene: Scene = { width: 0, height: 0, rgb: new Uint32Array(0), sort: new Uint8Array(0) }
+let scene: Scene = { width: 0, height: 0, fitted: 0, rgb: new Uint32Array(0), sort: new Uint8Array(0) }
 
 const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
   const px = layer.pixels
   const sw = layer.width ?? 0
   const sh = layer.height ?? 0
-  if (px === undefined || sw === 0 || sh === 0) return null
-  if (px === sceneOf && f.width === sceneWidth) return scene
+  if (px === undefined || sw === 0 || sh === 0 || f.width === 0 || f.sceneBottom <= 0) return null
+  if (px === sceneOf && f.width === sceneWidth && f.sceneBottom === scene.height) return scene
+  // Cover the region, as a CSS background does: scaled until both sides fill
+  // it, centered across, the ground kept and the sky cropped.
   const w = f.width
-  const h = Math.max(1, Math.round((sh * w) / (QUAD * sw)))
+  const h = f.sceneBottom
+  const k = Math.max(w / QUAD / sw, h / sh)
+  const left = (sw * k - w / QUAD) / 2
+  const top = sh * k - h
   const rgbOut = new Uint32Array(w * h)
   const sort = new Uint8Array(w * h)
   const lums = new Float32Array(w * h)
   for (let y = 0; y < h; y++) {
-    const y0 = Math.floor((y * sh) / h)
-    const y1 = Math.max(y0 + 1, Math.floor(((y + 1) * sh) / h))
-    const fade = Math.min(1, y / (h * 0.25))
+    const y0 = Math.min(sh - 1, Math.floor((y + top) / k))
+    const y1 = Math.max(y0 + 1, Math.min(sh, Math.floor((y + 1 + top) / k)))
+    // Faded into the black at the top, and at the bottom where it runs out
+    // under the text.
+    const fade = Math.min(1, y / (h * 0.2), (h - 1 - y) / (h * 0.12))
     for (let x = 0; x < w; x++) {
-      const x0 = Math.floor((x * sw) / w)
-      const x1 = Math.max(x0 + 1, Math.floor(((x + 1) * sw) / w))
+      const x0 = Math.min(sw - 1, Math.floor((x / QUAD + left) / k))
+      const x1 = Math.max(x0 + 1, Math.min(sw, Math.floor(((x + 1) / QUAD + left) / k)))
       // The block's mean, but a beacon or a sign keeps its strongest pixel:
       // averaged, a light one pixel wide would sink into the night.
       let r = 0
@@ -153,7 +162,7 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
   }
   sceneOf = px
   sceneWidth = w
-  scene = { width: w, height: h, rgb: rgbOut, sort }
+  scene = { width: w, height: h, fitted: sh * k, rgb: rgbOut, sort }
   return scene
 }
 
@@ -161,8 +170,8 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
 const scenePixel = (layer: AmbientLayer, f: Field, x: number, y: number, t: number): number => {
   const s = fitScene(layer, f)
   if (s === null) return -1
-  const sy = y - (f.height - s.height)
-  if (sy < 0 || x >= s.width) return -1
+  const sy = y
+  if (sy >= s.height || x >= s.width) return -1
   const at = sy * s.width + x
   let k = SCENE
   const moves = layer.animate ?? []
@@ -242,7 +251,8 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
     case 'grid': {
       // An outrun floor: rows closer together toward the horizon, scrolling
       // toward the viewer; rays fanning out from its middle.
-      const horizon = f.height - Math.max(2, Math.round((f.width / QUAD) * (layer.floor ?? 0.1)))
+      const fitted = scene.height === f.sceneBottom && scene.width === f.width ? scene.fitted : f.sceneBottom
+      const horizon = Math.round(f.sceneBottom - fitted * (layer.sea ?? 0.15))
       if (y < horizon) return 0
       if (y === horizon) return 1
       const depth = (y - horizon) / (f.height - horizon)
