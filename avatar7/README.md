@@ -67,7 +67,11 @@ play nothing before a gesture.
    732 KB of WAV, 67 KB of Opus, 0.3 s to encode) and drops it in the relay's
    spool; the host stays silent. Otherwise SAPI plays the WAV on the host, as
    before. Without libopus, the WAV goes as it is.
-3. The relay tells the page over SSE and serves the file.
+3. The relay tells the page over SSE and serves the file. Each line carries
+   an event id; a page that lost the link (a dead zone, a cell change)
+   reconnects by itself and sends the last id back, and the relay replays
+   the lines it missed, as long as they are still in the spool (2 minutes).
+   A new page starts without backlog.
 4. The page decodes and plays it through Web Audio, which takes no audio
    focus: the voice speaks over the user's music (Bandcamp, say) instead of
    pausing it, and the line is typed over its exact length. The `<audio>`
@@ -90,7 +94,10 @@ gives it back.
 
 **Running it.** As a service, so it is ready before any session needs it:
 `tools/avatar7-relay.service` (instructions inside). The page
-(`tools/relay.html`) is read at each request, so editing it needs no restart.
+(`tools/relay.html`) is read at each request, so editing it needs no restart;
+`relay.py` itself does: `/avatar remote off` only gives the relay back, it
+does not stop it. Restart the service, or kill the process named in the
+spool's `relay.pid` and run `/avatar remote on`.
 The relay binds to the machine's Tailscale address (`tailscale ip -4`);
 without Tailscale, pass `--host <address>`. The page has no authentication and
 its buttons act on the avatar only, never on mesh7 approvals: keep it on a
