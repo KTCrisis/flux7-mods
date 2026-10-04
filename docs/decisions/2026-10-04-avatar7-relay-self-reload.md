@@ -1,0 +1,6 @@
+# avatar7's relay reloads itself, and a dead one no longer swallows the voice
+
+- **Problem**: an edit to relay.py needed a restart nobody remembered (`/avatar remote off` gives the relay back, it does not stop it; the service is a system unit, sudo only); and a relay that died without its cleanup left a spool behind, into which the owning session kept sending its lines while the host stayed silent.
+- **Decision**: relay.py watches its own file and `os.execv`s into a new version once the file holds still and compiles (same PID under systemd, spool and owner kept); a start that fails removes the spool; a session holds the relay only while the process in `relay.pid` lives (`kill -0`). A page that reconnects sends `Last-Event-ID` and gets the lines it missed, within the spool's 120 s.
+- **Why**: execv keeps systemd's tracking and the phone's owner, where a kill and restart lost both; checking liveness at each use beats trusting a cleanup that a crash or SIGKILL skips. Replay covers a car's dead zones without giving a new tab a backlog.
+- **Where**: `avatar7/tools/relay.py` (reload_on_edit, main, events), `avatar7/hooks/relay.ts` (ownsRelay), tested in `avatar7/tools/test_relay_shell.ts`; commits 38051ff, cedcb4f, 70a7251, 557fbb4.
