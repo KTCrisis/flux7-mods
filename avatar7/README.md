@@ -26,7 +26,9 @@ sessions.
 | `vol - N +` | buttons under the face: SAPI volume by steps of 10, 0 to 100, kept across sessions (`$.store`) |
 
 The pane opens by itself at session start when the terminal is at least 144
-columns wide; below that, `/avatar` seats it. The plugin folder is watched:
+columns wide; below that, `/avatar` seats it. It opens after the other mods
+have started, so it is the pane shown, in the last tab (see Loading in the
+[root README](../README.md#loading)). The plugin folder is watched:
 saving a file reloads the mod in every session started with the alias.
 
 It is deliberately not in the global `CLAUDE_CODE_PLUGIN_DIRS`: a plain

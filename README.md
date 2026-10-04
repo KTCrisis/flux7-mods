@@ -106,6 +106,13 @@ Every interactive session: add the folder to `CLAUDE_CODE_PLUGIN_DIRS` in the
 `env` block of `~/.claude/settings.json` (colon-separated absolute paths).
 The folder is watched: saving a file reloads the mod.
 
+When several mods open a pane at session start, the engine shows the one
+opened last; the tab order follows the first opening, and reopening a pane
+that is already open does not bring it forward. A mod that wants to be in
+front opens its pane after `await next(e)` in `session.start`, once the
+others have started, and so takes the last tab. Opening early for the first
+tab and again later for the front does not work: the early open wins.
+
 ## Checking
 
     claude plugin validate ~/flux7-mods/avatar7
