@@ -37,41 +37,65 @@ It is deliberately not in the global `CLAUDE_CODE_PLUGIN_DIRS`: a plain
 
 ### Remote voice
 
-A session driven from elsewhere (Remote Control from a phone or another PC)
-keeps its mods on the host: the pane and the voice stay there. `tools/relay.py`
-carries them to a browser tab on `http://<host>:8797/`: the full-size portrait
-over the persona's scene, tinted by the mood, the line typed as the voice is
-heard in that tab, and the pane's controls (talk, ask, answer, avatars, mute,
-events, visits, volume). Tap `listen` once: browsers play nothing before a
-gesture. Added to the phone's home screen, it opens like an app. `float` puts
-the face in picture-in-picture over the other apps (Android draws no buttons
-in it: next track asks the avatar to talk, play/pause mutes it), so the voice
-keeps coming while you type in the Claude app. `pixel` swaps the portraits
-for the faces the terminal draws (64x64, scaled up without smoothing) under a
-CRT: scanlines, a rolling band, a vignette; remembered by the browser. A locked
-phone puts a silent page to sleep mid-line: from `listen` on, the page loops
-a breath on the last bit (about -90 dBFS, inaudible; -60 was heard), so
-Android keeps it running as a player and the voice reaches a locked screen. The
-lock screen's player card shows the last line under the persona's name. The
-voice plays through Web Audio, which takes no audio focus: it speaks over the
-user's music (Bandcamp, say) instead of pausing it.
+A session driven from elsewhere (Remote Control from a phone, ssh from another
+PC) keeps its mods on the host: the pane and the voice stay there.
+`tools/relay.py` carries them to a browser tab on `http://<host>:8797/`, which
+installs on a phone's home screen and opens like an app.
 
-The voice follows the user: a prompt sent through Remote Control, or typed
-in a session reached over ssh, takes the relay for this session; a prompt
-typed at the host's own terminal gives it back. While a
-session holds it, its WAVs go to the relay instead of the speakers, and the
-page's buttons reach that session only; other sessions keep their voice on the
-host. `/avatar remote on` starts the relay if needed and holds it whatever the
-next prompt's origin; `/avatar remote off` gives the voice back. Piper voices
-only: a persona speaking through SAPI itself has no WAV to send. The trip is in
-Opus when ffmpeg has libopus (a 16 s line: 732 KB of WAV, 67 KB of Opus).
+**What the page shows.** The full-size portrait over the persona's scene,
+tinted by the mood, with the mouth and frown frames where they exist; the line
+typed as the voice is heard in that tab; the pane's controls (talk, ask,
+answer, avatars, mute, events, visits, volume); at the bottom, which session
+holds the relay (short id, folder, last prompt). Tap `listen` once: browsers
+play nothing before a gesture.
 
-Run the relay as a service so it is ready before any session needs it:
-`tools/avatar7-relay.service` (instructions inside). It binds to the machine's
-Tailscale address (`tailscale ip -4`); without Tailscale, pass
-`--host <address>`. The page has no authentication and its buttons act on the
-avatar (never on mesh7 approvals): keep it on a private network, never on a
-public interface.
+- `float`: the face and its subtitles in picture-in-picture over the other
+  apps. Android draws no HTML there, only media buttons: next track asks the
+  avatar to talk, play/pause mutes it.
+- `pixel`: the faces the terminal draws (64x64, scaled up without smoothing)
+  under a CRT (scanlines, a rolling band, a vignette); remembered by the
+  browser. The terminal dropped its CRT at 64x64 half blocks; a phone has the
+  pixels to draw it thin.
+- The lock screen's player card shows the last line, the persona's name and
+  portrait.
+
+**How a line travels.**
+
+1. On the host, Piper makes a WAV.
+2. If this session holds the relay, ffmpeg turns it into Opus (a 16 s line:
+   732 KB of WAV, 67 KB of Opus, 0.3 s to encode) and drops it in the relay's
+   spool; the host stays silent. Otherwise SAPI plays the WAV on the host, as
+   before. Without libopus, the WAV goes as it is.
+3. The relay tells the page over SSE and serves the file.
+4. The page decodes and plays it through Web Audio, which takes no audio
+   focus: the voice speaks over the user's music (Bandcamp, say) instead of
+   pausing it, and the line is typed over its exact length. The `<audio>`
+   element is the fallback.
+
+A locked phone puts a silent page to sleep mid-line. From `listen` on, the
+page loops a breath on the last bit (about -90 dBFS, inaudible; -60 was
+heard) through an `<audio>` element, on purpose: that one takes the audio
+focus, so Android keeps the page running as a player. Piper voices only: a
+persona speaking through SAPI itself has no WAV to send.
+
+**Who holds the relay.** One session at a time, named in the spool's `owner`
+file; the others keep their voice on the host, and the page's buttons reach
+the holder only. The voice follows where the user last typed: a prompt sent
+through Remote Control, or typed in a session reached over ssh, takes the
+relay; a prompt typed at the host's own terminal gives it back, and so does a
+session that ends (the page then says nobody holds it). `/avatar remote on`
+takes it and holds it whatever the next prompt's origin; `/avatar remote off`
+gives it back.
+
+**Running it.** As a service, so it is ready before any session needs it:
+`tools/avatar7-relay.service` (instructions inside). The page
+(`tools/relay.html`) is read at each request, so editing it needs no restart.
+The relay binds to the machine's Tailscale address (`tailscale ip -4`);
+without Tailscale, pass `--host <address>`. The page has no authentication and
+its buttons act on the avatar only, never on mesh7 approvals: keep it on a
+private network, never on a public interface. A session started over ssh dies
+with the ssh connection; start the one the phone will use in a local
+terminal, or in `tmux`.
 
 ### Your name
 
