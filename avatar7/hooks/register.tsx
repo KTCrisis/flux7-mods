@@ -693,10 +693,6 @@ export const register: Register = (on, options) => {
     const kind = await $.process.run(['sh', '-c', 'printf %s "$CLAUDE_CODE_SESSION_KIND"'])
     if (kind.stdout === 'bg') return next(e)
 
-    // Opened first, for the first tab; opened again below, once the others
-    // have started, to be the one shown.
-    void $.ui.open({ id: PANE, title: 'avatar7' })
-
     await $.command.register({
       name: 'avatar',
       description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar duo [id], /avatar events on|off, /avatar visits on|off`,
