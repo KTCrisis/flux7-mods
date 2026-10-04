@@ -2,10 +2,16 @@ import { atom, read, update } from 'claude-code'
 import type { Engine, Register } from 'claude-code'
 
 import type { Announce, Line, Say, Station } from '../types'
+import { ambientCells, type AmbientLayer, type Field } from './ambient'
 
 const PANE = 'avatar7'
 const FACE = 'face'
 const FRAME_MS = 66
+// The weather around the face moves at a third of the face's pace.
+const AMBIENT_FRAMES = 3
+const AMB_LEFT = 'amb-left'
+const AMB_RIGHT = 'amb-right'
+const AMB_BAND = 'amb-band'
 const DEFAULT = 'shodan'
 const AVATARS = ['shodan', 'hal', 'glados', 'ada', 'duck7', 'pod042', 'kaneda', 'commis', 'fox', 'adjutant', 'morte', 'pda', 'lain', 'tachikoma']
 
@@ -357,6 +363,8 @@ type Persona = {
   asks?: string
   // The avatars it gets on with, or against: they visit it more often.
   friends?: string[]
+  // Pixel weather in the black around the face (hooks/ambient.ts).
+  ambient?: AmbientLayer[]
 }
 
 // A visiting persona: its text and its face, read from its folder.
@@ -468,6 +476,14 @@ export const register: Register = (on, options) => {
   // The avatar `who` was read from, so a line keeps its voice through a switch.
   let whoId = ''
   let size = W
+  // The ambient's geometry, set at each render: the margins either side of
+  // the face, the band under the text, in cells; and its own clock, which
+  // runs faster on a refusal or an error and slower while a human decides.
+  let ambLeft = 0
+  let ambRight = 0
+  let ambBand = 0
+  let ambField: Field = { width: 0, height: 0 }
+  let ambT = 0
   let asked = ''
   // The lines to speak; the clock, which holds the session's $, speaks them.
   let queue: Queued[] = []
@@ -592,6 +608,30 @@ export const register: Register = (on, options) => {
     return new Uint8Array(words.buffer).toBase64()
   }
 
+  // The weather of whoever is shown: the guest's during a visit.
+  const ambientLayers = (): AmbientLayer[] =>
+    (isGuestShown && guest !== null ? guest.persona.ambient : who?.ambient) ?? []
+
+  // The repaints of the ambient's Rasters, the ones the last render mounted.
+  const ambientBlits = (): { requestId: string; key: string; columns: number; rows: number; cells: string }[] => {
+    const layers = ambientLayers()
+    if (layers.length === 0) return []
+    const isStorm = mood === 'deny'
+    const rows = size / 2
+    const paint = (key: string, x0: number, y0: number, columns: number, height: number) => ({
+      requestId: PANE,
+      key,
+      columns,
+      rows: height,
+      cells: ambientCells(layers, ambField, x0, y0, columns, height, ambT, isStorm),
+    })
+    return [
+      ...(ambLeft > 0 ? [paint(AMB_LEFT, 0, 0, ambLeft, rows)] : []),
+      ...(ambRight > 0 ? [paint(AMB_RIGHT, ambLeft + size, 0, ambRight, rows)] : []),
+      ...(ambBand > 0 ? [paint(AMB_BAND, 0, size + TEXT_ROWS * 2, ambField.width, ambBand)] : []),
+    ]
+  }
+
   const describe = (e: Record<string, unknown>): string => {
     const hint = e.command ?? e.file_path ?? e.pattern ?? e.url ?? ''
     return `${String(e.tool)} ${String(hint).slice(0, 80)}`.trim()
@@ -668,6 +708,10 @@ export const register: Register = (on, options) => {
       }
       if (frame > moodUntil && mood !== 'idle') mood = 'idle'
       void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
+      if (frame % AMBIENT_FRAMES === 0) {
+        ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (mood === 'deny' || mood === 'error' ? 2 : mood === 'wait' ? 0.5 : 1)
+        for (const each of ambientBlits()) void $.ui.blit(each)
+      }
       if (typed < lineLength && frame >= typeFrom) {
         typed = Math.min(lineLength, typed + typeRate)
         $.ui.invalidate('ui.render')
@@ -1063,6 +1107,19 @@ export const register: Register = (on, options) => {
     // controls, drawn as a terminal's: a label, a status on the right, a
     // cursor that blinks at each redraw, dashes that glitch on a denial.
     const cols = Math.max(8, e.props.bodyColumns)
+    // The weather fills the margins beside the face and the band under the
+    // text, sized short of the rows the text may take (an open field, the
+    // buttons wrapping on a narrow pane), none while the picker is open.
+    const layers = ambientLayers()
+    const isAmbient = layers.length > 0
+    ambLeft = isAmbient ? Math.floor((cols - size) / 2) : 0
+    ambRight = isAmbient ? cols - size - ambLeft : 0
+    const extraRows = (openQuestion !== null ? 1 : 0) + (isConsulting ? 1 : 0) + (cols < 75 ? 1 : 0) + 1
+    ambBand = isAmbient && !isPicking ? Math.max(0, e.props.scroll.bodyRows - size / 2 - TEXT_ROWS - extraRows) : 0
+    ambField = { width: cols, height: size + TEXT_ROWS * 2 + ambBand * 2 }
+    const ambient = (key: string, x0: number, y0: number, columns: number, rows: number) => (
+      <Raster key={key} columns={columns} rows={rows} cells={ambientCells(layers, ambField, x0, y0, columns, rows, ambT, mood === 'deny')} />
+    )
     const isBlink = Math.floor(frame / REFIT_FRAMES) % 2 === 0
     const moodColor = mood === 'idle' ? color : `#${TINT[mood].toString(16).padStart(6, '0')}`
     const seconds = Math.floor((frame * FRAME_MS) / 1000)
@@ -1088,7 +1145,9 @@ export const register: Register = (on, options) => {
       // The body's own height, so the controls can sit on its last row.
       <Box flexDirection="column" flexGrow={1} width="100%" height={e.props.scroll.bodyRows} backgroundColor="#000000">
         <Box flexDirection="row" justifyContent="center" width="100%" backgroundColor="#000000">
+          {ambLeft > 0 && ambient(AMB_LEFT, 0, 0, ambLeft, size / 2)}
           <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />
+          {ambRight > 0 && ambient(AMB_RIGHT, ambLeft + size, 0, ambRight, size / 2)}
         </Box>
         {rule('rule-face', (who?.name ?? 'avatar7').toUpperCase(), `[${mood.toUpperCase()}]`, moodColor, 0)}
         <Text color={color} backgroundColor="#000000">
@@ -1133,7 +1192,9 @@ export const register: Register = (on, options) => {
             }}
           />
         )}
-        <Box flexGrow={1} backgroundColor="#000000" />
+        <Box flexGrow={1} flexDirection="column" justifyContent="flex-end" backgroundColor="#000000">
+          {ambBand > 0 && ambient(AMB_BAND, 0, size + TEXT_ROWS * 2, cols, ambBand)}
+        </Box>
         {rule('rule-controls', 'CTRL', `UP ${clock}`, color, 7)}
         {isPicking && (
           <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor="#000000">

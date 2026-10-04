@@ -4,6 +4,7 @@
   "rate": -1,
   "piper": { "voice": "en_GB-cori-high", "lengthScale": 1.0, "fx": "aresample=22050,asetrate=22050*0.93,aresample=22050" },
   "color": "#e0b04a",
+  "ambient": [{"kind": "stars", "color": "#e0b04a", "density": 0.02, "speed": 0.8}, {"kind": "rise", "color": "#d8d0c0", "density": 0.1, "speed": 6}],
   "station": ["Jeremy Soule Oblivion", "Múm", "Helios", "Sufjan Stevens", "Joanna Newsom Ys", "Broadcast", "Arcturus", "Agalloch", "Joe Hisaishi", "Max Richter", "Blonde Redhead", "Perfume Genius"],
   "eyes": [
     {

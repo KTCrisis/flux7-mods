@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
 import { commandEvent, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
+import { ambientPixel } from './ambient'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -235,4 +236,23 @@ test('a listed command earns a line with what it means; any other passes in sile
   expect(commandEvent('compact', ' focus  on mesh7 ')?.event).toContain('/compact focus on mesh7, which')
   expect(commandEvent('context', '')).toBeUndefined()
   expect(commandEvent('avatar-ask', 'x')).toBeUndefined()
+})
+
+test('the ambient draws only where a layer lights, and stays dim', async () => {
+  const f = { width: 40, height: 60 }
+  expect(ambientPixel([], f, 5, 5, 1, false)).toBe(0)
+  const rain = [{ kind: 'rain' as const, color: '#00ff9c', density: 1 }]
+  let lit = 0
+  let brightest = 0
+  for (let y = 0; y < f.height; y++) {
+    const p = ambientPixel(rain, f, 3, y, 2, false)
+    if (p !== 0) lit++
+    brightest = Math.max(brightest, (p >> 8) & 0xff)
+  }
+  expect(lit).toBeGreaterThan(0)
+  expect(brightest).toBeLessThanOrEqual(128)
+  // The skyline's body is drawn, darker than its windows, along the bottom.
+  const city = [{ kind: 'skyline' as const, color: '#ffb347' }]
+  expect(ambientPixel(city, f, 0, f.height - 1, 0, false)).not.toBe(0)
+  expect(ambientPixel(city, f, 0, 0, 0, false)).toBe(0)
 })
