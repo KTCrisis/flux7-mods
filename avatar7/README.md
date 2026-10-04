@@ -97,8 +97,8 @@ await $.state.set({ plugin: 'my-mod', key: 'announce' }, { mood: 'watch', event:
 `mood` is the face (`watch` calm, `error` amber), `event` what happened, in
 words the line is written from; the toast text is added to it. avatar7 hears
 the write and keeps it across its own reloads; the mod never imports avatar7,
-and without it the value just sits unread. atelier-bell, usage-bell and
-jukebox7 do this. `/avatar voices` lists the mods heard so far.
+and without it the value just sits unread. atelier-bell and usage-bell
+do this. `/avatar voices` lists the mods heard so far.
 
 A mod that wants a line without a toast writes its own `say` key instead,
 each time it has something to say:
@@ -115,6 +115,9 @@ waits); `release`, that call decided. mesh7-pane says mesh7 going down
 (`error`), an emergency stop (`deny`) and their end (`watch`); a refusal of
 this session's calls with its rule; an MCP call held for a human, then the
 human's decision. It reads them from mesh7's traces, not from message texts.
+jukebox7 says each song as it starts, asked or chained, and the persona
+introduces it the way a radio host would, over the intro while the music
+steps back under the voice.
 
 Every line, from a call, a toast, a `say` or a poke, goes through one queue of
 four: a poke first, then `deny`, then `error` and `wait`, then `watch`, the

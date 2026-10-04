@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio } from './register'
+import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio, introEvent } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -228,4 +228,17 @@ test('a track listed without duration asks yt-dlp for its own, for the progress 
   on('prompt.submit', ($, e) => ({ text: e.text }))
   await $.prompt.submit(typed('joue I Was Born des Unicorns'))
   expect(argv).toContainEqual(durationArgv('e9OLLTKryiA'))
+})
+
+test('each song that starts is handed to avatar7 to introduce, by say, without the discovery mark', async ($, on) => {
+  engine(on, '{"action":"play","query":"ambient music","long":true}')
+  const says: { mood: string; event: string }[] = []
+  on('state.set', ($, e, next) => {
+    const w = e as { plugin: string; key: string; value: { mood: string; event: string } }
+    if (w.plugin === 'jukebox7' && w.key === 'say') says.push(w.value)
+    return next(e)
+  })
+  await $.prompt.submit(typed('joue moi un peu de musique ambient'))
+  expect(says).toEqual([{ mood: 'watch', event: introEvent('Tranquility - Deep Healing Ambient'), at: expect.any(Number) } as never])
+  expect(introEvent('✦ Grimes - Oblivion')).toContain('"Grimes - Oblivion"')
 })

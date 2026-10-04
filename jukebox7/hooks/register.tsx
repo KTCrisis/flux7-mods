@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Engine, Register } from 'claude-code'
 
-import type { Player, Track } from '../types'
+import type { Player, Say, Track } from '../types'
 
 // Cheap sieve before any model call: a prompt that fails it reaches the
 // session untouched, with no added latency. A command to the jukebox is
@@ -349,6 +349,11 @@ async function fillDuration($: Engine, id: string): Promise<void> {
   }
 }
 
+// What the persona on duty hears when a song starts: the title, plain, and
+// the cue to introduce it in its own manner.
+export const introEvent = (title: string): string =>
+  `the jukebox starts "${title.replace(DISCOVERED, '')}"; introduce it in your own manner, the way a radio host would`
+
 async function playAt($: Engine, tracks: Track[], index: number, genre: string | null = null): Promise<Track | undefined> {
   const before = await read($, player)
   if (before.pgid !== null) await halt($, before.pgid)
@@ -370,6 +375,9 @@ async function playAt($: Engine, tracks: Track[], index: number, genre: string |
     pausedAt: null,
   }
   await update($, player, () => p)
+  // Every start goes through here: asked, from a genre, or the next one when
+  // a song ends; avatar7, if loaded, speaks over the intro.
+  await $.state.set({ plugin: 'jukebox7', key: 'say' }, { mood: 'watch', event: introEvent(track.title), at: Date.now() } satisfies Say)
   if (p.pgid !== null) await $.process.run(detached(volumeArgv(await read($, volume), true)))
   if (track.seconds === null) void fillDuration($, track.id)
   $.ui.status(show(p))
@@ -442,6 +450,7 @@ async function playGenre($: Engine, label: string): Promise<Track | undefined> {
   if (track === undefined) {
     $.ui.status(undefined)
     $.ui.toast(`music: nothing found for ${artist}`)
+    await $.state.set({ plugin: 'jukebox7', key: 'say' }, { mood: 'error', event: `the jukebox found nothing to play for ${artist}`, at: Date.now() } satisfies Say)
     return undefined
   }
   $.ui.toast(`music now playing: ${track.title}`)
@@ -526,8 +535,6 @@ export const register: Register = on => {
     isBackground = kind.stdout === 'bg'
     if (isBackground) return next(e)
 
-    // For avatar7, when loaded: music put on is calm news.
-    await $.state.set({ plugin: 'jukebox7', key: 'announce' }, { mood: 'watch', event: 'the user asked for music, and you put it on' })
     await $.command.register({
       name: 'music',
       description: 'Play music from YouTube: /music <search>, /music pause, /music next, /music similar, /music stop, /music vol [+|-]<n>, /music alone for what plays',

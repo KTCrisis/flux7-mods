@@ -49,8 +49,10 @@ rain in the manner of Ghost in the Shell: half-width katakana and digits,
 falling five frames a second while a song plays, frozen on pause.
 
 With avatar7 loaded, `a` plays the pick of the avatar on duty: the `station`
-of its `persona.json`, which avatar7 publishes in its `station` state, and avatar7 announces each song in
-its own voice. While the avatar speaks (its `isVoicing` state) the music drops
+of its `persona.json`, which avatar7 publishes in its `station` state. Each
+song that starts, asked, from a genre or chained when the last one ends, is
+written to this mod's `say` state: avatar7, if loaded, introduces it in the
+persona's manner, like a radio host over the intro. While the avatar speaks (its `isVoicing` state) the music drops
 to 70 % of its level, then returns.
 
 `/music <search>` plays one named track; `/music pause|next|stop`;
