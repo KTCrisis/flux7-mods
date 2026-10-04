@@ -104,6 +104,37 @@ the config menu (`/config`, row "Your name"), or in `~/.claude/settings.json`
 under `pluginConfigs` for `avatar7`. Empty, they stay impersonal; HAL falls
 back to Dave.
 
+### Your own complement (private)
+
+The personas in this repository know nothing about you. To give them more,
+without publishing it, write a file per persona outside the repository:
+`~/.config/avatar7/personas/<id>.json`. avatar7 merges it at load, on top of
+`personas/<id>/persona.json`; a persona without one stays as published.
+
+```json
+{
+  "persona": "You know the user practises judo and builds agent governance.",
+  "events": [
+    { "story": "the user's judo bag sits by the door; a training night", "mood": "wait" },
+    { "story": "a melody the user started three days ago is open again", "mood": "watch" }
+  ],
+  "asks": "judo and discipline",
+  "nobody": "sensei"
+}
+```
+
+| Field | Effect |
+| --- | --- |
+| `persona` | appended to the character's text: what it knows of you, how it treats you |
+| `events` | added to its own scenes (moods: `watch`, `wait`, `error`, `deny`) |
+| `asks` | added to the topics it asks you about |
+| `nobody` | what it calls you when `user_name` is empty |
+
+Every field is optional. The file is read when the persona comes on duty or
+visits, so a switch (`/avatar <id>`) picks up an edit. Invalid JSON is
+ignored, with a line in the session log. Keep the file out of any repository:
+it is the place for what you would not publish.
+
 ### Requirements
 
 - Claude Code with function hooks (plugins loaded by `--plugin-dir`).

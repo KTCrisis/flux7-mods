@@ -510,12 +510,44 @@ async function loadScenes($: Engine, dir: string, persona: Persona): Promise<Per
   return persona
 }
 
+// A private complement, kept out of the repository: ~/.config/avatar7/personas/<id>.json
+// adds scenes (events), extends the character (persona, asks), may rename the
+// user (nobody). Read with cat, as the engine's reads stay in the plugin folder.
+export type Private = { persona?: string; events?: Story[]; asks?: string; nobody?: string }
+export const withPrivate = (pub: Persona, priv: Private | null): Persona => {
+  if (priv === null) return pub
+  return {
+    ...pub,
+    persona: priv.persona ? `${pub.persona} ${priv.persona}` : pub.persona,
+    events: [...(pub.events ?? []), ...(priv.events ?? []).filter(e => typeof e.story === 'string')],
+    asks: priv.asks ? (pub.asks ? `${pub.asks}; ${priv.asks}` : priv.asks) : pub.asks,
+    nobody: priv.nobody ?? pub.nobody,
+  }
+}
+const privateArgv = (id: string): string[] => ['sh', '-c', 'cat "$HOME/.config/avatar7/personas/$1.json" 2>/dev/null; true', 'avatar7-private', id]
+
+// The persona as written in the repository, completed by the private file if any.
+async function readPersona($: Engine, id: string): Promise<Persona> {
+  const dir = `${$.plugin.root}/personas/${id}`
+  const pub = JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona
+  let priv: Private | null = null
+  const out = (await $.process.run(privateArgv(id))).stdout.trim()
+  if (out !== '') {
+    try {
+      priv = JSON.parse(out) as Private
+    } catch {
+      $.ui.log(`avatar7: ~/.config/avatar7/personas/${id}.json is not valid JSON, ignored`)
+    }
+  }
+  return loadScenes($, dir, withPrivate(pub, priv))
+}
+
 type Guest = { id: string; persona: Persona; faces: Faces }
 
 async function loadGuest($: Engine, id: string): Promise<Guest | null> {
   try {
     const dir = `${$.plugin.root}/personas/${id}`
-    const persona = await loadScenes($, dir, JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona)
+    const persona = await readPersona($, id)
     return { id, persona, faces: await loadFaces($, dir) }
   } catch {
     return null
@@ -816,7 +848,7 @@ export const register: Register = (on, options) => {
     await update($, onDuty, () => id)
     try {
       const dir = `${$.plugin.root}/personas/${id}`
-      who = await loadScenes($, dir, JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona)
+      who = await readPersona($, id)
       whoId = id
       await update($, tint, () => who?.color ?? '')
       await update($, station, () => ({ name: who?.name ?? '', artists: who?.station ?? [] }))
@@ -846,7 +878,7 @@ export const register: Register = (on, options) => {
         pendingAvatar = null
         void (async () => {
           const dir = `${$.plugin.root}/personas/${id}`
-          who = await loadScenes($, dir, JSON.parse(String(await $.fs.read(`${dir}/persona.json`))) as Persona)
+          who = await readPersona($, id)
           whoId = id
           await update($, tint, () => who?.color ?? '')
           await update($, station, () => ({ name: who?.name ?? '', artists: who?.station ?? [] }))

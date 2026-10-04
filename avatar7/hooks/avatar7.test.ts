@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { commandEvent, parseRemote, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
+import { commandEvent, parseRemote, withPrivate, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
 import { ambientCells, ambientPixel } from './ambient'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
@@ -265,4 +265,14 @@ test('the relay page may only ask for the pane gestures, well formed', async () 
   expect(parseRemote('{"cmd":"approve","id":"x"}')).toBeUndefined()
   expect(parseRemote('{"cmd":"ask"}')).toBeUndefined()
   expect(parseRemote('not json')).toBeUndefined()
+})
+
+test('a private complement adds scenes and character, keeps the public ones', async () => {
+  const pub = { name: 'HAL', persona: 'You are HAL.', events: [{ story: 'a', mood: 'watch' }], asks: 'truth', nobody: 'Dave' } as never
+  const merged = withPrivate(pub, { persona: 'You know the user plays judo.', events: [{ story: 'b', mood: 'wait' }], asks: 'judo' })
+  expect(merged.persona).toBe('You are HAL. You know the user plays judo.')
+  expect(merged.events?.map(e => e.story)).toEqual(['a', 'b'])
+  expect(merged.asks).toBe('truth; judo')
+  expect(merged.nobody).toBe('Dave')
+  expect(withPrivate(pub, null)).toBe(pub)
 })
