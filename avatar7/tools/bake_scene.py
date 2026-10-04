@@ -1,6 +1,6 @@
 """Bake a studio backdrop into the raw RGB grid avatar7 draws under the text.
 
-usage: python tools/bake_scene.py <persona> [--width 384]
+usage: python tools/bake_scene.py <persona> [--width 512]
 Reads personas/<persona>/scene.png, a wide render (a skyline, a shore), writes
 scene.rgb (width x its height kept to the render's ratio, 3 bytes a pixel,
 row-major) and scene-preview.png (x4) beside it. persona.json names it in its
@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 p = argparse.ArgumentParser()
 p.add_argument("persona")
-p.add_argument("--width", type=int, default=384)
+p.add_argument("--width", type=int, default=512)
 a = p.parse_args()
 
 d = ROOT / "personas" / a.persona

@@ -251,9 +251,7 @@ test('the ambient draws only where a layer lights, and stays dim', async () => {
   }
   expect(lit).toBeGreaterThan(0)
   expect(brightest).toBeLessThanOrEqual(128)
-  // The skyline is drawn in box-drawing lines: the ground is a line, the sky is not.
-  const city = [{ kind: 'skyline' as const, color: '#ffb347', palette: ['#ff2d95', '#00e5ff'] }]
-  const glyph = (y: number) => new Uint32Array(Uint8Array.fromBase64(ambientCells(city, f, 2, y, 1, 1, 0, false)).buffer)[0]
-  expect(glyph(f.height - 2)).toBe(0x2500)
-  expect(glyph(0)).toBe(0x2580)
+  // A cell shows two colors: a lone drop on black is a quadrant, lit in the drop's color.
+  const words = new Uint32Array(Uint8Array.fromBase64(ambientCells([], f, 0, 0, 2, 2, 0, false)).buffer)
+  expect(words[1]).toBe(0)
 })

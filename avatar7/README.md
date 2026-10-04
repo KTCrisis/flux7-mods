@@ -180,7 +180,9 @@ refuses reads as a failure, and a held one as a success.
 The black around the face holds each persona's backdrop and weather
 (`hooks/ambient.ts`, `ambient` in `persona.json`): a margin either side of the
 face and a band under the text, three more Rasters repainted every third
-frame (5 a second), about 1 ms each on a 160-column pane.
+frame (5 a second), about 3 ms in all on a 160-column pane. Each cell is a
+quadrant block (`▖▗▘▝▚▞...`): four pixels, two colors chosen as chafa does,
+twice the face's horizontal resolution.
 
 - A `scene` layer is a wide studio render baked by `tools/bake_scene.py`,
   fitted to the pane's width and anchored to the band's bottom, its top fading
@@ -190,7 +192,7 @@ frame (5 a second), about 1 ms each on a 160-column pane.
 - The layers above it add their light: `rain`, `rise` (bubbles, embers,
   steam), `wind`, `stars`, `bolt` (rare, frequent on a refusal), `pulse`
   (wires), `grid` (an outrun floor, `floor` its depth as a share of the
-  width), `skyline` (a box-drawing city, unused since the scenes). Each takes
+  width). Each takes
   `color`, `density`, `speed`. Every pixel is a function of its place and
   time through hashed noise; nothing is kept per drop.
 - The ambient's clock runs twice as fast on an error or a refusal and half as
@@ -324,8 +326,8 @@ two thirds, dark empty sky above, no people, no text"), saved as
 
     python3 tools/bake_scene.py <id>
 
-writes `scene.rgb` (384x144) and `scene-preview.png`; name it in `ambient`:
-`{"kind": "scene", "color": "...", "file": "scene.rgb", "width": 384, "height": 144, "animate": [...]}`.
+writes `scene.rgb` (512x192) and `scene-preview.png`; name it in `ambient`:
+`{"kind": "scene", "color": "...", "file": "scene.rgb", "width": 512, "height": 192, "animate": [...]}`.
 
 ### 2b. Frames (optional)
 

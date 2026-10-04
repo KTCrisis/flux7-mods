@@ -1,13 +1,12 @@
 // Pixel weather in the black around the face: one or two layers per persona,
 // read from its persona.json `ambient`. Every pixel is a function of its place
 // and the ambient's own time through hashed noise, so no drop is kept; only
-// the skyline and the current bolt are cached, per field size.
+// the fitted scene and the current bolt are cached.
 
-export type AmbientKind = 'rain' | 'rise' | 'wind' | 'stars' | 'bolt' | 'skyline' | 'pulse' | 'scene' | 'grid'
+export type AmbientKind = 'rain' | 'rise' | 'wind' | 'stars' | 'bolt' | 'pulse' | 'scene' | 'grid'
 
 // density: the share of columns, rows or pixels that carry something (0-1);
 // speed: pixels a second for what moves, the twinkle's pace for stars.
-// palette: for the skyline, the neon colors its buildings pick among.
 // scene: a backdrop baked by tools/bake_scene.py, `file` of `width` x `height`
 // pixels, its bytes attached as `pixels` when the persona loads.
 export type AmbientLayer = {
@@ -15,7 +14,6 @@ export type AmbientLayer = {
   color: string
   density?: number
   speed?: number
-  palette?: string[]
   file?: string
   width?: number
   height?: number
@@ -28,9 +26,12 @@ export type AmbientLayer = {
   floor?: number
 }
 
-// The field the layers draw on: the pane's width in pixels, and the face's
-// height plus the band under the text, two pixels per row.
+// The field the layers draw on: the pane's width, two pixels per column, and
+// the face's height plus the band under the text, two pixels per row. A cell
+// is drawn as a quadrant block (2x2), so its pixels are half as wide as tall:
+// QUAD of them across make one square.
 export type Field = { width: number; height: number }
+export const QUAD = 2
 
 // How bright the weather may get against the face: it stays behind it.
 const DIM = 0.5
@@ -58,76 +59,6 @@ const streak = (line: number, at: number, length: number, t: number, speed: numb
   return d >= 0 && d < trail ? 1 - d / trail : 0
 }
 
-// Buildings along the bottom of the field, in cells (one column wide, one
-// row tall), widths 4-10, cached per field: each column's roof row and the
-// index of its building.
-let skylineFor = ''
-let skyline: { roof: number[]; building: number[] } = { roof: [], building: [] }
-const city = (f: Field): { roof: number[]; building: number[] } => {
-  const id = `${f.width}x${f.height}`
-  if (id === skylineFor) return skyline
-  const rows = f.height / 2
-  skyline = { roof: [], building: [] }
-  let x = 0
-  let b = 0
-  while (x < f.width) {
-    const w = 4 + Math.floor(hash(b, 41) * 7)
-    const h = 3 + Math.floor(hash(b, 42) * Math.min(15, rows * 0.35))
-    for (let i = 0; i < w && x < f.width; i++, x++) {
-      skyline.roof.push(rows - h)
-      skyline.building.push(b)
-    }
-    b++
-  }
-  skylineFor = id
-  return skyline
-}
-
-// The skyline is drawn in box-drawing lines, finer than a half block: a cell
-// is on the outline when it holds a roof, a wall between two buildings or the
-// ground; its glyph joins the outline cells around it.
-const isOutline = (c: { roof: number[]; building: number[] }, rows: number, x: number, y: number): boolean => {
-  if (x < 0 || x >= c.roof.length || y < 0 || y >= rows) return false
-  const roof = c.roof[x]
-  const isWall = x === 0 || c.building[x] !== c.building[x - 1]
-  if (y < roof) return isWall && x > 0 && y >= c.roof[x - 1]
-  return y === roof || y === rows - 1 || isWall
-}
-
-// Up 1, down 2, left 4, right 8.
-const JOINS = ['·', '│', '│', '│', '─', '┘', '┐', '┤', '─', '└', '┌', '├', '─', '┴', '┬', '┼']
-
-// Neon outlines stay brighter than the rest of the weather.
-const NEON = 0.85
-
-// A skyline cell's glyph and color, or null to let the pixel layers show.
-const skylineCell = (layer: AmbientLayer, f: Field, x: number, y: number, t: number): { code: number; color: number } | null => {
-  const c = city(f)
-  const rows = f.height / 2
-  if (x >= c.roof.length) return null
-  const roof = c.roof[x]
-  if (isOutline(c, rows, x, y)) {
-    const joins =
-      (isOutline(c, rows, x, y - 1) ? 1 : 0) |
-      (isOutline(c, rows, x, y + 1) ? 2 : 0) |
-      (isOutline(c, rows, x - 1, y) ? 4 : 0) |
-      (isOutline(c, rows, x + 1, y) ? 8 : 0)
-    // A wall belongs to the taller of its two buildings; the ground to none.
-    const owner = y === rows - 1 ? -1 : y < roof ? c.building[x - 1] : c.building[x]
-    const palette = layer.palette ?? [layer.color]
-    const neon = rgb(palette[owner < 0 ? 0 : Math.floor(hash(owner, 44) * palette.length)])
-    // Now and then a tube flickers out for a beat.
-    const isOut = owner >= 0 && hash(owner, Math.floor(t * 4), 45) < 0.03
-    return { code: JOINS[joins].codePointAt(0) ?? 0x2500, color: scale(neon, isOut ? 0.15 : y === rows - 1 ? 0.35 : NEON) }
-  }
-  // Windows inside a building, lit and dimmed every few seconds.
-  if (y > roof && y < rows - 1 && x % 3 === 1 && (y - roof) % 2 === 0) {
-    const isLit = hash(x, y, Math.floor(t / 3 + hash(x, y, 43) * 5)) < 0.25
-    if (isLit) return { code: 0xb7, color: scale(rgb(layer.color), DIM) }
-  }
-  return null
-}
-
 // A scene fitted to the field's width, anchored to its bottom, its top fading
 // into the black; each pixel sorted once so the right ones move: red lights
 // on the antennas blink, neon signs flicker, windows go dark and light again.
@@ -149,7 +80,7 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
   if (px === undefined || sw === 0 || sh === 0) return null
   if (px === sceneOf && f.width === sceneWidth) return scene
   const w = f.width
-  const h = Math.max(1, Math.round((sh * w) / sw))
+  const h = Math.max(1, Math.round((sh * w) / (QUAD * sw)))
   const rgbOut = new Uint32Array(w * h)
   const sort = new Uint8Array(w * h)
   const lums = new Float32Array(w * h)
@@ -199,6 +130,18 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
   }
   // A window is a point of light: brighter than the pixels around it, not a
   // lit wall or a patch of sky, which would go dark in specks.
+  // A sign stands out from what is beside it; a saturated sky does not, and
+  // would flicker in bars. Signs are upright strips: compare left and right.
+  const SIDE = 4
+  for (let y = 2; y < h - 2; y++) {
+    for (let x = SIDE; x < w - SIDE; x++) {
+      const at = y * w + x
+      if (sort[at] !== NEON_SIGN) continue
+      let beside = 0
+      for (const dy of [-2, 0, 2]) beside += lums[at + dy * w - SIDE] + lums[at + dy * w + SIDE]
+      if (lums[at] < 1.3 * (beside / 6)) sort[at] = STILL
+    }
+  }
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
       const at = y * w + x
@@ -270,7 +213,7 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
     case 'rain':
       return streak(x, y, f.height, t, speed ?? 24, 6, density ?? 0.25, 1)
     case 'wind':
-      return streak(y, x, f.width, t, speed ?? 40, 12, density ?? 0.12, 11)
+      return streak(y, x, f.width, t, (speed ?? 40) * QUAD, 12 * QUAD, density ?? 0.12, 11)
     case 'rise': {
       // Up a column, swaying a pixel either side, fading as it climbs.
       for (let c = x - 1; c <= x + 1; c++) {
@@ -284,7 +227,7 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
       return 0
     }
     case 'stars': {
-      if (hash(x, y, 31) >= (density ?? 0.015)) return 0
+      if (hash(x, y, 31) >= (density ?? 0.015) / QUAD) return 0
       return 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(t * (speed ?? 1) * (0.5 + hash(x, y, 32)) + hash(x, y, 33) * 6.28))
     }
     case 'bolt': {
@@ -293,16 +236,13 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
       const d = Math.abs(path[y] - x)
       return d === 0 ? 1 : d === 1 ? 0.25 : 0
     }
-    case 'skyline':
-      // Drawn by cells (skylineCell), not by pixels.
-      return 0
     case 'scene':
       // Drawn in color by scenePixel.
       return 0
     case 'grid': {
       // An outrun floor: rows closer together toward the horizon, scrolling
       // toward the viewer; rays fanning out from its middle.
-      const horizon = f.height - Math.max(2, Math.round(f.width * (layer.floor ?? 0.1)))
+      const horizon = f.height - Math.max(2, Math.round((f.width / QUAD) * (layer.floor ?? 0.1)))
       if (y < horizon) return 0
       if (y === horizon) return 1
       const depth = (y - horizon) / (f.height - horizon)
@@ -312,7 +252,7 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
       const far = 4 / ((y - horizon + 1) / (f.height - horizon))
       const shift = t * (speed ?? 1.5)
       const isRow = Math.floor(near + shift) !== Math.floor(far + shift)
-      const ray = ((x - f.width / 2) * depth) / 6
+      const ray = ((x - f.width / 2) * depth) / (6 * QUAD)
       const isRay = Math.abs(ray - Math.round(ray)) < 0.5 * depth / 6 + 0.04
       return isRow || isRay ? 0.35 + 0.65 * depth : 0
     }
@@ -320,8 +260,8 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
       // Wires every 9 rows, a bright pulse running along each.
       if (y % 9 !== 4) return 0
       const wire = Math.floor(y / 9)
-      const at = (t * (speed ?? 30) + hash(wire, 61) * (f.width + 20)) % (f.width + 20)
-      const d = Math.abs(at - x)
+      const at = (t * (speed ?? 30) * QUAD + hash(wire, 61) * (f.width + 20)) % (f.width + 20)
+      const d = Math.abs(at - x) / QUAD
       return d < 3 ? 1 - d / 3 : 0.12
     }
   }
@@ -351,24 +291,69 @@ export const ambientPixel = (layers: AmbientLayer[], f: Field, x: number, y: num
   return out
 }
 
-// A Raster's cells for the field's rectangle at (x0, y0), `columns` wide and
-// `rows` tall: upper half blocks, two field pixels per cell.
+// Quadrant blocks by the mask of their lit quarters: upper left 1, upper
+// right 2, lower left 4, lower right 8.
+const QUADRANTS = [0x20, 0x2598, 0x259d, 0x2580, 0x2596, 0x258c, 0x259e, 0x259b, 0x2597, 0x259a, 0x2590, 0x259c, 0x2584, 0x2599, 0x259f, 0x2588]
+
+const distance = (a: number, b: number): number =>
+  Math.abs(((a >> 16) & 0xff) - ((b >> 16) & 0xff)) + Math.abs(((a >> 8) & 0xff) - ((b >> 8) & 0xff)) + Math.abs((a & 0xff) - (b & 0xff))
+
+const mean = (colors: number[]): number => {
+  let r = 0
+  let g = 0
+  let b = 0
+  for (const c of colors) {
+    r += (c >> 16) & 0xff
+    g += (c >> 8) & 0xff
+    b += c & 0xff
+  }
+  const n = colors.length
+  return (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n)
+}
+
+// A Raster's cells for the field's rectangle at column x0 and pixel row y0,
+// `columns` wide and `rows` tall. Each cell holds four pixels and shows two
+// colors, as chafa does: the two most different quarters lead, each other
+// quarter joins the nearer one, and the glyph draws the first group.
 export const ambientCells = (layers: AmbientLayer[], f: Field, x0: number, y0: number, columns: number, rows: number, t: number, isStorm: boolean): string => {
   const words = new Uint32Array(columns * rows * 3)
-  const sky = layers.find(l => l.kind === 'skyline')
+  const q = [0, 0, 0, 0]
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < columns; col++) {
       const i = (row * columns + col) * 3
-      const glyph = sky === undefined ? null : skylineCell(sky, f, x0 + col, y0 / 2 + row, t)
-      if (glyph !== null) {
-        words[i] = glyph.code
-        words[i + 1] = glyph.color
-        words[i + 2] = 0
-        continue
+      const x = (x0 + col) * QUAD
+      const y = y0 + row * 2
+      q[0] = ambientPixel(layers, f, x, y, t, isStorm)
+      q[1] = ambientPixel(layers, f, x + 1, y, t, isStorm)
+      q[2] = ambientPixel(layers, f, x, y + 1, t, isStorm)
+      q[3] = ambientPixel(layers, f, x + 1, y + 1, t, isStorm)
+      let a = 0
+      let b = 1
+      let far = -1
+      for (let m = 0; m < 4; m++) {
+        for (let n = m + 1; n < 4; n++) {
+          const d = distance(q[m], q[n])
+          if (d > far) {
+            far = d
+            a = m
+            b = n
+          }
+        }
       }
-      words[i] = 0x2580
-      words[i + 1] = ambientPixel(layers, f, x0 + col, y0 + row * 2, t, isStorm)
-      words[i + 2] = ambientPixel(layers, f, x0 + col, y0 + row * 2 + 1, t, isStorm)
+      let mask = 0
+      const lit: number[] = []
+      const dark: number[] = []
+      for (let m = 0; m < 4; m++) {
+        if (distance(q[m], q[a]) <= distance(q[m], q[b])) {
+          mask |= 1 << m
+          lit.push(q[m])
+        } else {
+          dark.push(q[m])
+        }
+      }
+      words[i] = QUADRANTS[mask]
+      words[i + 1] = mean(lit)
+      words[i + 2] = dark.length > 0 ? mean(dark) : 0
     }
   }
   return new Uint8Array(words.buffer).toBase64()

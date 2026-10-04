@@ -4,7 +4,7 @@
   "rate": -1,
   "piper": { "voice": "en_US-kristin-medium", "lengthScale": 1.0 },
   "color": "#2ee6e6",
-  "ambient": [{"kind": "scene", "color": "#2ee6e6", "file": "scene.rgb", "width": 384, "height": 144}, {"kind": "rise", "color": "#7fe8ff", "density": 0.12, "speed": 6}],
+  "ambient": [{"kind": "scene", "color": "#2ee6e6", "file": "scene.rgb", "width": 512, "height": 192}, {"kind": "rise", "color": "#7fe8ff", "density": 0.12, "speed": 6}],
   "station": ["Simon Chylinski Subnautica", "Subnautica Below Zero soundtrack", "Loscil Submers", "Biosphere Substrata", "Austin Wintory Abzu", "Brian Eno Apollo", "Boards of Canada", "Hammock", "Philip Glass", "Max Richter", "Godspeed You! Black Emperor", "Mono", "Gojira From Mars to Sirius"],
   "eyes": [
     {

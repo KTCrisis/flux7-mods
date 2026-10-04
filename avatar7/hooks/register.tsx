@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Engine, Register } from 'claude-code'
 
 import type { Announce, Line, Say, Station } from '../types'
-import { ambientCells, type AmbientLayer, type Field } from './ambient'
+import { ambientCells, QUAD, type AmbientLayer, type Field } from './ambient'
 
 const PANE = 'avatar7'
 const FACE = 'face'
@@ -641,7 +641,7 @@ export const register: Register = (on, options) => {
     return [
       ...(ambLeft > 0 ? [paint(AMB_LEFT, 0, 0, ambLeft, rows)] : []),
       ...(ambRight > 0 ? [paint(AMB_RIGHT, ambLeft + size, 0, ambRight, rows)] : []),
-      ...(ambBand > 0 ? [paint(AMB_BAND, 0, size + TEXT_ROWS * 2, ambField.width, ambBand)] : []),
+      ...(ambBand > 0 ? [paint(AMB_BAND, 0, size + TEXT_ROWS * 2, ambField.width / QUAD, ambBand)] : []),
     ]
   }
 
@@ -1129,7 +1129,7 @@ export const register: Register = (on, options) => {
     ambRight = isAmbient ? cols - size - ambLeft : 0
     const extraRows = (openQuestion !== null ? 1 : 0) + (isConsulting ? 1 : 0) + (cols < 75 ? 1 : 0) + 1
     ambBand = isAmbient && !isPicking ? Math.max(0, e.props.scroll.bodyRows - size / 2 - TEXT_ROWS - extraRows) : 0
-    ambField = { width: cols, height: size + TEXT_ROWS * 2 + ambBand * 2 }
+    ambField = { width: cols * QUAD, height: size + TEXT_ROWS * 2 + ambBand * 2 }
     const ambient = (key: string, x0: number, y0: number, columns: number, rows: number) => (
       <Raster key={key} columns={columns} rows={rows} cells={ambientCells(layers, ambField, x0, y0, columns, rows, ambT, mood === 'deny')} />
     )
