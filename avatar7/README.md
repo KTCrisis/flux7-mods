@@ -269,6 +269,8 @@ reduction is contrast and a large central subject, so the prompt asks for:
 - a frontal, symmetric face (or a single eye) centered and filling the frame;
 - a pure black or dark background;
 - high contrast and one dominant glow color.
+- a drawn style (cel, cartoon, comic ink) over a realistic one: at 64 pixels
+  outlines and flat colors survive, skin gradients turn to mush.
 
 The shipped portraits (model `krea2_turbo_fp8_scaled.safetensors`, seed
 random unless given; the actual seed is in the PNG metadata). Morte and
@@ -284,13 +286,13 @@ renders from a prompt:
 | duck7 | none, seed 11 | cartoon mascot portrait of a cheeky mallard duck head facing the viewer, 1990s animated series style, bold thick black outlines, flat cel shading, big round expressive white eyes with black pupils and a mischievous half-lidded look, wide orange-yellow bill with a smug grin, glossy emerald green head, small tilted golden crown, symmetric, head centered and filling the frame, pure black background, high contrast, vivid saturated colors |
 | pod042 | none, seed 42 | frontal symmetric view of a small floating support robot pod, boxy grey metal casing with rounded edges, a single horizontal glowing slit eye in the center, two small mechanical arms folded at its sides, minimalist post-apocalyptic android design, centered and filling the frame, pure black background, high contrast, soft white and pale yellow glow, 2017 video game concept art |
 | kaneda | none, seed 1988 | frontal portrait of a cocky teenage biker gang leader, spiky brown hair, smirking confidently straight at the viewer, red leather biker jacket with a white pill capsule emblem on the chest, neon red city lights behind, 1988 japanese anime cel animation style, bold outlines, face centered and filling the frame, dark background, high contrast, saturated red |
-| commis | none, seed 1769 | frontal symmetric portrait of an 18th century East India Company clerk, a weathered ship log keeper with a powdered wig and round brass spectacles, quill pen behind the ear, teak and rattan background with brass navigation instruments and a faded nautical chart, warm candlelight, face centered and filling the frame, dark surroundings, high contrast, oil painting in the style of a colonial era portrait |
+| commis | none, seed 1770 | frontal symmetric portrait of a weary 18th century ship log clerk, powdered wig, round brass spectacles, quill pen behind the ear, 1990s animated series cartoon style, bold thick black outlines, flat cel shading, warm candlelight colors, face centered and filling the frame, pure black background, high contrast |
 | fox | none, seed 1994 | frontal portrait of a cocky anthropomorphic fox fighter pilot, orange and white fur, sharp green eyes looking straight at the viewer with a confident smirk, a radio headset with a small microphone over the muzzle, green flight jacket collar with a white scarf, starfield and a blue cockpit glow behind, 1990s video game box art style, bold outlines, head centered and filling the frame, dark background, high contrast |
-| adjutant | none, seed 1999 | frontal symmetric portrait of a pale female android face, bald, porcelain white skin with thin seams, blank glowing pale blue eyes staring straight ahead, thick black cables and tubes plugged into the skull and neck, holographic blue scanlines and monitor glow, military command interface, face centered and filling the frame, pure black background, high contrast, cold cyan blue light, 1998 science fiction video game cinematic |
+| adjutant | none, seed 1999 | frontal symmetric portrait of a military android adjutant, bald pale female face with panel seams, glowing pale blue eyes, thick cables plugged into the skull, 1990s science fiction comic book style, heavy ink outlines, flat colors, cold cyan monitor light, face centered and filling the frame, pure black background, high contrast |
 | morte | edit, seed 2009 | Boogu Edit (`mode: edit`) of a Planescape: Torment still of Morte: "keep this exact floating skull with its bulging eyes and open toothy jaw, turn it to face the viewer straight on, centered and filling the frame, replace the whole background with pure black, keep the painted 1999 game art style", then a second edit of that (seed 2009) setting it in the dim Planescape Mortuary: stone vaults, purple and green planar haze, a distant candle |
 | pda | none, seed 2018 | frontal symmetric view of a rugged handheld survival PDA device floating in dark deep ocean water, a round glowing screen in the center showing a single luminous cyan signal ring like an eye, concentric rings, small status lights on a scratched white and orange casing, faint bubbles and bioluminescent particles around, device centered and filling the frame, pure black abyssal background, high contrast, cold cyan and teal glow, 2018 underwater survival video game interface |
 | lain | `libre`, seed 1998 | frontal portrait of a quiet teenage girl with a short brown bob haircut, one long lock of hair on her left side held by a small X shaped clip, large pale grey eyes staring straight at the viewer, pale skin lit by the faint glow of an old CRT monitor, tangled cables and telephone wires blurred in the darkness behind, late 1990s anime cel animation style, melancholic and distant, face centered and filling the frame, black background, high contrast, cold blue glow with a touch of red |
-| nova | `libre`, seed 1986 | frontal portrait of a late-night radio DJ woman in 1986 Miami, voluminous dark curly hair, large retro headphones around her neck, aviator sunglasses pushed up on her head, calm half-lidded confident eyes looking straight at the viewer, a faint knowing smile, a chrome studio microphone at the edge of the frame, magenta and cyan neon light on her face, synthwave airbrush art style, face centered and filling the frame, dark background, high contrast |
+| nova | `libre`, seed 1986 | frontal portrait of a late-night radio DJ woman, 1980s japanese anime cel animation style, bold black outlines, flat cel shading, voluminous dark curly hair, retro headphones around her neck, aviator sunglasses pushed up on her head, calm half-lidded confident eyes looking straight at the viewer, a faint knowing smile, magenta and cyan neon rim light, face centered and filling the frame, pure black background, high contrast, saturated colors |
 | tachikoma | `libre`, seed 2002 | frontal view of a small cobalt blue spider-like AI think-tank robot facing the viewer, a round bulbous abdomen pod behind, three large round glowing optical sensors clustered on its front like curious eyes, two small manipulator arms, glossy rounded armor, childlike curious pose, late 1990s anime mecha cel style, robot centered and filling the frame, black background, high contrast, cyan and white glow |
 
 A render takes about 25 to 50 s on Krea 2 turbo.
@@ -314,15 +316,15 @@ mush, crop tighter or re-render with more contrast.
 | duck7 | none (full frame) |
 | pod042 | `64 20 960 916` |
 | kaneda | `180 40 860 720` |
-| commis | `192 100 832 740` |
+| commis | `64 40 960 936` |
 | glados | `70 105 430 465` (on the 504x480 edit) |
 | fox | `112 60 912 860` |
-| adjutant | `92 10 932 850` |
+| adjutant | `80 20 944 884` |
 | morte | `-20 10 236 266` (on the 216x360 edit; outside the image is black) |
 | pda | `130 120 890 880` |
 | lain | `140 60 880 800` |
 | tachikoma | `112 160 912 960` |
-| nova | `160 50 880 770` |
+| nova | `80 40 944 904` |
 
 ### 2a. Scene (optional)
 
