@@ -23,6 +23,9 @@ const W = 64
 const H = 64
 const MIN_SIZE = 16
 
+// The comm window's corner brackets, in face pixels.
+const BRACKET = 7
+
 // Rows kept under the face for the line, which may wrap once, the pending
 // approval, the buttons and the two rules between them.
 const TEXT_ROWS = 6
@@ -606,16 +609,25 @@ export const register: Register = (on, options) => {
       }
     }
     const n = (x1 - x0) * (y1 - y0)
+    const frameOf = isGuestShown && guest !== null ? guest.persona : who
     let k = oy % 2 === 1 ? 0.7 : 1
     if (oy === Math.floor((frame * 0.8 * size) / H) % size) k *= 1.35
     const c = (v: number) => Math.min(255, Math.round((v / n) * k))
     const face = (c(r) << 16) | (c(g) << 8) | c(b)
+    // A comm window's frame: bright brackets at the corners, a faint line
+    // along the edges, in the persona's color or the mood's.
+    const edge = Math.min(ox, oy, size - 1 - ox, size - 1 - oy)
+    if (edge === 0 && ambientLayers().length > 0) {
+      const isCorner = Math.min(ox, size - 1 - ox) < BRACKET && Math.min(oy, size - 1 - oy) < BRACKET
+      const tone = mood === 'idle' ? parseInt((frameOf?.color ?? '#00ff9c').slice(1), 16) : TINT[mood]
+      const kk = isCorner ? 1 : 0.3
+      return (Math.round(((tone >> 16) & 0xff) * kk) << 16) | (Math.round(((tone >> 8) & 0xff) * kk) << 8) | Math.round((tone & 0xff) * kk)
+    }
     // The portrait's dark background lets the scene behind it through, by
     // degrees so its edge does not ring.
     const layers = ambientLayers()
     if (layers.length === 0) return face
-    const shown = isGuestShown && guest !== null ? guest.persona : who
-    const cutout = shown?.cutout ?? 12
+    const cutout = frameOf?.cutout ?? 12
     const alpha = Math.min(1, Math.max(0, ((0.3 * r + 0.59 * g + 0.11 * b) / n - cutout) / (cutout * 2 + 4)))
     if (alpha === 1) return face
     const back = ambientPixel(layers, ambField, (ambLeft + ox) * QUAD, oy, ambT, mood === 'deny')

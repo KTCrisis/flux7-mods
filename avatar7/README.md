@@ -188,13 +188,15 @@ twice the face's horizontal resolution.
   stands behind the face across the pane (cropped like a CSS cover, sky
   first) and runs six rows past the text before fading out. The portrait's
   dark background lets it through by degrees: `cutout` in `persona.json`
-  (default 12, on 0-255 luminance) is lowered for a face with dark hair. `animate` picks what moves in it: `beacons` (red lights
+  (default 12, on 0-255 luminance) is lowered for a face with dark hair.
+  Framed as a comm window: bright brackets at the corners, a faint line
+  along the edges, in the persona's color or the mood's. `animate` picks what moves in it: `beacons` (red lights
   blink), `neon` (saturated signs flicker), `windows` (points of light go dark
   and come back).
 - The layers above it add their light: `rain`, `rise` (bubbles, embers,
   steam), `wind`, `stars`, `bolt` (rare, frequent on a refusal), `pulse`
-  (wires), `grid` (an outrun floor from the scene's sea line, `sea` as a share of
-  the scene's height, down to the pane's bottom). Each takes
+  (wires), `grid` (an outrun floor from where the scene fades out under the text,
+  `horizon` as a share of the scene's bottom row, down to the pane's bottom). Each takes
   `color`, `density`, `speed`. Every pixel is a function of its place and
   time through hashed noise; nothing is kept per drop.
 - The ambient's clock runs twice as fast on an error or a refusal and half as

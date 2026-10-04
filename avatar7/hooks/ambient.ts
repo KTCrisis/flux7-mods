@@ -21,9 +21,8 @@ export type AmbientLayer = {
   // What moves in a scene: blinking red beacons, flickering neon signs,
   // windows going dark; none when absent, the backdrop then stays still.
   animate?: ('beacons' | 'neon' | 'windows')[]
-  // grid: where its horizon sits, as a share of the scene's height up from
-  // the scene's bottom (its sea line); the floor runs down to the field's.
-  sea?: number
+  // grid: where its horizon sits, as a share of the scene's bottom row.
+  horizon?: number
 }
 
 // The field the layers draw on: the pane's width, two pixels per column, and
@@ -69,11 +68,10 @@ const NEON_SIGN = 2
 const WINDOW = 3
 // The backdrop stays a little under full light, behind the face.
 const SCENE = 0.8
-// fitted: the whole scene's height once scaled, cropped sky included.
-type Scene = { width: number; height: number; fitted: number; rgb: Uint32Array; sort: Uint8Array }
+type Scene = { width: number; height: number; rgb: Uint32Array; sort: Uint8Array }
 let sceneOf: Uint8Array | null = null
 let sceneWidth = 0
-let scene: Scene = { width: 0, height: 0, fitted: 0, rgb: new Uint32Array(0), sort: new Uint8Array(0) }
+let scene: Scene = { width: 0, height: 0, rgb: new Uint32Array(0), sort: new Uint8Array(0) }
 
 const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
   const px = layer.pixels
@@ -162,7 +160,7 @@ const fitScene = (layer: AmbientLayer, f: Field): Scene | null => {
   }
   sceneOf = px
   sceneWidth = w
-  scene = { width: w, height: h, fitted: sh * k, rgb: rgbOut, sort }
+  scene = { width: w, height: h, rgb: rgbOut, sort }
   return scene
 }
 
@@ -251,20 +249,36 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
     case 'grid': {
       // An outrun floor: rows closer together toward the horizon, scrolling
       // toward the viewer; rays fanning out from its middle.
-      const fitted = scene.height === f.sceneBottom && scene.width === f.width ? scene.fitted : f.sceneBottom
-      const horizon = Math.round(f.sceneBottom - fitted * (layer.sea ?? 0.15))
+      // Its horizon where the scene fades out under the text, so the floor
+      // and its vanishing point fill the band below.
+      const horizon = Math.round(f.sceneBottom * (layer.horizon ?? 0.92))
       if (y < horizon) return 0
       if (y === horizon) return 1
-      const depth = (y - horizon) / (f.height - horizon)
-      // One pixel row spans this much of the floor: a line lands on the row
-      // that holds it, so lines stay one pixel thin up to the horizon.
-      const near = 4 / depth
-      const far = 4 / ((y - horizon + 1) / (f.height - horizon))
+      // Perspective: a floor point at distance Z shows at depth 1/Z below the
+      // horizon, and its offset across shrinks by the same depth, so the rays
+      // meet at the middle of the horizon.
+      const span = f.height - horizon
+      const depth = (y - horizon) / span
+      const next = (y - horizon + 1) / span
+      // A row line lands on the pixel row whose span of Z holds it: one pixel
+      // thin. Rows every ROW of Z, coming toward the viewer; toward the horizon
+      // a pixel row spans more of Z, and they fade before they would merge.
+      const ROW = 0.2
+      const z = 1 / depth
+      const zNext = 1 / next
       const shift = t * (speed ?? 1.5)
-      const isRow = Math.floor(near + shift) !== Math.floor(far + shift)
-      const ray = ((x - f.width / 2) * depth) / (6 * QUAD)
-      const isRay = Math.abs(ray - Math.round(ray)) < 0.5 * depth / 6 + 0.04
-      return isRow || isRay ? 0.35 + 0.65 * depth : 0
+      const rowFade = Math.min(1, Math.max(0, (ROW / 2 - (z - zNext)) / (ROW / 4)))
+      const row = Math.floor(z / ROW + shift) !== Math.floor(zNext / ROW + shift) ? rowFade : 0
+      // Rays every SPACING squares across, as seen at the bottom row, drawn
+      // soft (by distance to the line) so a slanted one does not stair-step,
+      // and faded where they crowd toward the vanishing point.
+      const SPACING = 8
+      const gap = SPACING * depth * QUAD
+      const across = (x + 0.5 - f.width / 2) / QUAD / depth / SPACING
+      const off = Math.abs(across - Math.round(across)) * gap
+      const ray = Math.max(0, 1 - off) * Math.min(1, Math.max(0, (gap - 3) / 6))
+      const k = Math.max(row, ray)
+      return k > 0 ? k * (0.35 + 0.65 * depth) : 0
     }
     case 'pulse': {
       // Wires every 9 rows, a bright pulse running along each.
