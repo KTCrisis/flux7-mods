@@ -204,7 +204,10 @@ const releaseArgv = (session: string): string[] => ['sh', '-c', `${ownsRelay} &&
 const playArgv = (wav: string, session: string): string[] => [
   'bash',
   '-c',
-  `d="${RELAY_SPOOL}"; if ${ownsRelay}; then n="$d/$(date +%s%N)"; cp "$1" "$n.part" && mv "$n.part" "$n.wav"; ` +
+  `d="${RELAY_SPOOL}"; if ${ownsRelay}; then n="$d/$(date +%s%N)"; ` +
+  // Opus for the trip (a 16 s line: 732 KB of WAV, 67 KB of Opus, 0.3 s to encode).
+  `if ffmpeg -loglevel error -nostdin -i "$1" -c:a libopus -b:a 32k -f ogg "$n.part"; then mv "$n.part" "$n.ogg"; ` +
+  `else cp "$1" "$n.part" && mv "$n.part" "$n.wav"; fi; ` +
   `else "${POWERSHELL}" -NoProfile -Command "\\$v=New-Object -ComObject SAPI.SpVoice; \\$s=New-Object -ComObject SAPI.SpFileStream; \\$s.Open('$(wslpath -w "$1")'); [void]\\$v.SpeakStream(\\$s); \\$s.Close()"; fi; rm -f "$1"`,
   'avatar7-play',
   wav,
@@ -549,6 +552,8 @@ export const register: Register = (on, options) => {
   // /avatar remote on holds the relay; otherwise the voice follows the prompts.
   let isRemoteForced = false
   let sessionDir = ''
+  // A session typed into over ssh: its user is elsewhere, like Remote Control's.
+  let isSsh = false
   let lastPrompt = ''
   let mirrored = ''
   // Characters typed per frame, from which frame, and which line they belong to.
@@ -781,6 +786,7 @@ export const register: Register = (on, options) => {
     if (kind.stdout === 'bg') return next(e)
     sessionId = await $.session.id()
     sessionDir = e.cwd.split('/').filter(Boolean).at(-1) ?? '/'
+    isSsh = (await $.process.run(['sh', '-c', 'printf %s "$SSH_CONNECTION"'])).stdout.trim() !== ''
 
     await $.command.register({
       name: 'avatar',
@@ -1215,8 +1221,8 @@ export const register: Register = (on, options) => {
       lastPrompt = asked
     }
     // The voice follows the user: away through the relay for a prompt sent by
-    // Remote Control, back here for one typed at this terminal.
-    if (e.origin.kind === 'bridge') await $.process.run(takeArgv(sessionId))
+    // Remote Control or typed over ssh, back here for one typed at this terminal.
+    if (e.origin.kind === 'bridge' || (e.origin.kind === 'composer' && isSsh)) await $.process.run(takeArgv(sessionId))
     else if (e.origin.kind === 'composer' && !isRemoteForced) await $.process.run(releaseArgv(sessionId))
     return next(e)
   })

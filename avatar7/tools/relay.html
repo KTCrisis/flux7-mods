@@ -109,7 +109,12 @@ function typeOver(ms) {
     if (shown >= text.length) clearInterval(typer);
   }, 50);
 }
-audio.onplaying = () => { clearTimeout(fallback); if (isFinite(audio.duration)) typeOver(audio.duration * 1000); };
+// An Ogg's duration needs a ranged read the relay does not serve: Infinity
+// then, and void's own measure of the voice stands in.
+audio.onplaying = () => {
+  clearTimeout(fallback);
+  typeOver(isFinite(audio.duration) && audio.duration > 0 ? audio.duration * 1000 : (st && st.speakMs) || text.length * 45);
+};
 const isHeard = () => !audio.paused && !audio.ended && audio.src.includes('/wav/');
 
 function draw() {

@@ -67,12 +67,12 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/wav/"):
             name = Path(self.path[5:]).name
             f = SPOOL / name
-            if not name.endswith(".wav") or not f.is_file():
+            if not name.endswith((".wav", ".ogg")) or not f.is_file():
                 self.send_error(404)
                 return
             body = f.read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Type", "audio/ogg" if name.endswith(".ogg") else "audio/wav")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -135,7 +135,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         # Only WAVs that arrive after the tab connects: no backlog on reconnect.
-        seen = {p.name for p in SPOOL.glob("*.wav")}
+        seen = {p.name for p in voices()}
         last_ping = time.monotonic()
         state_at = 0.0
         try:
@@ -150,7 +150,7 @@ class Handler(BaseHTTPRequestHandler):
                 except FileNotFoundError:
                     pass
                 fresh = sorted(
-                    (p for p in SPOOL.glob("*.wav") if p.name not in seen),
+                    (p for p in voices() if p.name not in seen),
                     key=lambda p: p.stat().st_mtime,
                 )
                 for p in fresh:
@@ -166,10 +166,15 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
+def voices():
+    """The voices waiting in the spool: Opus, or WAV when ffmpeg failed."""
+    return [*SPOOL.glob("*.ogg"), *SPOOL.glob("*.wav")]
+
+
 def sweep():
     while True:
         cutoff = time.time() - KEEP_S
-        for p in SPOOL.glob("*.wav"):
+        for p in voices():
             try:
                 if p.stat().st_mtime < cutoff:
                     p.unlink()

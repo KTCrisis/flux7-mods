@@ -48,13 +48,15 @@ the face in picture-in-picture over the other apps (Android draws no buttons
 in it: next track asks the avatar to talk, play/pause mutes it), so the voice
 keeps coming while you type in the Claude app.
 
-The voice follows the user: a prompt sent through Remote Control takes the
-relay for this session, a prompt typed at the terminal gives it back. While a
+The voice follows the user: a prompt sent through Remote Control, or typed
+in a session reached over ssh, takes the relay for this session; a prompt
+typed at the host's own terminal gives it back. While a
 session holds it, its WAVs go to the relay instead of the speakers, and the
 page's buttons reach that session only; other sessions keep their voice on the
 host. `/avatar remote on` starts the relay if needed and holds it whatever the
 next prompt's origin; `/avatar remote off` gives the voice back. Piper voices
-only: a persona speaking through SAPI itself has no WAV to send.
+only: a persona speaking through SAPI itself has no WAV to send. The trip is in
+Opus when ffmpeg has libopus (a 16 s line: 732 KB of WAV, 67 KB of Opus).
 
 Run the relay as a service so it is ready before any session needs it:
 `tools/avatar7-relay.service` (instructions inside). It binds to the machine's
