@@ -1,6 +1,8 @@
 import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
-import { commandEvent, withPrivate, pickFace, synthArgv, heard, heardSay, landed, nextStreak, streakNote } from './register'
+import { withPrivate, pickFace } from './register'
+import { commandEvent, heard, heardSay, landed, nextStreak, streakNote } from './hearing'
+import { speakScript, synthArgv } from './voice'
 import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona } from './speech'
 import { ambientCells, ambientPixel } from './ambient'
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
@@ -484,4 +486,32 @@ test('a visit runs its six turns, host and guest in turn, then makes room for th
   expect(turns).toHaveLength(6)
   expect(turns.filter(p => p.includes('Close the exchange'))).toHaveLength(1)
   expect((await $.command.run({ command: 'avatar', args: 'duo hal' } as never)).text).toBe('Test visits Test.')
+})
+
+test('a model switch is no command heard (turn.complete hears it); ordinals stay English past ten', () => {
+  expect(commandEvent('model', 'sonnet')).toBeUndefined()
+  const after = (n: number) => streakNote({ mood: 'watch', count: 0 }, { mood: 'deny', count: n })
+  expect([11, 12, 13, 21, 22, 103].map(after)).toEqual([
+    ' (11th denial in a row)',
+    ' (12th denial in a row)',
+    ' (13th denial in a row)',
+    ' (21st denial in a row)',
+    ' (22nd denial in a row)',
+    ' (103rd denial in a row)',
+  ])
+})
+
+test('SAPI speaks a pitched voice through XML, the text escaped; volume stays within 0 and 1 for Piper', () => {
+  const pitched = speakScript({ voice: 'Microsoft Zira', rate: 1, pitch: -4 }, 80)
+  expect(pitched).toContain('<pitch absmiddle=')
+  expect(pitched).toContain('[Security.SecurityElement]::Escape($t)')
+  expect(pitched).toContain('"-4"')
+  const plain = speakScript({ voice: 'Microsoft David', rate: 0 }, 50)
+  expect(plain).toContain('$s.SelectVoice("Microsoft David")')
+  expect(plain).not.toContain('<pitch')
+  const who = { voice: 'Microsoft David', rate: 0, piper: { voice: 'en_US-ryan-high' } } as never
+  expect(synthArgv('fox', who, 150)[5]).toBe('1')
+  expect(synthArgv('fox', who, -5)[5]).toBe('0')
+  // Without a Piper voice, $1 is empty and SAPI speaks the line itself.
+  expect(synthArgv('hal', { voice: 'Microsoft David', rate: 0 } as never, 100)[4]).toBe('')
 })
