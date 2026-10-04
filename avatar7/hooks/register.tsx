@@ -3,6 +3,26 @@ import type { Engine, Register } from 'claude-code'
 
 import type { Announce, Line, Say, Station } from '../types'
 import { ambientCells, ambientPixel, QUAD, type AmbientLayer, type Field } from './ambient'
+import {
+  aliveArgv,
+  CHECK_FRAMES,
+  DRAIN_FRAMES,
+  drainArgv,
+  follows,
+  givesOnEnd,
+  heldArgv,
+  MIRROR_FRAMES,
+  mirrorArgv,
+  newRelay,
+  parseRemote,
+  playArgv,
+  releaseArgv,
+  startArgv,
+  takeArgv,
+  type Mirror,
+  type Relay,
+  type RelayHost,
+} from './relay'
 
 const PANE = 'avatar7'
 const FACE = 'face'
@@ -131,114 +151,10 @@ export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
   who.piper?.speaker === undefined ? '' : String(who.piper.speaker),
 ]
 
-// SAPI plays the WAV: SoundPlayer on a \\wsl.localhost path can fall silent
-// (returns at once, no error) while SAPI still reads it. While tools/relay.py
-// runs (/avatar remote on), its spool exists: the WAV goes there instead, for a
-// browser tab on another machine of the tailnet, and this one stays silent
-// (renamed in place, so never served half written).
-const RELAY_SPOOL = '${XDG_CACHE_HOME:-$HOME/.cache}/avatar7/relay'
-// The face as the relay's page draws it: who, in which mood, saying what, for
-// how long; written whole to the spool when it changes, while the relay runs.
-// The pane's controls ride along, so the page can draw them as they stand.
-export type Mirror = {
-  persona: string
-  name: string
-  color: string
-  mood: string
-  line: string
-  seq: number
-  speakMs: number
-  isSpeaking: boolean
-  question: string
-  avatars: { id: string; name: string }[]
-  isMuted: boolean
-  eventsOn: boolean
-  visitsOn: boolean
-  volume: number
-  // Which session holds the relay: short id, folder, last prompt typed.
-  session: string
-}
-const mirrorArgv = (session: string): string[] => [
-  'sh',
-  '-c',
-  `d="${RELAY_SPOOL}"; ${ownsRelay} && cat > "$d/state.part" && mv "$d/state.part" "$d/state.json"`,
-  'avatar7-mirror',
-  '',
-  session,
-]
-// The page's buttons, queued by the relay as one JSON file each under cmd/:
-// read in order and removed, one per line.
-const drainArgv = (): string[] => [
-  'sh',
-  '-c',
-  `for f in "${RELAY_SPOOL}"/cmd/*.json; do [ -f "$f" ] && cat "$f" && echo && rm -f "$f"; done; true`,
-]
-// What the page may ask: the pane's gestures, never mesh7's approvals. talk,
-// ask and chat do reach the session: Haiku reads its last messages and the
-// answer goes back to the page, which also shows 40 characters of the last
-// prompt. The relay binds to the tailnet only, and takes presses only while a
-// session holds it.
-export type Remote =
-  | { cmd: 'talk' | 'mute' | 'events' | 'visits' }
-  | { cmd: 'ask' | 'answer' | 'chat'; text: string }
-  | { cmd: 'avatar'; id: string }
-  | { cmd: 'volume'; step: 1 | -1 }
-export const parseRemote = (line: string): Remote | undefined => {
-  let r: unknown
-  try {
-    r = JSON.parse(line)
-  } catch {
-    return undefined
-  }
-  if (typeof r !== 'object' || r === null) return undefined
-  const o = r as Record<string, unknown>
-  if (o.cmd === 'talk' || o.cmd === 'mute' || o.cmd === 'events' || o.cmd === 'visits') return { cmd: o.cmd }
-  if ((o.cmd === 'ask' || o.cmd === 'answer' || o.cmd === 'chat') && typeof o.text === 'string') return { cmd: o.cmd, text: o.text }
-  if (o.cmd === 'avatar' && typeof o.id === 'string') return { cmd: 'avatar', id: o.id }
-  if (o.cmd === 'volume' && (o.step === 1 || o.step === -1)) return { cmd: 'volume', step: o.step }
-  return undefined
-}
-// How often the clock looks for the relay's spool, mirrors, and reads the page.
-const RELAY_CHECK_FRAMES = 30
-const MIRROR_FRAMES = 3
-const DRAIN_FRAMES = 8
-
-// The relay belongs to the session that ran /avatar remote on, named in its
-// spool's `owner`: every other session keeps its voice and face on this machine.
-// A relay that died without cleaning up (killed, crashed at start) leaves its
-// spool behind: the owner holds it only while the process in relay.pid lives.
-const ownsRelay = `[ "$(cat "${RELAY_SPOOL}/owner" 2>/dev/null)" = "$2" ] && kill -0 "$(cat "${RELAY_SPOOL}/relay.pid" 2>/dev/null)" 2>/dev/null`
-// Take the relay (when it runs), or give it back (when this session has it).
-const takeArgv = (session: string): string[] => [
-  'sh',
-  '-c',
-  `[ -d "${RELAY_SPOOL}" ] && printf %s "$2" > "${RELAY_SPOOL}/owner"`,
-  'avatar7-take',
-  '',
-  session,
-]
-// Given back, the page hears that nobody holds the relay rather than keeping
-// the last face it saw.
-const releaseArgv = (session: string): string[] => [
-  'sh',
-  '-c',
-  `${ownsRelay} && rm -f "${RELAY_SPOOL}/owner" && printf '{}' > "${RELAY_SPOOL}/state.part" && mv "${RELAY_SPOOL}/state.part" "${RELAY_SPOOL}/state.json"; true`,
-  'avatar7-release',
-  '',
-  session,
-]
-const playArgv = (wav: string, session: string): string[] => [
-  'bash',
-  '-c',
-  `d="${RELAY_SPOOL}"; if ${ownsRelay}; then n="$d/$(date +%s%N)"; ` +
-  // Opus for the trip (a 16 s line: 732 KB of WAV, 67 KB of Opus, 0.3 s to encode).
-  `if ffmpeg -loglevel error -nostdin -i "$1" -c:a libopus -b:a 32k -f ogg "$n.part"; then mv "$n.part" "$n.ogg"; ` +
-  `else cp "$1" "$n.part" && mv "$n.part" "$n.wav"; fi; ` +
-  `else "${POWERSHELL}" -NoProfile -Command "\\$v=New-Object -ComObject SAPI.SpVoice; \\$s=New-Object -ComObject SAPI.SpFileStream; \\$s.Open('$(wslpath -w "$1")'); [void]\\$v.SpeakStream(\\$s); \\$s.Close()"; fi; rm -f "$1"`,
-  'avatar7-play',
-  wav,
-  session,
-]
+// SAPI plays the WAV on the host: SoundPlayer on a \\wsl.localhost path can
+// fall silent (returns at once, no error) while SAPI still reads it. The
+// relay, when this session holds it, takes the WAV instead (relay.ts).
+const SAPI_PLAY = `"${POWERSHELL}" -NoProfile -Command "\\$v=New-Object -ComObject SAPI.SpVoice; \\$s=New-Object -ComObject SAPI.SpFileStream; \\$s.Open('$(wslpath -w "$1")'); [void]\\$v.SpeakStream(\\$s); \\$s.Close()"`
 
 // The line waits for its voice: typed from when SAPI starts the WAV (PowerShell
 // takes ~0.3 s to get there), over the audio's length. Without a WAV within
@@ -255,6 +171,97 @@ const PLAY_START_MS = 900
 // reload, and a line half spoken was cut with them.
 const detachedArgv = (argv: string[]): string[] => ['bash', '-c', 'setsid "$0" "$@" </dev/null >/dev/null 2>&1 &', ...argv]
 const HOLD_FRAMES = 75
+
+// The remote voice's engine calls (relay.ts holds the rest): declared here,
+// in this file, as the engine follows $ into nothing imported.
+async function relayOpen($: Engine, r: Relay): Promise<void> {
+  r.session = await $.session.id()
+  r.isSsh = (await $.process.run(['sh', '-c', 'printf %s "$SSH_CONNECTION"'])).stdout.trim() !== ''
+}
+
+async function relayGive($: Engine, r: Relay): Promise<void> {
+  await $.process.run(releaseArgv(r.session))
+  r.isHeld = false
+}
+
+// Each frame: who holds the relay, now and then; the face, when held and
+// changed; the page's presses.
+function relayTick($: Engine, r: Relay, frame: number, host: RelayHost): void {
+  if (r.session === '') return
+  if (frame % CHECK_FRAMES === 0) {
+    void (async () => {
+      // After a /clear the process goes on under a new id, with no
+      // session.start: a relay held by force follows it there.
+      const id = await $.session.id()
+      if (id !== r.session) {
+        r.session = id
+        if (r.isForced) await $.process.run(takeArgv(r.session))
+      }
+      r.isHeld = (await $.process.run(heldArgv(r.session))).stdout.trim() === 'up'
+      if (!r.isHeld) r.mirrored = ''
+    })().catch(err => $.ui.log(`avatar7: the relay check failed: ${String(err)}`, { to: 'debug' }))
+  }
+  if (r.isHeld && !r.isMirroring && frame % MIRROR_FRAMES === 0) {
+    const face = host.face()
+    if (face !== undefined) {
+      r.isMirroring = true
+      void (async () => {
+        const json = JSON.stringify(await face)
+        if (json !== r.mirrored) await $.process.run(mirrorArgv(r.session), { stdin: json })
+        r.mirrored = json
+      })()
+        .catch(err => $.ui.log(`avatar7: the relay's mirror failed: ${String(err)}`, { to: 'debug' }))
+        .finally(() => {
+          r.isMirroring = false
+        })
+    }
+  }
+  if (r.isHeld && !r.isDraining && frame % DRAIN_FRAMES === 0) {
+    r.isDraining = true
+    void (async () => {
+      const out = await $.process.run(drainArgv())
+      for (const each of out.stdout.split('\n')) {
+        const press = parseRemote(each)
+        if (press !== undefined) await host.press(press)
+      }
+    })()
+      .catch(err => $.ui.log(`avatar7: the page's commands failed: ${String(err)}`, { to: 'debug' }))
+      .finally(() => {
+        r.isDraining = false
+      })
+  }
+}
+
+// /avatar remote on: start the relay when no service runs it, and hold it.
+async function relayOn($: Engine, r: Relay): Promise<string> {
+  if ((await $.process.run(aliveArgv())).stdout.trim() !== 'up') {
+    await $.process.run(startArgv($.plugin.root))
+    await $.clock.sleep(1500)
+  }
+  r.isForced = true
+  await $.process.run(takeArgv(r.session))
+  const ip = await $.process.run(['sh', '-c', 'tailscale ip -4 | head -1'])
+  return `The voice leaves this machine: open http://${ip.stdout.trim()}:8797/ on the other one and click listen.`
+}
+
+// /avatar remote off: give the relay back; the relay itself keeps running.
+async function relayOff($: Engine, r: Relay): Promise<string> {
+  r.isForced = false
+  await relayGive($, r)
+  return 'The voice comes back to this machine.'
+}
+
+async function relayFollow($: Engine, r: Relay, origin: string): Promise<void> {
+  const move = follows(r, origin)
+  if (move === 'take') await $.process.run(takeArgv(r.session))
+  else if (move === 'give') await relayGive($, r)
+  // Written whole again at the next mirror: a release left `{}` behind.
+  if (r.session !== '') r.mirrored = ''
+}
+
+async function relayEnd($: Engine, r: Relay, reason: string): Promise<void> {
+  if (givesOnEnd(r, reason)) await relayGive($, r)
+}
 
 // Rules every persona keeps, whatever its character: added to each prompt.
 const STYLE = ' The user may write in French; you always answer in English. Never flattering. No quotes, no emoji, no em dash.'
@@ -604,18 +611,11 @@ export const register: Register = (on, options) => {
   let typed = 0
   let lineLength = 0
   let lineText = ''
-  // The relay's spool seen at the last check, and the last state written there.
-  let isRelayed = false
-  let isMirroring = false
-  let isDraining = false
-  let sessionId = ''
-  // /avatar remote on holds the relay; otherwise the voice follows the prompts.
-  let isRemoteForced = false
+  // The remote voice, its own state (relay.ts); relay.session is '' in a
+  // background session.
+  const relay = newRelay()
   let sessionDir = ''
-  // A session typed into over ssh: its user is elsewhere, like Remote Control's.
-  let isSsh = false
   let lastPrompt = ''
-  let mirrored = ''
   // Characters typed per frame, from which frame, and which line they belong to.
   let typeRate = 2
   let typeFrom = 0
@@ -858,9 +858,8 @@ export const register: Register = (on, options) => {
     // A reload mid-line kills the timer that would lower it: jukebox7 would
     // stay ducked.
     if (await read($, isVoicing)) await update($, isVoicing, () => false)
-    sessionId = await $.session.id()
+    await relayOpen($, relay)
     sessionDir = e.cwd.split('/').filter(Boolean).at(-1) ?? '/'
-    isSsh = (await $.process.run(['sh', '-c', 'printf %s "$SSH_CONNECTION"'])).stdout.trim() !== ''
 
     await $.command.register({
       name: 'avatar',
@@ -936,92 +935,59 @@ export const register: Register = (on, options) => {
         })().catch(err => $.ui.log(`avatar7: personas/${id} could not take over: ${String(err)}`))
       }
       if (frame > moodUntil && mood !== 'idle') mood = 'idle'
-      if (frame % RELAY_CHECK_FRAMES === 0) {
-        void (async () => {
-          // After a /clear the process goes on under a new id, with no
-          // session.start: a relay held by force follows it there.
-          const id = await $.session.id()
-          if (id !== sessionId) {
-            sessionId = id
-            if (isRemoteForced) await $.process.run(takeArgv(sessionId))
+      relayTick($, relay, frame, {
+        face: () => {
+          if (who === null) return undefined
+          const shownWho = isGuestShown && guest !== null ? guest.persona : who
+          const base = {
+            persona: isGuestShown && guest !== null ? guest.id : whoId,
+            name: shownWho.name,
+            color: shownWho.color ?? '',
+            mood,
+            line: lineText,
+            seq: lineSeq,
+            speakMs: Math.max(0, speakUntil - typeFrom) * FRAME_MS,
+            isSpeaking: frame < speakUntil,
+            question: openQuestion?.text ?? '',
+            avatars: AVATARS.map(id => ({ id, name: names[id] ?? id })),
+            eventsOn,
+            visitsOn,
+            session: [relay.session.slice(0, 8), sessionDir, lastPrompt === '' ? '' : `"${lastPrompt.slice(0, 40)}"`].filter(Boolean).join(' / '),
           }
-          const r = await $.process.run(['sh', '-c', `${ownsRelay} && echo up`, 'avatar7-relay', '', sessionId])
-          isRelayed = r.stdout.trim() === 'up'
-          if (!isRelayed) mirrored = ''
-        })().catch(() => {})
-      }
-      if (isRelayed && !isMirroring && frame % MIRROR_FRAMES === 0 && who !== null) {
-        isMirroring = true
-        const shownWho = isGuestShown && guest !== null ? guest.persona : who
-        const base = {
-          persona: isGuestShown && guest !== null ? guest.id : whoId,
-          name: shownWho.name,
-          color: shownWho.color ?? '',
-          mood,
-          line: lineText,
-          seq: lineSeq,
-          speakMs: Math.max(0, speakUntil - typeFrom) * FRAME_MS,
-          isSpeaking: frame < speakUntil,
-          question: openQuestion?.text ?? '',
-          avatars: AVATARS.map(id => ({ id, name: names[id] ?? id })),
-          eventsOn,
-          visitsOn,
-          session: [sessionId.slice(0, 8), sessionDir, lastPrompt === '' ? '' : `"${lastPrompt.slice(0, 40)}"`].filter(Boolean).join(' / '),
-        }
-        void (async () => {
-          const state: Mirror = { ...base, isMuted: await read($, isMuted), volume: await read($, volume) }
-          const json = JSON.stringify(state)
-          if (json !== mirrored) await $.process.run(mirrorArgv(sessionId), { stdin: json })
-          mirrored = json
-        })()
-          .catch(err => $.ui.log(`avatar7: the relay's mirror failed: ${String(err)}`, { to: 'debug' }))
-          .finally(() => {
-            isMirroring = false
-          })
-      }
-      if (isRelayed && !isDraining && frame % DRAIN_FRAMES === 0) {
-        isDraining = true
-        void (async () => {
-          const out = await $.process.run(drainArgv())
-          for (const each of out.stdout.split('\n')) {
-            const r = parseRemote(each)
-            if (r === undefined) continue
-            if (r.cmd === 'talk') speakLater('talk')
-            else if (r.cmd === 'ask') {
-              const question = r.text.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
-              if (question !== '') speakLater({ consult: question })
-            } else if (r.cmd === 'chat') {
-              const said = r.text.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
-              if (said !== '') speakLater({ chat: said })
-            } else if (r.cmd === 'answer') {
-              const answer = r.text.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
-              const q = openQuestion
-              if (answer !== '' && q !== null) {
-                openQuestion = null
-                speakLater({ question: q.text, answer })
-              }
-            } else if (r.cmd === 'avatar') {
-              if (AVATARS.includes(r.id) && r.id !== whoId) pendingAvatar = r.id
-            } else if (r.cmd === 'mute') await update($, isMuted, was => !was)
-            else if (r.cmd === 'events') {
-              eventsOn = !eventsOn
-              await $.store.set('events', eventsOn)
-            } else if (r.cmd === 'visits') {
-              visitsOn = !visitsOn
-              await $.store.set('visits', visitsOn)
-            } else {
-              const step = r.step * VOLUME_STEP
-              const v = await update($, volume, was => Math.min(100, Math.max(0, was + step)))
-              await $.store.set('volume', v)
+          return (async (): Promise<Mirror> => ({ ...base, isMuted: await read($, isMuted), volume: await read($, volume) }))()
+        },
+        press: async r => {
+          if (r.cmd === 'talk') speakLater('talk')
+          else if (r.cmd === 'ask') {
+            const question = r.text.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
+            if (question !== '') speakLater({ consult: question })
+          } else if (r.cmd === 'chat') {
+            const said = r.text.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
+            if (said !== '') speakLater({ chat: said })
+          } else if (r.cmd === 'answer') {
+            const answer = r.text.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
+            const q = openQuestion
+            if (answer !== '' && q !== null) {
+              openQuestion = null
+              speakLater({ question: q.text, answer })
             }
-            $.ui.invalidate('ui.render')
+          } else if (r.cmd === 'avatar') {
+            if (AVATARS.includes(r.id) && r.id !== whoId) pendingAvatar = r.id
+          } else if (r.cmd === 'mute') await update($, isMuted, was => !was)
+          else if (r.cmd === 'events') {
+            eventsOn = !eventsOn
+            await $.store.set('events', eventsOn)
+          } else if (r.cmd === 'visits') {
+            visitsOn = !visitsOn
+            await $.store.set('visits', visitsOn)
+          } else {
+            const step = r.step * VOLUME_STEP
+            const v = await update($, volume, was => Math.min(100, Math.max(0, was + step)))
+            await $.store.set('volume', v)
           }
-        })()
-          .catch(err => $.ui.log(`avatar7: the page's commands failed: ${String(err)}`, { to: 'debug' }))
-          .finally(() => {
-            isDraining = false
-          })
-      }
+          $.ui.invalidate('ui.render')
+        },
+      })
       void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (frame % AMBIENT_FRAMES === 0) {
         ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (mood === 'deny' || mood === 'error' ? 2 : mood === 'wait' ? 0.5 : 1)
@@ -1193,7 +1159,7 @@ export const register: Register = (on, options) => {
               // Detached, so a reload of this module no longer cuts the line;
               // the voice is held for the WAV's length plus PowerShell's start.
               await update($, isVoicing, () => true)
-              await $.process.run(detachedArgv(playArgv(wav, sessionId)))
+              await $.process.run(detachedArgv(playArgv(wav, relay.session, SAPI_PLAY)))
               await $.clock.sleep(ms + PLAY_START_MS)
             }
           }
@@ -1271,28 +1237,8 @@ export const register: Register = (on, options) => {
       ]
       return { text: all.length === 0 ? 'No mod has asked for a voice in this session.' : all.join('\n') }
     }
-    if (id === 'remote on' || id === 'remote off') {
-      if (id === 'remote off') {
-        isRemoteForced = false
-        await $.process.run(releaseArgv(sessionId))
-        isRelayed = false
-        return { text: 'The voice comes back to this machine.' }
-      }
-      // The relay runs as a system service (tools/avatar7-relay.service); without
-      // it, started here, detached.
-      const pid = `"${RELAY_SPOOL}/relay.pid"`
-      const alive = await $.process.run(['sh', '-c', `[ -f ${pid} ] && kill -0 "$(cat ${pid})" 2>/dev/null && echo up`])
-      if (alive.stdout.trim() !== 'up') {
-        await $.process.run(['sh', '-c', `rm -rf "${RELAY_SPOOL}"`])
-        await $.process.run(detachedArgv(['python3', `${$.plugin.root}/tools/relay.py`]))
-        await $.clock.sleep(1500)
-      }
-      // Held until /avatar remote off, whatever the next prompt's origin.
-      isRemoteForced = true
-      await $.process.run(takeArgv(sessionId))
-      const ip = await $.process.run(['sh', '-c', 'tailscale ip -4 | head -1'])
-      return { text: `The voice leaves this machine: open http://${ip.stdout.trim()}:8797/ on the other one and click listen.` }
-    }
+    if (id === 'remote on') return { text: await relayOn($, relay) }
+    if (id === 'remote off') return { text: await relayOff($, relay) }
     if (!AVATARS.includes(id)) return { text: `Unknown avatar. Choose one of: ${AVATARS.join(', ')}.` }
 
     pendingAvatar = id
@@ -1340,26 +1286,18 @@ export const register: Register = (on, options) => {
     return { text: muted ? 'The avatar falls silent.' : 'The avatar speaks again.' }
   })
 
-  // A session that ends gives the relay back: an owner gone for good would
-  // hold the page on its last face, and keep the others' voices off it.
-  // A /clear goes on in this process: a relay held by force stays held, and
-  // the clock hands it to the new session id.
+  // A session that ends gives the relay back; a /clear keeps a forced one.
   on('session.end', async ($, e, next) => {
-    if (sessionId !== '' && !(e.reason === 'clear' && isRemoteForced)) {
-      await $.process.run(releaseArgv(sessionId))
-      isRelayed = false
-    }
+    await relayEnd($, relay, e.reason)
     return next(e)
   })
 
-  // The user's prompt judges the calls of its own turn only; a toast or a
-  // story an hour later is not measured against it.
   // A model switch is no command the mod sees (the /model picker settles it
   // after the command has run, and Remote Control or /config switch without
   // one): the model in use is compared at each turn's end.
   on('turn.complete', async ($, e, next) => {
     asked = ''
-    if (sessionId !== '') {
+    if (relay.session !== '') {
       const model = await $.session.model()
       if (lastModel !== '' && model !== lastModel && who !== null) {
         speakLater({ mood: 'watch', event: `the assistant now runs on ${model}, no longer on ${lastModel}` })
@@ -1375,17 +1313,7 @@ export const register: Register = (on, options) => {
       asked = e.text.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
       lastPrompt = asked
     }
-    // The voice follows the user: away through the relay for a prompt sent by
-    // Remote Control or typed over ssh, back here for one typed at this terminal.
-    // A background session (sessionId never set) holds no relay.
-    if (sessionId === '') return next(e)
-    if (e.origin.kind === 'bridge' || (e.origin.kind === 'composer' && isSsh)) await $.process.run(takeArgv(sessionId))
-    else if (e.origin.kind === 'composer' && !isRemoteForced) {
-      await $.process.run(releaseArgv(sessionId))
-      isRelayed = false
-    }
-    // Written whole again at the next mirror: a release left `{}` behind.
-    mirrored = ''
+    await relayFollow($, relay, e.origin.kind)
     return next(e)
   })
 

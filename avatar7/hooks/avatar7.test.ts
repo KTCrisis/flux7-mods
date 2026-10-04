@@ -1,7 +1,8 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { commandEvent, parseRemote, withPrivate, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
+import { commandEvent, withPrivate, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
 import { ambientCells, ambientPixel } from './ambient'
+import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -301,4 +302,17 @@ test('a /clear keeps a relay held by force; any other end gives it back', async 
   expect(released).toEqual(['test-session'])
   await $.session.end({ reason: 'prompt_input_exit' } as never)
   expect(released).toEqual(['test-session', 'test-session'])
+})
+
+test('the voice follows the prompt: Remote Control or ssh takes the relay, the terminal gives it back unless forced', () => {
+  const r = { ...newRelay(), session: 's' }
+  expect(follows(r, 'bridge')).toBe('take')
+  expect(follows(r, 'composer')).toBe('give')
+  expect(follows({ ...r, isSsh: true }, 'composer')).toBe('take')
+  expect(follows({ ...r, isForced: true }, 'composer')).toBe('stay')
+  expect(follows({ ...r, session: '' }, 'bridge')).toBe('stay')
+  expect(givesOnEnd(r, 'clear')).toBe(true)
+  expect(givesOnEnd({ ...r, isForced: true }, 'clear')).toBe(false)
+  expect(givesOnEnd({ ...r, isForced: true }, 'prompt_input_exit')).toBe(true)
+  expect(givesOnEnd({ ...r, session: '' }, 'prompt_input_exit')).toBe(false)
 })

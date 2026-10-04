@@ -96,6 +96,12 @@ without cleaning up no longer swallows the voice. While nobody holds it the
 page's presses are refused (409) rather than kept for later, and at most 16
 wait at once.
 
+**In the code.** `hooks/relay.ts` holds the relay's protocol (the page's
+presses, the mirrored face), the shell that touches the spool, the state and
+the decisions (who takes, who gives back); `hooks/register.tsx` keeps only its
+few engine calls, in one section, since the engine follows `$` into nothing
+imported.
+
 **Running it.** As a service, so it is ready before any session needs it:
 `tools/avatar7-relay.service` (instructions inside). The page
 (`tools/relay.html`) is read at each request, so editing it needs no restart;
