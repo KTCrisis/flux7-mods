@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
 import { commandEvent, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
-import { ambientPixel } from './ambient'
+import { ambientCells, ambientPixel } from './ambient'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -251,8 +251,9 @@ test('the ambient draws only where a layer lights, and stays dim', async () => {
   }
   expect(lit).toBeGreaterThan(0)
   expect(brightest).toBeLessThanOrEqual(128)
-  // The skyline is a wireframe: the ground line is drawn, the sky is not.
-  const city = [{ kind: 'skyline' as const, color: '#ffb347' }]
-  expect(ambientPixel(city, f, 0, f.height - 1, 0, false)).not.toBe(0)
-  expect(ambientPixel(city, f, 0, 0, 0, false)).toBe(0)
+  // The skyline is drawn in box-drawing lines: the ground is a line, the sky is not.
+  const city = [{ kind: 'skyline' as const, color: '#ffb347', palette: ['#ff2d95', '#00e5ff'] }]
+  const glyph = (y: number) => new Uint32Array(Uint8Array.fromBase64(ambientCells(city, f, 2, y, 1, 1, 0, false)).buffer)[0]
+  expect(glyph(f.height - 2)).toBe(0x2500)
+  expect(glyph(0)).toBe(0x2580)
 })

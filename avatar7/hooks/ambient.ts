@@ -7,7 +7,8 @@ export type AmbientKind = 'rain' | 'rise' | 'wind' | 'stars' | 'bolt' | 'skyline
 
 // density: the share of columns, rows or pixels that carry something (0-1);
 // speed: pixels a second for what moves, the twinkle's pace for stars.
-export type AmbientLayer = { kind: AmbientKind; color: string; density?: number; speed?: number }
+// palette: for the skyline, the neon colors its buildings pick among.
+export type AmbientLayer = { kind: AmbientKind; color: string; density?: number; speed?: number; palette?: string[] }
 
 // The field the layers draw on: the pane's width in pixels, and the face's
 // height plus the band under the text, two pixels per row.
@@ -39,23 +40,74 @@ const streak = (line: number, at: number, length: number, t: number, speed: numb
   return d >= 0 && d < trail ? 1 - d / trail : 0
 }
 
-// Buildings along the bottom of the field, widths 4-10 px, cached per field.
+// Buildings along the bottom of the field, in cells (one column wide, one
+// row tall), widths 4-10, cached per field: each column's roof row and the
+// index of its building.
 let skylineFor = ''
-let skyline: number[] = []
-const roofs = (f: Field): number[] => {
+let skyline: { roof: number[]; building: number[] } = { roof: [], building: [] }
+const city = (f: Field): { roof: number[]; building: number[] } => {
   const id = `${f.width}x${f.height}`
   if (id === skylineFor) return skyline
-  skyline = []
+  const rows = f.height / 2
+  skyline = { roof: [], building: [] }
   let x = 0
   let b = 0
   while (x < f.width) {
     const w = 4 + Math.floor(hash(b, 41) * 7)
-    const h = 6 + Math.floor(hash(b, 42) * Math.min(30, f.height * 0.35))
-    for (let i = 0; i < w && x < f.width; i++, x++) skyline.push(f.height - h)
+    const h = 3 + Math.floor(hash(b, 42) * Math.min(15, rows * 0.35))
+    for (let i = 0; i < w && x < f.width; i++, x++) {
+      skyline.roof.push(rows - h)
+      skyline.building.push(b)
+    }
     b++
   }
   skylineFor = id
   return skyline
+}
+
+// The skyline is drawn in box-drawing lines, finer than a half block: a cell
+// is on the outline when it holds a roof, a wall between two buildings or the
+// ground; its glyph joins the outline cells around it.
+const isOutline = (c: { roof: number[]; building: number[] }, rows: number, x: number, y: number): boolean => {
+  if (x < 0 || x >= c.roof.length || y < 0 || y >= rows) return false
+  const roof = c.roof[x]
+  const isWall = x === 0 || c.building[x] !== c.building[x - 1]
+  if (y < roof) return isWall && x > 0 && y >= c.roof[x - 1]
+  return y === roof || y === rows - 1 || isWall
+}
+
+// Up 1, down 2, left 4, right 8.
+const JOINS = ['·', '│', '│', '│', '─', '┘', '┐', '┤', '─', '└', '┌', '├', '─', '┴', '┬', '┼']
+
+// Neon outlines stay brighter than the rest of the weather.
+const NEON = 0.85
+
+// A skyline cell's glyph and color, or null to let the pixel layers show.
+const skylineCell = (layer: AmbientLayer, f: Field, x: number, y: number, t: number): { code: number; color: number } | null => {
+  const c = city(f)
+  const rows = f.height / 2
+  if (x >= c.roof.length) return null
+  const roof = c.roof[x]
+  if (isOutline(c, rows, x, y)) {
+    const joins =
+      (isOutline(c, rows, x, y - 1) ? 1 : 0) |
+      (isOutline(c, rows, x, y + 1) ? 2 : 0) |
+      (isOutline(c, rows, x - 1, y) ? 4 : 0) |
+      (isOutline(c, rows, x + 1, y) ? 8 : 0)
+    // A wall belongs to the taller of its two buildings; the ground to none.
+    const owner = y === rows - 1 ? -1 : y < roof ? c.building[x - 1] : c.building[x]
+    const palette = layer.palette ?? [layer.color]
+    const neon = rgb(palette[owner < 0 ? 0 : Math.floor(hash(owner, 44) * palette.length)])
+    // Now and then a tube flickers out for a beat.
+    const isOut = owner >= 0 && hash(owner, Math.floor(t * 4), 45) < 0.03
+    return { code: JOINS[joins].codePointAt(0) ?? 0x2500, color: scale(neon, isOut ? 0.15 : y === rows - 1 ? 0.35 : NEON) }
+  }
+  // Windows inside a building, lit and dimmed every few seconds.
+  if (y > roof && y < rows - 1 && x % 3 === 1 && (y - roof) % 2 === 0) {
+    const isLit = hash(x, y, Math.floor(t / 3 + hash(x, y, 43) * 5)) < 0.25
+    if (isLit) return { code: 0xb7, color: scale(rgb(layer.color), DIM) }
+  }
+  return null
 }
 
 // A bolt strikes in a slot of 0.4 s: rarely on its own, every slot while
@@ -110,20 +162,9 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
       const d = Math.abs(path[y] - x)
       return d === 0 ? 1 : d === 1 ? 0.25 : 0
     }
-    case 'skyline': {
-      // Wireframe: roofs, the walls between buildings and the ground, no fill.
-      const all = roofs(f)
-      const roof = all[x] ?? f.height
-      if (y < roof) {
-        const before = all[x - 1] ?? f.height
-        return x > 0 && y >= before ? 0.7 : 0
-      }
-      const before = all[x - 1] ?? roof
-      if (y === roof || y === f.height - 1 || x === 0 || roof !== before) return 0.7
-      // Windows on a 3 px grid below the roof, lit and dimmed every few seconds.
-      const isWindow = x % 3 === 1 && (y - roof) % 3 === 1 && y - roof > 1
-      return isWindow && hash(x, y, Math.floor(t / 3 + hash(x, y, 43) * 5)) < 0.25 ? 0.5 : 0
-    }
+    case 'skyline':
+      // Drawn by cells (skylineCell), not by pixels.
+      return 0
     case 'pulse': {
       // Wires every 9 rows, a bright pulse running along each.
       if (y % 9 !== 4) return 0
@@ -150,9 +191,17 @@ export const ambientPixel = (layers: AmbientLayer[], f: Field, x: number, y: num
 // `rows` tall: upper half blocks, two field pixels per cell.
 export const ambientCells = (layers: AmbientLayer[], f: Field, x0: number, y0: number, columns: number, rows: number, t: number, isStorm: boolean): string => {
   const words = new Uint32Array(columns * rows * 3)
+  const sky = layers.find(l => l.kind === 'skyline')
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < columns; col++) {
       const i = (row * columns + col) * 3
+      const glyph = sky === undefined ? null : skylineCell(sky, f, x0 + col, y0 / 2 + row, t)
+      if (glyph !== null) {
+        words[i] = glyph.code
+        words[i + 1] = glyph.color
+        words[i + 2] = 0
+        continue
+      }
       words[i] = 0x2580
       words[i + 1] = ambientPixel(layers, f, x0 + col, y0 + row * 2, t, isStorm)
       words[i + 2] = ambientPixel(layers, f, x0 + col, y0 + row * 2 + 1, t, isStorm)
