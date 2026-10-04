@@ -449,6 +449,20 @@ async function readPersona($: Engine, id: string): Promise<Persona> {
 
 type Guest = { id: string; persona: Persona; faces: Faces }
 
+// What speaking changes, in one object so speak() (a file-level function, as
+// the engine requires for $) can: the line under the face, the queue, a
+// visiting persona and whether its face shows, the question put to the user,
+// each persona's chat with the user, and the avatar's last lines.
+type Stage = {
+  typing: Typing
+  queue: Queued[]
+  guest: Guest | null
+  isGuestShown: boolean
+  openQuestion: { text: string; at: number } | null
+  chats: Map<string, string[]>
+  recent: string[]
+}
+
 async function loadGuest($: Engine, id: string): Promise<Guest | null> {
   try {
     const dir = `${$.plugin.root}/personas/${id}`
@@ -475,13 +489,113 @@ const noise = (a: number, b: number): number => {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296
 }
 
+// What a line needs from the session around it, read when the line is picked.
+type Speaking = {
+  voice: Persona
+  voiceId: string
+  isGuestTurn: boolean
+  // The persona on duty, by name: whom a guest's turn speaks to.
+  host: string
+  asked: string
+  userName: string
+  relay: Relay
+  // The frame now: it moves on while the line is written and voiced.
+  now: () => number
+  say: (ask: Ask) => void
+}
+
+// One line, from the model (or as written) to the voice: written, typed under
+// the face, synthesized and played; the speaking slot is given back at the end.
+async function speak($: Engine, stage: Stage, ask: Ask, c: Speaking): Promise<void> {
+  try {
+    // The line: a greeting as written, anything else from the model.
+    // A consultation and a chat keep all their sentences.
+    const isConsult = isOpinion(ask)
+    const isChat = typeof ask === 'object' && 'chat' in ask
+    const write = async (): Promise<string> => {
+      const need = reads(ask)
+      const conversation =
+        need === null
+          ? ''
+          : (await $.session.messages())
+              .filter(m => m.text.trim() !== '')
+              .slice(-need.count)
+              .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, need.chars)}`)
+              .join('\n')
+      const other = c.isGuestTurn ? c.host : (stage.guest?.persona.name ?? 'a visitor')
+      const prompt = promptFor(ask, { voice: c.voice, other, conversation, chatPast: stage.chats.get(c.voiceId) ?? [], asked: c.asked, recent: stage.recent })
+      if (prompt === null) return typeof ask === 'object' && 'greet' in ask ? ask.greet : ''
+      const r = await $.model.complete({
+        model: 'haiku',
+        system: personalize(c.voice.persona, c.userName, c.voice.nobody) + STYLE,
+        prompt,
+        maxTokens: isOpinion(ask) ? 160 : 80,
+        timeoutMs: 15_000,
+      })
+      return lineFrom(r, ask, c.voice, c.now(), c.userName)
+    }
+    const text = typeof ask === 'object' && 'greet' in ask ? ask.greet : await write()
+    if (text === '') return
+    // An opinion that ends on a question opens the answer field too.
+    // A chat's question is answered by the next chat.
+    if (typeof ask === 'object' && 'chat' in ask) {
+      const past = [...(stage.chats.get(c.voiceId) ?? []), `User: ${ask.chat}`, `${c.voice.name}: ${text}`]
+      stage.chats.set(c.voiceId, past.slice(-CHAT_LINES))
+    }
+    if (ask === 'question' || (isConsult && !isChat && text.endsWith('?'))) {
+      stage.openQuestion = { text, at: c.now() }
+      $.ui.invalidate('ui.render')
+    }
+    stage.recent.push(text)
+    if (stage.recent.length > RECENT_LINES) stage.recent.shift()
+    const isDuo = typeof ask === 'object' && 'duo' in ask
+    const shown = isDuo ? `${c.voice.name}: ${text}` : text
+    const isQuiet = await read($, isMuted)
+    stage.typing = start(stage.typing, shown, isQuiet, c.now())
+    const seq = stage.typing.seq
+    await update($, line, () => ({ text: shown, at: c.now() }) satisfies Line)
+    if (!isQuiet) {
+      const made = await $.process.run(synthArgv(c.voiceId, c.voice, await read($, volume)), {
+        stdin: text,
+        timeoutMs: 30_000,
+      })
+      const heard = voiced(stage.typing, seq, made.stdout, c.now(), FRAME_MS)
+      stage.typing = heard.t
+      const { wav, ms } = heard
+      if (wav !== '') {
+        // Detached, so a reload of this module no longer cuts the line;
+        // the voice is held for the WAV's length plus PowerShell's start.
+        await update($, isVoicing, () => true)
+        await $.process.run(detachedArgv(playArgv(wav, c.relay.session, SAPI_PLAY)))
+        await $.clock.sleep(ms + PLAY_START_MS)
+      }
+    }
+    if (typeof ask === 'object' && 'duo' in ask && ask.turn < DUO_TURNS - 1) {
+      c.say({ ...ask, turn: ask.turn + 1, history: [...ask.history, `${c.voice.name}: ${text}`] })
+    }
+  } catch (err) {
+    // A synthesis past its timeout, a model call that failed: the line
+    // is lost, the reason kept.
+    $.ui.log(`avatar7: a line was lost: ${String(err)}`, { to: 'debug' })
+  } finally {
+    // A dialogue ends on its last turn, or on a turn that said nothing.
+    if (typeof ask === 'object' && 'duo' in ask && !stage.queue.some(q => typeof q.ask === 'object' && 'duo' in q.ask)) {
+      stage.isGuestShown = false
+      stage.guest = null
+    }
+    stage.typing = end(stage.typing)
+    if (await read($, isVoicing)) await update($, isVoicing, () => false)
+  }
+}
+
 export const register: Register = (on, options) => {
   const userName = typeof options.user_name === 'string' ? options.user_name.trim() : ''
   let frame = 0
   // The face: its mood and the waits that hold it (mood.ts).
   let face: Face = calm
-  // The line under the face and its voice (line.ts).
-  let typing: Typing = silent
+  // What speaking changes: the line, the queue, the guest, the open question,
+  // the chats and the last lines (Stage); speak() takes it whole.
+  const stage: Stage = { typing: silent, queue: [], guest: null, isGuestShown: false, openQuestion: null, chats: new Map(), recent: [] }
   // The remote voice, its own state (relay.ts); relay.session is '' in a
   // background session.
   const relay = newRelay()
@@ -494,13 +608,11 @@ export const register: Register = (on, options) => {
   let visitsOn = true
   let nextEventAt = Infinity
   const nextGap = (): number => EVENT_MIN_FRAMES + Math.random() * EVENT_SPAN_FRAMES
-  // A question the avatar put to the user, until answered or five minutes pass.
-  let openQuestion: { text: string; at: number } | null = null
   // A visit: the guest read (loadGuest), then the host opens.
   const startDuo = (g: Guest, topic: Duo['topic']): boolean => {
     // One visit at a time: a second would take over the first's turns.
-    if (guest !== null) return false
-    guest = g
+    if (stage.guest !== null) return false
+    stage.guest = g
     face = react(face, 'watch', frame, 30)
     speakLater({ duo: g.id, turn: 0, topic, history: [] })
     return true
@@ -511,13 +623,7 @@ export const register: Register = (on, options) => {
     }
     speakLater(ask)
   }
-  const recentLines: string[] = []
-  // Each persona's own thread with the user, for /avatar-chat: lines, by name.
-  const chats = new Map<string, string[]>()
   let faces: Faces | null = null
-  // A visiting persona during a dialogue, and whether its face is on screen.
-  let guest: Guest | null = null
-  let isGuestShown = false
   let who: Persona | null = null
   // The avatar `who` was read from, so a line keeps its voice through a switch.
   let whoId = ''
@@ -531,10 +637,8 @@ export const register: Register = (on, options) => {
   let ambField: Field = { width: 0, height: 0, sceneTop: 0, sceneBottom: 0 }
   let ambT = 0
   let asked = ''
-  // The lines to speak; the clock, which holds the session's $, speaks them.
-  let queue: Queued[] = []
   const speakLater = (ask: Ask): void => {
-    queue = enqueue(queue, ask, frame)
+    stage.queue = enqueue(stage.queue, ask, frame)
   }
   // The last `say` of each mod, for /avatar voices.
   const saidHere = new Map<string, Say>()
@@ -555,8 +659,8 @@ export const register: Register = (on, options) => {
     const isGlitch = face.mood === 'deny' && noise(frame, y >> 2) < 0.35
     const gx = isGlitch ? Math.min(W - 1, Math.max(0, x + Math.round((noise(y, frame) - 0.5) * 10))) : x
 
-    const shown = isGuestShown && guest !== null ? guest.faces : faces
-    const img = shown === null ? null : pickFace(shown, face.mood, isHeard(typing, frame), noise(frame >> 2, 7))
+    const shown = stage.isGuestShown && stage.guest !== null ? stage.guest.faces : faces
+    const img = shown === null ? null : pickFace(shown, face.mood, isHeard(stage.typing, frame), noise(frame >> 2, 7))
     if (img === null || who === null) return noise(x * 7 + frame, y) < 0.3 ? 0x1a2a22 : 0x020806
 
     const i = (y * W + gx) * 3
@@ -607,7 +711,7 @@ export const register: Register = (on, options) => {
       }
     }
     const n = (x1 - x0) * (y1 - y0)
-    const frameOf = isGuestShown && guest !== null ? guest.persona : who
+    const frameOf = stage.isGuestShown && stage.guest !== null ? stage.guest.persona : who
     let k = oy % 2 === 1 ? 0.7 : 1
     if (oy === Math.floor((frame * 0.8 * size) / H) % size) k *= 1.35
     const c = (v: number) => Math.min(255, Math.round((v / n) * k))
@@ -650,7 +754,7 @@ export const register: Register = (on, options) => {
 
   // The weather of whoever is shown: the guest's during a visit.
   const ambientLayers = (): AmbientLayer[] =>
-    (isGuestShown && guest !== null ? guest.persona.ambient : who?.ambient) ?? []
+    (stage.isGuestShown && stage.guest !== null ? stage.guest.persona.ambient : who?.ambient) ?? []
 
   // The repaints of the ambient's Rasters, the ones the last render mounted.
   const ambientBlits = (): { requestId: string; key: string; columns: number; rows: number; cells: string }[] => {
@@ -728,7 +832,7 @@ export const register: Register = (on, options) => {
     }
 
     const last = await read($, line)
-    typing = restored(typing, last.text)
+    stage.typing = restored(stage.typing, last.text)
     eventsOn = (await $.store.get('events')) !== false
     visitsOn = (await $.store.get('visits')) !== false
     nextEventAt = frame + nextGap()
@@ -764,17 +868,17 @@ export const register: Register = (on, options) => {
       relayTick($, relay, frame, {
         face: () => {
           if (who === null) return undefined
-          const shownWho = isGuestShown && guest !== null ? guest.persona : who
+          const shownWho = stage.isGuestShown && stage.guest !== null ? stage.guest.persona : who
           const base = {
-            persona: isGuestShown && guest !== null ? guest.id : whoId,
+            persona: stage.isGuestShown && stage.guest !== null ? stage.guest.id : whoId,
             name: shownWho.name,
             color: shownWho.color ?? '',
             mood: face.mood,
-            line: typing.text,
-            seq: typing.seq,
-            speakMs: Math.max(0, typing.speakUntil - typing.from) * FRAME_MS,
-            isSpeaking: isHeard(typing, frame),
-            question: openQuestion?.text ?? '',
+            line: stage.typing.text,
+            seq: stage.typing.seq,
+            speakMs: Math.max(0, stage.typing.speakUntil - stage.typing.from) * FRAME_MS,
+            isSpeaking: isHeard(stage.typing, frame),
+            question: stage.openQuestion?.text ?? '',
             avatars: AVATARS.map(id => ({ id, name: names[id] ?? id })),
             eventsOn,
             visitsOn,
@@ -792,9 +896,9 @@ export const register: Register = (on, options) => {
             if (said !== '') speakLater({ chat: said })
           } else if (r.cmd === 'answer') {
             const answer = r.text.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
-            const q = openQuestion
+            const q = stage.openQuestion
             if (answer !== '' && q !== null) {
-              openQuestion = null
+              stage.openQuestion = null
               speakLater({ question: q.text, answer })
             }
           } else if (r.cmd === 'avatar') {
@@ -819,9 +923,9 @@ export const register: Register = (on, options) => {
         ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (face.mood === 'deny' || face.mood === 'error' ? 2 : face.mood === 'wait' ? 0.5 : 1)
         for (const each of ambientBlits()) void $.ui.blit(each)
       }
-      const typedOn = typeOn(typing, frame)
-      if (typedOn !== typing) {
-        typing = typedOn
+      const typedOn = typeOn(stage.typing, frame)
+      if (typedOn !== stage.typing) {
+        stage.typing = typedOn
         $.ui.invalidate('ui.render')
       } else if (frame % REFIT_FRAMES === 0) {
         $.ui.invalidate('ui.render')
@@ -836,11 +940,11 @@ export const register: Register = (on, options) => {
         eventsOn &&
         who !== null &&
         frame >= nextEventAt &&
-        queue.length === 0 &&
-        !typing.isSpeaking &&
+        stage.queue.length === 0 &&
+        !stage.typing.isSpeaking &&
         !isWaiting(face) &&
-        openQuestion === null &&
-        frame - typing.lastSpoke > EVENT_QUIET_FRAMES
+        stage.openQuestion === null &&
+        frame - stage.typing.lastSpoke > EVENT_QUIET_FRAMES
       ) {
         nextEventAt = frame + nextGap()
         // One event in three is a visit from another persona.
@@ -854,105 +958,28 @@ export const register: Register = (on, options) => {
           if (ev !== undefined) startEvent(ev)
         }
       }
-      if (openQuestion !== null && frame - openQuestion.at > QUESTION_FRAMES) {
-        openQuestion = null
+      if (stage.openQuestion !== null && frame - stage.openQuestion.at > QUESTION_FRAMES) {
+        stage.openQuestion = null
         $.ui.invalidate('ui.render')
       }
 
-      queue = fresh(queue, frame)
+      stage.queue = fresh(stage.queue, frame)
       // A line may wait a moment for a mod to say better (a mesh7 verdict).
-      const ready = queue.findIndex(q => typeof q.ask !== 'object' || !('after' in q.ask) || (q.ask.after ?? 0) <= frame)
-      const first = queue[ready]
-      if (first === undefined || typing.isSpeaking || who === null) return
-      queue = queue.filter((_, i) => i !== ready)
+      const ready = stage.queue.findIndex(q => typeof q.ask !== 'object' || !('after' in q.ask) || (q.ask.after ?? 0) <= frame)
+      const first = stage.queue[ready]
+      if (first === undefined || stage.typing.isSpeaking || who === null) return
+      stage.queue = stage.queue.filter((_, i) => i !== ready)
       const ask = first.ask
-      typing = begin(typing, frame)
+      stage.typing = begin(stage.typing, frame)
       // In a dialogue the guest speaks the odd turns, with its own voice and face.
-      const isGuestTurn = typeof ask === 'object' && 'duo' in ask && ask.turn % 2 === 1 && guest !== null
-      const voice = isGuestTurn && guest !== null ? guest.persona : who
-      const voiceId = isGuestTurn && guest !== null ? guest.id : whoId
-      isGuestShown = isGuestTurn
-      $.clock.after(1, async () => {
-        try {
-          // The line: a greeting as written, anything else from the model.
-          // A consultation and a chat keep all their sentences.
-          const isConsult = isOpinion(ask)
-          const isChat = typeof ask === 'object' && 'chat' in ask
-          const write = async (): Promise<string> => {
-            const need = reads(ask)
-            const conversation =
-              need === null
-                ? ''
-                : (await $.session.messages())
-                    .filter(m => m.text.trim() !== '')
-                    .slice(-need.count)
-                    .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, need.chars)}`)
-                    .join('\n')
-            const other = isGuestTurn ? (who?.name ?? 'the host') : (guest?.persona.name ?? 'a visitor')
-            const prompt = promptFor(ask, { voice, other, conversation, chatPast: chats.get(voiceId) ?? [], asked, recent: recentLines })
-            if (prompt === null) return typeof ask === 'object' && 'greet' in ask ? ask.greet : ''
-            const r = await $.model.complete({
-              model: 'haiku',
-              system: personalize(voice.persona, userName, voice.nobody) + STYLE,
-              prompt,
-              maxTokens: isOpinion(ask) ? 160 : 80,
-              timeoutMs: 15_000,
-            })
-            return lineFrom(r, ask, voice, frame, userName)
-          }
-          const text = typeof ask === 'object' && 'greet' in ask ? ask.greet : await write()
-          if (text === '') return
-          // An opinion that ends on a question opens the answer field too.
-          // A chat's question is answered by the next chat.
-          if (typeof ask === 'object' && 'chat' in ask) {
-            const past = [...(chats.get(voiceId) ?? []), `User: ${ask.chat}`, `${voice.name}: ${text}`]
-            chats.set(voiceId, past.slice(-CHAT_LINES))
-          }
-          if (ask === 'question' || (isConsult && !isChat && text.endsWith('?'))) {
-            openQuestion = { text, at: frame }
-            $.ui.invalidate('ui.render')
-          }
-          recentLines.push(text)
-          if (recentLines.length > RECENT_LINES) recentLines.shift()
-          const isDuo = typeof ask === 'object' && 'duo' in ask
-          const shown = isDuo ? `${voice.name}: ${text}` : text
-          const isQuiet = await read($, isMuted)
-          typing = start(typing, shown, isQuiet, frame)
-          const seq = typing.seq
-          await update($, line, () => ({ text: shown, at: frame }) satisfies Line)
-          if (!isQuiet) {
-            const made = await $.process.run(synthArgv(voiceId, voice, await read($, volume)), {
-              stdin: text,
-              timeoutMs: 30_000,
-            })
-            const heard = voiced(typing, seq, made.stdout, frame, FRAME_MS)
-            typing = heard.t
-            const { wav, ms } = heard
-            if (wav !== '') {
-              // Detached, so a reload of this module no longer cuts the line;
-              // the voice is held for the WAV's length plus PowerShell's start.
-              await update($, isVoicing, () => true)
-              await $.process.run(detachedArgv(playArgv(wav, relay.session, SAPI_PLAY)))
-              await $.clock.sleep(ms + PLAY_START_MS)
-            }
-          }
-          if (typeof ask === 'object' && 'duo' in ask && ask.turn < DUO_TURNS - 1) {
-            speakLater({ ...ask, turn: ask.turn + 1, history: [...ask.history, `${voice.name}: ${text}`] })
-          }
-        } catch (err) {
-          // A synthesis past its timeout, a model call that failed: the line
-          // is lost, the reason kept.
-          $.ui.log(`avatar7: a line was lost: ${String(err)}`, { to: 'debug' })
-        } finally {
-          // A dialogue ends on its last turn, or on a turn that said nothing.
-          if (typeof ask === 'object' && 'duo' in ask && !queue.some(q => typeof q.ask === 'object' && 'duo' in q.ask)) {
-            isGuestShown = false
-            guest = null
-          }
-          typing = end(typing)
-          if (await read($, isVoicing)) await update($, isVoicing, () => false)
-        }
-      })
+      const isGuestTurn = typeof ask === 'object' && 'duo' in ask && ask.turn % 2 === 1 && stage.guest !== null
+      const voice = isGuestTurn && stage.guest !== null ? stage.guest.persona : who
+      const voiceId = isGuestTurn && stage.guest !== null ? stage.guest.id : whoId
+      stage.isGuestShown = isGuestTurn
+      const host = who.name
+      $.clock.after(1, () =>
+        speak($, stage, ask, { voice, voiceId, isGuestTurn, host, asked, userName, relay, now: () => frame, say: speakLater }),
+      )
     })
 
     // Opened after the plugins beneath have started: the pane opened last is
@@ -988,7 +1015,7 @@ export const register: Register = (on, options) => {
       }
       const g = await loadGuest($, gid)
       if (g === null) return { text: `personas/${gid} is unreadable.` }
-      if (!startDuo(g, Math.random() < 0.5 ? 'session' : 'stories')) return { text: `${guest?.persona.name ?? 'A guest'} is visiting already.` }
+      if (!startDuo(g, Math.random() < 0.5 ? 'session' : 'stories')) return { text: `${stage.guest?.persona.name ?? 'A guest'} is visiting already.` }
       return { text: `${g.persona.name} visits ${who?.name ?? 'avatar7'}.` }
     }
     if (id === 'visits on' || id === 'visits off') {
@@ -1107,7 +1134,7 @@ export const register: Register = (on, options) => {
         await update($, announcers, was => Object.fromEntries(Object.entries(was).filter(([k]) => k !== w.plugin)))
       }
       // The mod's line replaces the avatar's own waiting line on that call.
-      if (s.tool !== undefined) queue = queue.filter(q => !(typeof q.ask === 'object' && 'tool' in q.ask && q.ask.tool === s.tool))
+      if (s.tool !== undefined) stage.queue = stage.queue.filter(q => !(typeof q.ask === 'object' && 'tool' in q.ask && q.ask.tool === s.tool))
       face = s.hold === true ? hold(face, s.tool ?? 'a call', frame) : s.release === true ? release(face, s.mood, frame) : react(face, s.mood, frame)
       if (who !== null) speakLater({ mood: s.mood, event: s.event })
     }
@@ -1168,7 +1195,7 @@ export const register: Register = (on, options) => {
     const quiet = now === 'watch' && note === '' ? 45_000 / FRAME_MS : 5_000 / FRAME_MS
     // A plain success waits for silence; a refusal or a failure takes its
     // place in the queue, ahead of the calmer lines.
-    if (frame - typing.lastSpoke < quiet || (now === 'watch' && (typing.isSpeaking || queue.length > 0))) return ran
+    if (frame - stage.typing.lastSpoke < quiet || (now === 'watch' && (stage.typing.isSpeaking || stage.queue.length > 0))) return ran
     // A refusal, a failure, or any call through mesh7 waits ~1.8 s: mesh7-pane,
     // when loaded, may say what mesh7 decided and replace this line.
     const mayBeSaid = now !== 'watch' || e.tool.startsWith('mcp__mesh7__')
@@ -1188,7 +1215,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const last = await read($, line)
-    const shown = last.text.slice(0, Math.floor(typing.typed))
+    const shown = last.text.slice(0, Math.floor(stage.typing.typed))
     const color = who?.color ?? '#00ff9c'
 
     if (e.surface !== 'terminal') {
@@ -1255,14 +1282,14 @@ export const register: Register = (on, options) => {
         {rule('rule-face', (who?.name ?? 'avatar7').toUpperCase(), `[${face.mood.toUpperCase()}]`, moodColor, 0)}
         <Text color={color} backgroundColor="#000000">
           {shown.length > 0 ? `> ${shown}` : '> ...'}
-          {typing.typed < last.text.length ? '█' : ''}
+          {stage.typing.typed < last.text.length ? '█' : ''}
         </Text>
         {face.held !== null && (
           <Text color="#7a5cff" backgroundColor="#000000" wrap="truncate-end">
             {`waiting for a human: ${face.held}`}
           </Text>
         )}
-        {openQuestion !== null && (
+        {stage.openQuestion !== null && (
           <Input
             key="answer"
             label="answer: "
@@ -1271,9 +1298,9 @@ export const register: Register = (on, options) => {
             autoFocus
             onSubmit={value => {
               const answer = value.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
-              const q = openQuestion
+              const q = stage.openQuestion
               if (answer === '' || q === null) return
-              openQuestion = null
+              stage.openQuestion = null
               speakLater({ question: q.text, answer })
               $.ui.invalidate('ui.render')
             }}

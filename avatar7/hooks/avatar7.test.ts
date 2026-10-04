@@ -333,9 +333,12 @@ const onDutyEngine = (on: On, extra: { model?: () => string; ran?: (tool: string
   on('command.register', ($, e) => ({ value: { command: e.name } }) as never)
   on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }) as never)
   on('fs.read', ($, e) => {
-    if ((e as { path: string }).path.endsWith('/persona.json')) {
+    const path = (e as { path: string }).path
+    if (path.endsWith('/persona.json')) {
       return { value: JSON.stringify({ name: 'Test', persona: 'You are a test.', greeting: 'Hello.', fallback: ['...'] }) } as never
     }
+    // A black portrait, 64 x 64 RGB.
+    if (path.endsWith('/face.rgb')) return { value: { base64: new Uint8Array(64 * 64 * 3).toBase64() } } as never
     throw new Error('no file here')
   })
   on('model.complete', ($, e) => {
@@ -466,4 +469,19 @@ test('an opinion keeps all its sentences, a line its first; no answer falls back
   expect(lineFrom({ isAnswered: true, text: 'One.\n  Two.' }, { consult: 'x' }, persona, 0, '')).toBe('One. Two.')
   expect(lineFrom({ isAnswered: false }, { mood: 'deny', event: 'x' }, persona, 0, '')).toBe('No.')
   expect(lineFrom({ isAnswered: false }, { consult: 'x' }, persona, 0, '')).toBe('')
+})
+
+test('a visit runs its six turns, host and guest in turn, then makes room for the next', async ($, on) => {
+  const { clock, prompts } = onDutyEngine(on)
+  await $.session.start({ cwd: '/home/u' } as never)
+  await clock.advance(1_000)
+  const asked = await $.command.run({ command: 'avatar', args: 'duo lain' } as never)
+  expect(asked.text).toBe('Test visits Test.')
+  expect((await $.command.run({ command: 'avatar', args: 'duo hal' } as never)).text).toContain('is visiting already')
+  // No voice: each turn is written and typed at once, one per few frames.
+  await clock.advance(3_000)
+  const turns = prompts.filter(p => p.includes('visits your terminal') || p.includes('You are talking with'))
+  expect(turns).toHaveLength(6)
+  expect(turns.filter(p => p.includes('Close the exchange'))).toHaveLength(1)
+  expect((await $.command.run({ command: 'avatar', args: 'duo hal' } as never)).text).toBe('Test visits Test.')
 })
