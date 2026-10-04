@@ -10,6 +10,12 @@ The portrait's crop is the one bake.py was given with --box, kept in hd.json
 as "box" with the baked sizes (persona.json stays as written by hand). When
 it is missing, it is recovered from face.rgb, the 64 px bake, by matching it
 against the portrait at every scale and offset.
+
+A persona may have its own picture for HD, portrait-hd.png: drawn styles
+hold at 64 pixels where a realistic face turns to mush, and at 384 the
+realistic one holds. Its square crop is "hdBox" in hd.json, written by hand
+(the whole picture when absent); the talk and deny frames, drawn over the
+64 px portrait, are then left out.
 """
 import argparse
 import json
@@ -78,9 +84,22 @@ def bake(persona: str) -> None:
     if box is None:
         low = np.frombuffer((folder / "face.rgb").read_bytes(), dtype=np.uint8).reshape(LOW, LOW, 3)
         box = recover_box(base, low)
+    own = folder / "portrait-hd.png"
+    hd_box = hd.get("hdBox")
     hd = {"box": box, "size": a.size}
 
-    for frame in ("", "talk", "deny"):
+    if own.exists():
+        img = Image.open(own).convert("RGB")
+        crop = hd_box or [0, 0, img.width, img.height]
+        img = ImageEnhance.Contrast(img.crop(tuple(crop))).enhance(1.25).resize((a.size, a.size), Image.LANCZOS)
+        (folder / "face-hd.rgb").write_bytes(img.tobytes())
+        for frame in ("talk", "deny"):
+            (folder / f"face-{frame}-hd.rgb").unlink(missing_ok=True)
+        if hd_box is not None:
+            hd["hdBox"] = hd_box
+        print(f"  face-hd.rgb {a.size}x{a.size} from portrait-hd.png")
+
+    for frame in ("", "talk", "deny") if not own.exists() else ():
         suffix = f"-{frame}" if frame else ""
         src = folder / f"portrait{suffix}.png"
         if not src.exists() or (frame and not (folder / f"face{suffix}.rgb").exists()):

@@ -489,6 +489,12 @@ the PDA. The others keep a single face.
 
     ~/py_env/bin/python tools/bake_hd.py <id>      # or --all
 
+A persona may carry its own HD picture, `portrait-hd.png`, with its square
+crop as `"hdBox"` in `hd.json`: at 384 px a realistic face holds where it
+turns to mush at 64. The Commis (Krea 2, seed 1770, the commis prompt made
+photorealistic on pure black) and the Adjutant (its first, realistic render)
+have one; the half blocks keep the drawn portraits.
+
 Where the terminal draws pictures for the `Image` element, the band of the
 face and the band under the text are real images instead of half blocks, the
 same field as the half blocks (the scene from the face's middle down past the
