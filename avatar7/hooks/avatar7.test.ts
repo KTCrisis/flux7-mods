@@ -3,6 +3,7 @@ import { test, expect, mock } from 'claude-code/testing'
 import { commandEvent, withPrivate, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
 import { ambientCells, ambientPixel } from './ambient'
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
+import { answered, ask as askFace, calm, hold, react, release, tick } from './mood'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -373,4 +374,34 @@ test('a model switch is heard at the end of the turn that follows it', async ($,
   await $.turn.complete(turnEnd)
   await clock.advance(10_000)
   expect(prompts.some(p => p.includes('now runs on sonnet, no longer on opus'))).toBe(true)
+})
+
+test('a wait keeps the face: no toast, say, visit or call outcome changes it until it ends', () => {
+  const asked = askFace(calm, 'Bash: rm -rf build', 10)
+  expect(asked.mood).toBe('wait')
+  expect(react(asked, 'deny', 11)).toBe(asked)
+  const held = hold(calm, 'mcp__mesh7__x', 10)
+  expect(react(held, 'watch', 11, 30)).toBe(held)
+  // The call ran: the prompt is gone, and its outcome sets the face.
+  const ran = react(answered(asked), 'deny', 12)
+  expect([ran.mood, ran.until, ran.askSince]).toEqual(['deny', 42, null])
+  // The human decided on the held call: the verdict shows for 30 frames.
+  expect(release(held, 'watch', 20)).toMatchObject({ mood: 'watch', until: 50, held: null })
+})
+
+test('a mood fades to idle after its span; a calm look passes faster than an alarm', () => {
+  const seen = react(calm, 'watch', 0)
+  expect(tick(seen, 12, 1000).mood).toBe('watch')
+  expect(tick(seen, 13, 1000).mood).toBe('idle')
+  expect(tick(react(calm, 'error', 0), 13, 1000).mood).toBe('error')
+})
+
+test('a wait whose end never comes lets the face go after the cap', () => {
+  const held = hold(calm, 'a call', 0)
+  expect(tick(held, 100, 100)).toBe(held)
+  const freed = tick(held, 101, 100)
+  expect(freed.held).toBeNull()
+  expect(tick(freed, 102, 100).mood).toBe('idle')
+  const asked = tick(askFace(calm, 'x', 0), 101, 100)
+  expect(asked.askSince).toBeNull()
 })

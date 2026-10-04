@@ -23,6 +23,7 @@ import {
   type Relay,
   type RelayHost,
 } from './relay'
+import { answered, ask as askFace, calm, hold, isWaiting, react, release, tick, type Face, type Mood } from './mood'
 
 const PANE = 'avatar7'
 const FACE = 'face'
@@ -309,7 +310,6 @@ const CONSULT_CHARS_ASKED = 400
 // A chat remembers its last six exchanges, per persona.
 const CHAT_LINES = 12
 
-type Mood = 'idle' | 'watch' | 'deny' | 'error' | 'wait'
 
 // Whether a write landed. The host answers a plain write without `isSet`
 // (2.1.288, despite StateSetResult): only a write another one beat says false.
@@ -606,8 +606,8 @@ const noise = (a: number, b: number): number => {
 export const register: Register = (on, options) => {
   const userName = typeof options.user_name === 'string' ? options.user_name.trim() : ''
   let frame = 0
-  let mood: Mood = 'idle'
-  let moodUntil = 0
+  // The face: its mood and the waits that hold it (mood.ts).
+  let face: Face = calm
   let typed = 0
   let lineLength = 0
   let lineText = ''
@@ -635,15 +635,13 @@ export const register: Register = (on, options) => {
     // One visit at a time: a second would take over the first's turns.
     if (guest !== null) return false
     guest = g
-    mood = 'watch'
-    moodUntil = frame + 30
+    face = react(face, 'watch', frame, 30)
     speakLater({ duo: g.id, turn: 0, topic, history: [] })
     return true
   }
   const startEvent = (ask: Ask): void => {
     if (typeof ask === 'object' && 'story' in ask) {
-      mood = ask.mood
-      moodUntil = frame + 60
+      face = react(face, ask.mood, frame, 60)
     }
     speakLater(ask)
   }
@@ -687,15 +685,7 @@ export const register: Register = (on, options) => {
   let isChatting = false
   // Display names for the picker, read from each persona.json.
   const names: Record<string, string> = {}
-  // A mesh7 approval this session's call is held on, by its short id.
-  // A call mesh7 holds for a human, as mesh7-pane said it; null when none.
-  let heldTool: string | null = null
-  // A call put to the permission prompt (a mesh7 hook's `ask`, a settings rule).
-  let askSince: number | null = null
-  let askCall = ''
   let lastModel = ''
-  // When a human-approval wait began, so a release that never comes ends it.
-  let heldSince = 0
 
   // A new line under the face: held until its voice is ready, unless muted.
   const startLine = (text: string, isQuiet: boolean): number => {
@@ -725,11 +715,11 @@ export const register: Register = (on, options) => {
 
   const pixel = (x: number, y: number): number => {
     const t = frame * (FRAME_MS / 1000)
-    const isGlitch = mood === 'deny' && noise(frame, y >> 2) < 0.35
+    const isGlitch = face.mood === 'deny' && noise(frame, y >> 2) < 0.35
     const gx = isGlitch ? Math.min(W - 1, Math.max(0, x + Math.round((noise(y, frame) - 0.5) * 10))) : x
 
     const shown = isGuestShown && guest !== null ? guest.faces : faces
-    const img = shown === null ? null : pickFace(shown, mood, frame < speakUntil, noise(frame >> 2, 7))
+    const img = shown === null ? null : pickFace(shown, face.mood, frame < speakUntil, noise(frame >> 2, 7))
     if (img === null || who === null) return noise(x * 7 + frame, y) < 0.3 ? 0x1a2a22 : 0x020806
 
     const i = (y * W + gx) * 3
@@ -742,17 +732,17 @@ export const register: Register = (on, options) => {
     let k = 1
 
     // Mood: pull the portrait toward the mood's color by its luminance.
-    if (mood !== 'idle') {
+    if (face.mood !== 'idle') {
       const lum = (0.3 * r + 0.59 * g + 0.11 * b) / 255
-      const tint = TINT[mood]
-      const mix = mood === 'watch' ? 0.3 : mood === 'wait' ? 0.45 : 0.65
+      const tint = TINT[face.mood]
+      const mix = face.mood === 'watch' ? 0.3 : face.mood === 'wait' ? 0.45 : 0.65
       r = r * (1 - mix) + ((tint >> 16) & 0xff) * lum * 1.3 * mix
       g = g * (1 - mix) + ((tint >> 8) & 0xff) * lum * 1.3 * mix
       b = b * (1 - mix) + (tint & 0xff) * lum * 1.3 * mix
     }
 
     // Holding its breath while a human decides.
-    if (mood === 'wait') k *= 0.8 + 0.2 * Math.sin(t * 2.5)
+    if (face.mood === 'wait') k *= 0.8 + 0.2 * Math.sin(t * 2.5)
 
     // Snow when glitching; the scanlines are drawn at the output size.
     if (isGlitch && noise(x, y + frame) < 0.04) return 0xffffff
@@ -784,26 +774,26 @@ export const register: Register = (on, options) => {
     let k = oy % 2 === 1 ? 0.7 : 1
     if (oy === Math.floor((frame * 0.8 * size) / H) % size) k *= 1.35
     const c = (v: number) => Math.min(255, Math.round((v / n) * k))
-    const face = (c(r) << 16) | (c(g) << 8) | c(b)
+    const drawn = (c(r) << 16) | (c(g) << 8) | c(b)
     // A comm window's frame: bright brackets at the corners, a faint line
     // along the edges, in the persona's color or the mood's.
     const edge = Math.min(ox, oy, size - 1 - ox, size - 1 - oy)
     if (edge === 0 && ambientLayers().length > 0) {
       const isCorner = Math.min(ox, size - 1 - ox) < BRACKET && Math.min(oy, size - 1 - oy) < BRACKET
-      const tone = mood === 'idle' ? parseInt((frameOf?.color ?? '#00ff9c').slice(1), 16) : TINT[mood]
+      const tone = face.mood === 'idle' ? parseInt((frameOf?.color ?? '#00ff9c').slice(1), 16) : TINT[face.mood]
       const kk = isCorner ? 1 : 0.3
       return (Math.round(((tone >> 16) & 0xff) * kk) << 16) | (Math.round(((tone >> 8) & 0xff) * kk) << 8) | Math.round((tone & 0xff) * kk)
     }
     // The portrait's dark background lets the scene behind it through, by
     // degrees so its edge does not ring.
     const layers = ambientLayers()
-    if (layers.length === 0) return face
+    if (layers.length === 0) return drawn
     const cutout = frameOf?.cutout ?? 12
     const alpha = Math.min(1, Math.max(0, ((0.3 * r + 0.59 * g + 0.11 * b) / n - cutout) / (cutout * 2 + 4)))
-    if (alpha === 1) return face
-    const back = ambientPixel(layers, ambField, (ambLeft + ox) * QUAD, oy, ambT, mood === 'deny')
+    if (alpha === 1) return drawn
+    const back = ambientPixel(layers, ambField, (ambLeft + ox) * QUAD, oy, ambT, face.mood === 'deny')
     const mix = (shift: number) =>
-      Math.round(((face >> shift) & 0xff) * alpha + ((back >> shift) & 0xff) * (1 - alpha)) << shift
+      Math.round(((drawn >> shift) & 0xff) * alpha + ((back >> shift) & 0xff) * (1 - alpha)) << shift
     return mix(16) | mix(8) | mix(0)
   }
 
@@ -829,7 +819,7 @@ export const register: Register = (on, options) => {
   const ambientBlits = (): { requestId: string; key: string; columns: number; rows: number; cells: string }[] => {
     const layers = ambientLayers()
     if (layers.length === 0) return []
-    const isStorm = mood === 'deny'
+    const isStorm = face.mood === 'deny'
     const rows = size / 2
     const paint = (key: string, x0: number, y0: number, columns: number, height: number) => ({
       requestId: PANE,
@@ -934,7 +924,7 @@ export const register: Register = (on, options) => {
           speakLater({ greet: personalize(who.greeting, userName, who.nobody) })
         })().catch(err => $.ui.log(`avatar7: personas/${id} could not take over: ${String(err)}`))
       }
-      if (frame > moodUntil && mood !== 'idle') mood = 'idle'
+      face = tick(face, frame, WAIT_CAP_FRAMES)
       relayTick($, relay, frame, {
         face: () => {
           if (who === null) return undefined
@@ -943,7 +933,7 @@ export const register: Register = (on, options) => {
             persona: isGuestShown && guest !== null ? guest.id : whoId,
             name: shownWho.name,
             color: shownWho.color ?? '',
-            mood,
+            mood: face.mood,
             line: lineText,
             seq: lineSeq,
             speakMs: Math.max(0, speakUntil - typeFrom) * FRAME_MS,
@@ -990,7 +980,7 @@ export const register: Register = (on, options) => {
       })
       void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (frame % AMBIENT_FRAMES === 0) {
-        ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (mood === 'deny' || mood === 'error' ? 2 : mood === 'wait' ? 0.5 : 1)
+        ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (face.mood === 'deny' || face.mood === 'error' ? 2 : face.mood === 'wait' ? 0.5 : 1)
         for (const each of ambientBlits()) void $.ui.blit(each)
       }
       if (typed < lineLength && frame >= typeFrom) {
@@ -1000,15 +990,8 @@ export const register: Register = (on, options) => {
         $.ui.invalidate('ui.render')
       }
 
-      if (askSince !== null && frame - askSince === ASK_FRAMES) {
-        speakLater({ mood: 'wait', event: `call waiting for the user's permission: ${askCall}` })
-      }
-      // A wait whose end never came (mesh7-pane reloaded before its release,
-      // a prompt that vanished) lets the face go after WAIT_CAP_FRAMES.
-      if ((askSince !== null && frame - askSince > WAIT_CAP_FRAMES) || (heldTool !== null && frame - heldSince > WAIT_CAP_FRAMES)) {
-        askSince = null
-        heldTool = null
-        moodUntil = frame
+      if (face.askSince !== null && frame - face.askSince === ASK_FRAMES) {
+        speakLater({ mood: 'wait', event: `call waiting for the user's permission: ${face.askCall}` })
       }
 
       // Now and then, when nothing else happens, a moment of the persona's own.
@@ -1018,8 +1001,7 @@ export const register: Register = (on, options) => {
         frame >= nextEventAt &&
         queue.length === 0 &&
         !isSpeaking &&
-        heldTool === null &&
-        askSince === null &&
+        !isWaiting(face) &&
         openQuestion === null &&
         frame - lastSpoke > EVENT_QUIET_FRAMES
       ) {
@@ -1336,19 +1318,7 @@ export const register: Register = (on, options) => {
       }
       // The mod's line replaces the avatar's own waiting line on that call.
       if (s.tool !== undefined) queue = queue.filter(q => !(typeof q.ask === 'object' && 'tool' in q.ask && q.ask.tool === s.tool))
-      if (s.hold === true) {
-        heldTool = s.tool ?? 'a call'
-        heldSince = frame
-        mood = 'wait'
-        moodUntil = Infinity
-      } else if (s.release === true) {
-        heldTool = null
-        mood = s.mood
-        moodUntil = frame + 30
-      } else if (heldTool === null && askSince === null) {
-        mood = s.mood
-        moodUntil = frame + (s.mood === 'watch' ? 12 : 30)
-      }
+      face = s.hold === true ? hold(face, s.tool ?? 'a call', frame) : s.release === true ? release(face, s.mood, frame) : react(face, s.mood, frame)
       if (who !== null) speakLater({ mood: s.mood, event: s.event })
     }
     const a = landed(done) ? heard(w) : undefined
@@ -1369,10 +1339,7 @@ export const register: Register = (on, options) => {
     const from = next.origin.plugin
     const bell = from === undefined || from === 'avatar7' ? undefined : (heardHere.get(from) ?? (await read($, announcers))[from])
     if (bell !== undefined && who !== null) {
-      if (heldTool === null && askSince === null) {
-        mood = bell.mood
-        moodUntil = frame + 30
-      }
+      face = react(face, bell.mood, frame, 30)
       speakLater({ mood: bell.mood, event: `${bell.event}: ${e.text}` })
     }
     return next(e)
@@ -1382,10 +1349,7 @@ export const register: Register = (on, options) => {
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
     if (verdict.decision === 'ask' && e.tool_use_id !== undefined) {
-      askSince = frame
-      askCall = describe({ ...(e.input as Record<string, unknown>), tool: e.tool })
-      mood = 'wait'
-      moodUntil = Infinity
+      face = askFace(face, describe({ ...(e.input as Record<string, unknown>), tool: e.tool }), frame)
     }
     return verdict
   })
@@ -1396,17 +1360,14 @@ export const register: Register = (on, options) => {
       ran = await next(e)
     } finally {
       // An interrupt at the permission prompt still ends the wait.
-      askSince = null
+      face = answered(face)
     }
 
     const call = describe(e as unknown as Record<string, unknown>)
     const now: Mood = ran.deny !== undefined ? 'deny' : ran.isError === true ? 'error' : 'watch'
 
     // A held call keeps the waiting face; the others set theirs.
-    if (heldTool === null) {
-      mood = now
-      moodUntil = frame + (now === 'watch' ? 12 : 30)
-    }
+    face = react(face, now, frame)
 
     // Counted on every call, spoken or not; a broken run of failures earns
     // the short wait a failure gets.
@@ -1470,15 +1431,15 @@ export const register: Register = (on, options) => {
     ambBand = isAmbient ? Math.max(0, e.props.scroll.bodyRows - size / 2 - 4) : 0
     ambField = { width: cols * QUAD, height: size + TEXT_ROWS * 2 + ambBand * 2, sceneTop: size / 2, sceneBottom: size + TEXT_ROWS * 2 + Math.min(ambBand, SCENE_OVERFLOW_ROWS) * 2 }
     const ambient = (key: string, x0: number, y0: number, columns: number, rows: number) => (
-      <Raster key={key} columns={columns} rows={rows} cells={ambientCells(layers, ambField, x0, y0, columns, rows, ambT, mood === 'deny')} />
+      <Raster key={key} columns={columns} rows={rows} cells={ambientCells(layers, ambField, x0, y0, columns, rows, ambT, face.mood === 'deny')} />
     )
     const isBlink = Math.floor(frame / REFIT_FRAMES) % 2 === 0
-    const moodColor = mood === 'idle' ? color : `#${TINT[mood].toString(16).padStart(6, '0')}`
+    const moodColor = face.mood === 'idle' ? color : `#${TINT[face.mood].toString(16).padStart(6, '0')}`
     const seconds = Math.floor((frame * FRAME_MS) / 1000)
     const clock = [seconds / 3600, (seconds / 60) % 60, seconds % 60].map(n => String(Math.floor(n)).padStart(2, '0')).join(':')
     const dashes = (n: number, salt: number): string =>
       Array.from({ length: Math.max(0, n) }, (_, i) =>
-        mood === 'deny' && noise(frame + salt, i) < 0.12 ? '╳▚░'[i % 3] : '─',
+        face.mood === 'deny' && noise(frame + salt, i) < 0.12 ? '╳▚░'[i % 3] : '─',
       ).join('')
     const rule = (key: string, label: string, status: string, statusColor: string, salt: number) => {
       const left = `╾─┤ ${label} ├`
@@ -1501,14 +1462,14 @@ export const register: Register = (on, options) => {
           <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />
           {ambRight > 0 && ambient(AMB_RIGHT, ambLeft + size, 0, ambRight, size / 2)}
         </Box>
-        {rule('rule-face', (who?.name ?? 'avatar7').toUpperCase(), `[${mood.toUpperCase()}]`, moodColor, 0)}
+        {rule('rule-face', (who?.name ?? 'avatar7').toUpperCase(), `[${face.mood.toUpperCase()}]`, moodColor, 0)}
         <Text color={color} backgroundColor="#000000">
           {shown.length > 0 ? `> ${shown}` : '> ...'}
           {typed < last.text.length ? '█' : ''}
         </Text>
-        {heldTool !== null && (
+        {face.held !== null && (
           <Text color="#7a5cff" backgroundColor="#000000" wrap="truncate-end">
-            {`waiting for a human: ${heldTool}`}
+            {`waiting for a human: ${face.held}`}
           </Text>
         )}
         {openQuestion !== null && (
