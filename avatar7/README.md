@@ -95,9 +95,9 @@ gives it back.
 **Running it.** As a service, so it is ready before any session needs it:
 `tools/avatar7-relay.service` (instructions inside). The page
 (`tools/relay.html`) is read at each request, so editing it needs no restart;
-`relay.py` itself does: `/avatar remote off` only gives the relay back, it
-does not stop it. Restart the service, or kill the process named in the
-spool's `relay.pid` and run `/avatar remote on`.
+`relay.py` reloads itself when the file changes (same PID, spool kept, a
+version that does not compile is skipped). `/avatar remote off` only gives
+the relay back, it does not stop it.
 The relay binds to the machine's Tailscale address (`tailscale ip -4`);
 without Tailscale, pass `--host <address>`. The page has no authentication and
 its buttons act on the avatar only, never on mesh7 approvals: keep it on a
