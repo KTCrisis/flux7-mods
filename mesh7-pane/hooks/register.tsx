@@ -71,10 +71,40 @@ async function report($: Engine, before: Health | null, now: Health): Promise<He
   return now
 }
 
+// A trace's tool as Claude Code names it: MCP calls reach mesh7 as
+// `server.tool` and Claude Code calls them `mcp__mesh7__server_tool`; the
+// hook's built-in tools (Bash, Read...) keep their name.
+export const claudeName = (tool: string): string =>
+  tool.includes('.') ? `mcp__mesh7__${tool.replace('.', '_')}` : tool
+
+// What a fresh decision of this session tells avatar7, or undefined: a
+// refusal, or an MCP call held for a human (a held Bash call is Claude
+// Code's own permission prompt, which avatar7 already sees).
+export const verdictSay = (d: { tool: string; verdict: Verdict; rule: string; hint: string }): Omit<Say, 'at'> | undefined => {
+  const tool = claudeName(d.tool)
+  const what = d.hint === '' ? d.tool : `${d.tool} ${d.hint.slice(0, 60)}`
+  if (d.verdict === 'deny') return { mood: 'deny', event: `mesh7 DENIED ${what}, by rule ${d.rule}`, tool }
+  if (d.verdict === 'human_approval' && d.tool.includes('.')) {
+    return { mood: 'wait', event: `mesh7 holds ${what} for a human, by rule ${d.rule}`, tool, hold: true }
+  }
+  return undefined
+}
+
+// An approval of this agent leaving pending: the human's decision, which
+// releases the waiting face.
+export const decisionSay = (a: { tool: string; status: string }): Omit<Say, 'at'> =>
+  ({ mood: a.status === 'approved' ? 'watch' : 'deny', event: `the human ${a.status} ${a.tool}`, tool: claudeName(a.tool), release: true })
+
 export const register: Register = on => {
   let seen = ''
   let isFirst = true
   let was: Health | null = null
+  // MCP calls reach mesh7 under the MCP connection's session, not Claude
+  // Code's: learned by matching a call this session just made to its trace.
+  let mcpSession = ''
+  const recentCalls: { tool: string; at: number }[] = []
+  // Each approval's last status seen; null until the first poll seeds it.
+  let statuses: Map<string, string> | null = null
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -92,7 +122,20 @@ export const register: Register = on => {
           $.http.fetch(`${MESH}/halts`),
           $.http.fetch(`${MESH}/health`),
         ])
-        const traces = (JSON.parse(tr.text) as Trace[]).filter(t => wide || t.session_id === session)
+        const all = JSON.parse(tr.text) as Trace[]
+        if (mcpSession === '') {
+          const match = all.find(
+            t =>
+              t.tool.includes('.') &&
+              t.agent_id === 'claude' &&
+              t.session_id !== undefined &&
+              recentCalls.some(c => c.tool === claudeName(t.tool) && Math.abs(new Date(t.timestamp).getTime() - c.at) < 15_000),
+          )
+          if (match?.session_id !== undefined) mcpSession = match.session_id
+        }
+        const mine = (t: Trace): boolean => t.session_id === session || (mcpSession !== '' && t.session_id === mcpSession)
+        const traces = all.filter(t => wide || mine(t))
+        const mineIds = new Set(traces.filter(mine).map(t => t.trace_id))
         const approvals = ap.ok ? (JSON.parse(ap.text) as Approval[]) : []
         const halts = ha.ok ? (JSON.parse(ha.text) as Halt[]).filter(h => !h.resumed_at) : []
         const version = he.ok ? String((JSON.parse(he.text) as { version?: string }).version ?? '') : ''
@@ -119,7 +162,19 @@ export const register: Register = on => {
         for (const d of fresh) {
           if (d.verdict === 'deny') $.ui.toast(`mesh7 DENY ${d.tool} (${d.rule})`)
           if (d.verdict === 'human_approval') $.ui.toast(`mesh7 waits for a human: ${d.tool}`)
+          const said = mineIds.has(d.id) ? verdictSay(d) : undefined
+          if (said !== undefined) await $.state.set({ plugin: 'mesh7-pane', key: 'say' }, { ...said, at: Date.now() })
         }
+        // The human's decisions on this agent's held calls.
+        const now = new Map(approvals.filter(a => a.agent_id === 'claude').map(a => [a.id, a.status]))
+        if (statuses !== null) {
+          for (const a of approvals) {
+            if (a.agent_id === 'claude' && statuses.get(a.id) === 'pending' && a.status !== 'pending') {
+              await $.state.set({ plugin: 'mesh7-pane', key: 'say' }, { ...decisionSay(a), at: Date.now() })
+            }
+          }
+        }
+        statuses = now
 
         await update($, decisions, () => list)
         await update($, pending, () => waiting)
@@ -139,6 +194,15 @@ export const register: Register = on => {
     })
 
     void $.ui.open({ id: PANE, title: 'mesh7' })
+    return next(e)
+  })
+
+  // The MCP calls this session makes, by name and time, to find their traces.
+  on('tool.call', async ($, e, next) => {
+    if (e.tool.startsWith('mcp__mesh7__') && mcpSession === '') {
+      recentCalls.push({ tool: e.tool, at: Date.now() })
+      if (recentCalls.length > 20) recentCalls.shift()
+    }
     return next(e)
   })
 

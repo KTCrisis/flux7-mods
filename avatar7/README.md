@@ -70,7 +70,7 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 | `state.set` | another mod's write to its own `announce` key is recorded in `announcers`, by plugin name; a write to its own `say` key queues a line at once (see below) |
 | `ui.toast` | a toast from a recorded mod (`next.origin.plugin`) queues a line announcing it in that mod's mood, past the rate limits |
 | `tool.check` | an `ask` verdict on a real call (a settings rule, or mesh7's hook answering `ask` for Bash) sets the waiting face; the line comes only if the prompt is still up after ~2 s, since auto mode may settle the ask alone |
-| `tool.call` | lets the call run (`await next(e)`), then classifies the outcome and queues a line; a mesh7 answer `Approval required (id: …)` holds the face in `wait`, and the clock polls `GET /approvals` every ~1.5 s until the human decides |
+| `tool.call` | lets the call run (`await next(e)`), classifies the outcome (denied, failed, succeeded) and queues a line; a refusal, a failure or any call through mesh7 waits ~1.8 s in the queue, so mesh7-pane can replace it with what mesh7 decided |
 | `ui.render` `Pane` | draws the Raster and the line under it; a text fallback off the terminal |
 
 ### Giving a mod a voice
@@ -103,9 +103,13 @@ export type Say = { mood: 'watch' | 'error' | 'deny' | 'wait'; event: string; at
 await $.state.set({ plugin: 'my-mod', key: 'say' }, { mood: 'deny', event: 'the deploy was refused', at: Date.now() })
 ```
 
-`at` makes the same event twice two writes. mesh7-pane does this for mesh7
-going down (`error`), an emergency stop (`deny`) and their end (`watch`); its
-DENY and HUMAN toasts stay unvoiced, the calls already speak.
+`at` makes the same event twice two writes. Three optional fields go with
+it: `tool`, the call the line is about as Claude Code names it, whose own
+waiting line the avatar then drops; `hold`, a call held for a human (the face
+waits); `release`, that call decided. mesh7-pane says mesh7 going down
+(`error`), an emergency stop (`deny`) and their end (`watch`); a refusal of
+this session's calls with its rule; an MCP call held for a human, then the
+human's decision. It reads them from mesh7's traces, not from message texts.
 
 Every line, from a call, a toast, a `say` or a poke, goes through one queue of
 four: a poke first, then `deny`, then `error` and `wait`, then `watch`, the
@@ -147,12 +151,10 @@ the stories and questions on. Both are kept in `$.store`, and answer to
 | success | `watch` | slight cyan pull, about 0.8 s |
 | `isError` | `error` | amber pull, about 2 s |
 | denied by a hook or permission, or a mesh7 refusal | `deny` | magenta pull, shifted rows, snow, about 2 s |
-| held for a human: a mesh7 approval, or a permission prompt | `wait` | violet pull, slow breathing, until the decision; the pane shows `waiting: mesh approve <id>` for a mesh7 hold |
+| held for a human: a mesh7 approval (said by mesh7-pane), or a permission prompt | `wait` | violet pull, slow breathing, until the decision; the pane shows `waiting for a human: <tool>` for a mesh7 hold |
 
-A mesh7 refusal is recognized by the exact texts mesh7 returns
-(`mcp/server.go`, `halt/halt.go`): `Policy denied`, `Approval denied`,
-`Denied by supervisor`, `Approval timed out`, `halted by operator`. If mesh7
-changes those messages, update `MESH_DENY`.
+avatar7 knows nothing of mesh7 itself: without mesh7-pane, a call mesh7
+refuses reads as a failure, and a held one as a success.
 
 ### Drawing
 
@@ -379,7 +381,6 @@ shows it.
   French voice mangled English tool names), whatever language the user types.
   A local neural voice (piper) would change the rendition; not done.
 - Eye and mouth coordinates are read by eye on the preview.
-- The mesh7 refusal detection depends on mesh7's message texts.
 - Each spoken line is one Haiku call; the rate limits above bound the cost.
 
 ## Credits

@@ -204,3 +204,14 @@ test('every kind of line finds its fallback without throwing; a poke takes the i
   expect(fallbackPool({ mood: 'wait', event: 'x' }, fb)).toEqual(['wa'])
   expect(fallbackPool({ mood: 'deny', event: 'x' }, fb)).toEqual(['d'])
 })
+
+test('a say carries its tool, hold and release through; a stray field is not kept', () => {
+  expect(heardSay({ plugin: 'mesh7-pane', key: 'say', value: { mood: 'wait', event: 'held', at: 1, tool: 'mcp__mesh7__gmail_send', hold: true } })).toEqual({
+    mood: 'wait',
+    event: 'held',
+    at: 1,
+    tool: 'mcp__mesh7__gmail_send',
+    hold: true,
+  })
+  expect(heardSay({ plugin: 'x', key: 'say', value: { mood: 'deny', event: 'e', at: 1, hold: 'yes', other: 3 } })).toEqual({ mood: 'deny', event: 'e', at: 1 })
+})

@@ -12,7 +12,16 @@ export type Announce = { mood: 'watch' | 'error'; event: string }
 // What a mod asks the avatar to say now, with no toast: published under the
 // mod's own `say` key, the face to wear, what happened, and when (ms), so the
 // same event twice is still two writes. The avatar queues it by urgency.
-export type Say = { mood: 'watch' | 'error' | 'deny' | 'wait'; event: string; at: number }
+// tool: the call it is about (Claude Code's name), whose own line the avatar
+// then drops; hold: a call held for a human, the face waits; release: decided.
+export type Say = {
+  mood: 'watch' | 'error' | 'deny' | 'wait'
+  event: string
+  at: number
+  tool?: string
+  hold?: boolean
+  release?: boolean
+}
 
 declare module 'claude-code' {
   interface PluginState {

@@ -48,13 +48,6 @@ const station = atom({ plugin: 'avatar7', key: 'station' } as const, { name: '',
 const isVoicing = atom({ plugin: 'avatar7', key: 'isVoicing' } as const, false)
 const announcers = atom({ plugin: 'avatar7', key: 'announcers' } as const, {} as Record<string, Announce>)
 
-// What mesh7 answers when it refuses a call (mcp/server.go, halt/halt.go).
-const MESH_DENY = /Policy denied|Approval denied|Denied by supervisor|Approval timed out|halted by operator/
-// What it answers when it holds one for a human (approvalRequiredText).
-const MESH_HELD = /Approval required \(id: ([0-9a-f]+)\)/
-const MESH = 'http://localhost:9090'
-// How often the clock asks mesh7 whether a held call was decided: ~1.5 s.
-const POLL_FRAMES = 23
 // An ask the mode may settle alone (auto mode): the face waits at once, the
 // avatar speaks only if the permission prompt is still up after ~2 s.
 const ASK_FRAMES = 30
@@ -128,6 +121,9 @@ const playArgv = (wav: string): string[] => [
 // takes ~0.3 s to get there), over the audio's length. Without a WAV within
 // HOLD_FRAMES (Piper missing, SAPI speaking itself) it is typed anyway.
 const PLAY_LEAD_FRAMES = 5
+// How long a line about a call through mesh7 waits for mesh7-pane's verdict:
+// its poll runs every 1.5 s.
+const SAY_WAIT_FRAMES = 27
 // How long PowerShell takes to start a detached playback, at most (measured
 // ~0.3 s warm, more cold): the voice is held this much past the WAV's length.
 const PLAY_START_MS = 900
@@ -173,7 +169,14 @@ export const heardSay = (w: { plugin: string; key: string; value: unknown }): Sa
     (a.mood === 'watch' || a.mood === 'error' || a.mood === 'deny' || a.mood === 'wait') &&
     typeof a.event === 'string' &&
     typeof a.at === 'number'
-    ? { mood: a.mood, event: a.event, at: a.at }
+    ? {
+        mood: a.mood,
+        event: a.event,
+        at: a.at,
+        ...(typeof a.tool === 'string' ? { tool: a.tool } : {}),
+        ...(a.hold === true ? { hold: true } : {}),
+        ...(a.release === true ? { release: true } : {}),
+      }
     : undefined
 }
 
@@ -207,7 +210,7 @@ export const recentNote = (lines: string[]): string =>
 // conversation first; or, now and then, a moment of the persona's own story,
 // a question it puts to the user, and its reaction to the user's answer.
 type Ask =
-  | { mood: Mood; event: string }
+  | { mood: Mood; event: string; tool?: string; after?: number }
   | 'talk'
   | { story: string; mood: Mood }
   | 'question'
@@ -289,7 +292,6 @@ export const fresh = (queue: Queued[], now: number): Queued[] =>
     q => q.ask === 'talk' || (typeof q.ask === 'object' && ('answer' in q.ask || 'greet' in q.ask)) || now - q.at <= STALE_FRAMES,
   )
 
-type Approval = { id: string; status: string }
 
 type Persona = {
   name: string
@@ -441,9 +443,8 @@ export const register: Register = (on, options) => {
   // Display names for the picker, read from each persona.json.
   const names: Record<string, string> = {}
   // A mesh7 approval this session's call is held on, by its short id.
-  let heldId: string | null = null
-  let heldCall = ''
-  let isPolling = false
+  // A call mesh7 holds for a human, as mesh7-pane said it; null when none.
+  let heldTool: string | null = null
   // A call put to the permission prompt (a mesh7 hook's `ask`, a settings rule).
   let askSince: number | null = null
   let askCall = ''
@@ -629,29 +630,6 @@ export const register: Register = (on, options) => {
         $.ui.invalidate('ui.render')
       }
 
-      // A held call: ask mesh7 now and then whether the human decided.
-      if (heldId !== null && !isPolling && frame % POLL_FRAMES === 0) {
-        isPolling = true
-        const id = heldId
-        $.clock.after(1, async () => {
-          try {
-            const res = await $.http.fetch(`${MESH}/approvals`)
-            if (!res.ok) return
-            const found = (JSON.parse(res.text) as Approval[]).find(a => a.id.startsWith(id))
-            if (found === undefined || found.status === 'pending' || heldId !== id) return
-            heldId = null
-            const now: Mood = found.status === 'approved' ? 'watch' : found.status === 'denied' ? 'deny' : 'error'
-            mood = now
-            moodUntil = frame + 30
-            speakLater({ mood: now, event: `the human's decision on the held call ${heldCall}: ${found.status.toUpperCase()}` })
-          } catch {
-            // mesh7 down or unreadable: try again at the next poll.
-          } finally {
-            isPolling = false
-          }
-        })
-      }
-
       if (askSince !== null && frame - askSince === ASK_FRAMES && queue.length === 0) {
         speakLater({ mood: 'wait', event: `call waiting for the user's permission: ${askCall}` })
       }
@@ -663,7 +641,7 @@ export const register: Register = (on, options) => {
         frame >= nextEventAt &&
         queue.length === 0 &&
         !isSpeaking &&
-        heldId === null &&
+        heldTool === null &&
         askSince === null &&
         openQuestion === null &&
         frame - lastSpoke > EVENT_QUIET_FRAMES
@@ -686,9 +664,11 @@ export const register: Register = (on, options) => {
       }
 
       queue = fresh(queue, frame)
-      const first = queue[0]
+      // A line may wait a moment for a mod to say better (a mesh7 verdict).
+      const ready = queue.findIndex(q => typeof q.ask !== 'object' || !('after' in q.ask) || (q.ask.after ?? 0) <= frame)
+      const first = queue[ready]
       if (first === undefined || isSpeaking || who === null) return
-      queue = queue.slice(1)
+      queue = queue.filter((_, i) => i !== ready)
       const ask = first.ask
       isSpeaking = true
       lastSpoke = frame
@@ -885,13 +865,21 @@ export const register: Register = (on, options) => {
     const s = landed(done) ? heardSay(w) : undefined
     if (s !== undefined) {
       saidHere.set(w.plugin, s)
-      if (who !== null) {
-        if (heldId === null && askSince === null) {
-          mood = s.mood
-          moodUntil = frame + (s.mood === 'watch' ? 12 : 30)
-        }
-        speakLater({ mood: s.mood, event: s.event })
+      // The mod's line replaces the avatar's own waiting line on that call.
+      if (s.tool !== undefined) queue = queue.filter(q => !(typeof q.ask === 'object' && 'tool' in q.ask && q.ask.tool === s.tool))
+      if (s.hold === true) {
+        heldTool = s.tool ?? 'a call'
+        mood = 'wait'
+        moodUntil = Infinity
+      } else if (s.release === true) {
+        heldTool = null
+        mood = s.mood
+        moodUntil = frame + 30
+      } else if (heldTool === null && askSince === null) {
+        mood = s.mood
+        moodUntil = frame + (s.mood === 'watch' ? 12 : 30)
       }
+      if (who !== null) speakLater({ mood: s.mood, event: s.event })
     }
     const a = landed(done) ? heard(w) : undefined
     if (a !== undefined) {
@@ -911,7 +899,7 @@ export const register: Register = (on, options) => {
     const from = next.origin.plugin
     const bell = from === undefined || from === 'avatar7' ? undefined : (heardHere.get(from) ?? (await read($, announcers))[from])
     if (bell !== undefined && who !== null) {
-      if (heldId === null && askSince === null) {
+      if (heldTool === null && askSince === null) {
         mood = bell.mood
         moodUntil = frame + 30
       }
@@ -936,25 +924,11 @@ export const register: Register = (on, options) => {
     const ran = await next(e)
     askSince = null
 
-    const isMesh = e.tool.startsWith('mcp__mesh7__')
     const call = describe(e as unknown as Record<string, unknown>)
-
-    // Held for a human: wait, eyes fixed, until the clock sees the decision.
-    const held = isMesh ? MESH_HELD.exec(ran.text ?? '') : null
-    if (held !== null) {
-      heldId = held[1] ?? null
-      heldCall = call
-      mood = 'wait'
-      moodUntil = Infinity
-      speakLater({ mood: 'wait', event: `call HELD for human approval: ${call}` })
-      return ran
-    }
-
-    const isMeshDeny = isMesh && ran.deny === undefined && ran.isError === true && MESH_DENY.test(ran.text ?? '')
-    const now: Mood = ran.deny !== undefined || isMeshDeny ? 'deny' : ran.isError === true ? 'error' : 'watch'
+    const now: Mood = ran.deny !== undefined ? 'deny' : ran.isError === true ? 'error' : 'watch'
 
     // A held call keeps the waiting face; the others set theirs.
-    if (heldId === null) {
+    if (heldTool === null) {
       mood = now
       moodUntil = frame + (now === 'watch' ? 12 : 30)
     }
@@ -967,7 +941,11 @@ export const register: Register = (on, options) => {
 
     const quiet = now === 'watch' && note === '' ? 45_000 / FRAME_MS : 5_000 / FRAME_MS
     if (isSpeaking || queue.length > 0 || frame - lastSpoke < quiet) return ran
+    // A refusal, a failure, or any call through mesh7 waits ~1.8 s: mesh7-pane,
+    // when loaded, may say what mesh7 decided and replace this line.
+    const mayBeSaid = now !== 'watch' || e.tool.startsWith('mcp__mesh7__')
     speakLater({
+      ...(mayBeSaid ? { tool: e.tool, after: frame + SAY_WAIT_FRAMES } : {}),
       mood: now,
       event:
         (now === 'deny'
@@ -1036,9 +1014,9 @@ export const register: Register = (on, options) => {
           {shown.length > 0 ? `> ${shown}` : '> ...'}
           {typed < last.text.length ? '█' : ''}
         </Text>
-        {heldId !== null && (
-          <Text color="#7a5cff" backgroundColor="#000000">
-            {`waiting: mesh approve ${heldId}`}
+        {heldTool !== null && (
+          <Text color="#7a5cff" backgroundColor="#000000" wrap="truncate-end">
+            {`waiting for a human: ${heldTool}`}
           </Text>
         )}
         {openQuestion !== null && (

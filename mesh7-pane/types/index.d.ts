@@ -17,7 +17,16 @@ export type Health = { isUp: boolean; version: string; halt: string }
 
 // What this mod asks avatar7 to say, if avatar7 is loaded: mesh7 falling,
 // halting, coming back. avatar7 hears the write; nothing here depends on it.
-export type Say = { mood: 'watch' | 'error' | 'deny' | 'wait'; event: string; at: number }
+// tool: the call it is about, as Claude Code names it, so avatar7 drops its
+// own line for it; hold and release: a call held for a human, then decided.
+export type Say = {
+  mood: 'watch' | 'error' | 'deny' | 'wait'
+  event: string
+  at: number
+  tool?: string
+  hold?: boolean
+  release?: boolean
+}
 
 declare module 'claude-code' {
   interface PluginState {
