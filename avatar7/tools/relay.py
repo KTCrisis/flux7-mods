@@ -25,7 +25,11 @@ from pathlib import Path
 
 PERSONAS = Path(__file__).resolve().parent.parent / "personas"
 # What the page may fetch of a persona: its pictures, nothing else.
-ASSETS = ("portrait.png", "portrait-talk.png", "portrait-deny.png", "scene.png")
+ASSETS = (
+    "portrait.png", "portrait-talk.png", "portrait-deny.png", "scene.png",
+    # the faces as the terminal draws them, baked at 64 and scaled up
+    "face-preview.png", "face-talk-preview.png", "face-deny-preview.png",
+)
 SPOOL = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "avatar7" / "relay"
 STATE = SPOOL / "state.json"
 # The page's buttons, one JSON file each, which avatar7 reads and removes.

@@ -46,7 +46,9 @@ events, visits, volume). Tap `listen` once: browsers play nothing before a
 gesture. Added to the phone's home screen, it opens like an app. `float` puts
 the face in picture-in-picture over the other apps (Android draws no buttons
 in it: next track asks the avatar to talk, play/pause mutes it), so the voice
-keeps coming while you type in the Claude app.
+keeps coming while you type in the Claude app. `pixel` swaps the portraits
+for the faces the terminal draws (64x64, scaled up without smoothing) under a
+CRT: scanlines, a rolling band, a vignette; remembered by the browser.
 
 The voice follows the user: a prompt sent through Remote Control, or typed
 in a session reached over ssh, takes the relay for this session; a prompt
