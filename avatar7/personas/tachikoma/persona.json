@@ -3,7 +3,7 @@
   "voice": "Microsoft Zira Desktop",
   "rate": 2,
   "pitch": 6,
-  "piper": { "voice": "en_US-hfc_female-medium", "lengthScale": 0.95, "fx": "aresample=22050,asetrate=22050*1.25,aresample=22050,atempo=0.9,acrusher=bits=12:mode=log:aa=1,highpass=f=200,volume=0.7" },
+  "piper": { "voice": "en_US-hfc_female-medium", "lengthScale": 0.95, "fx": "aresample=22050,asetrate=22050*1.25,aresample=22050,atempo=0.9,acrusher=bits=12:mode=log:aa=1,highpass=f=200" },
   "color": "#3d7bff",
   "ambient": [{"kind": "scene", "color": "#3d7bff", "file": "scene.rgb", "width": 512, "height": 192, "animate": ["beacons", "neon", "windows"]}, {"kind": "rain", "color": "#6ab8ff", "density": 0.3, "speed": 30}],
   "station": [

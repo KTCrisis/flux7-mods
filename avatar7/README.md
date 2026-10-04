@@ -207,6 +207,9 @@ twice the face's horizontal resolution.
 
 ### Speech
 
+- Every voice is leveled to the same loudness (ffmpeg `loudnorm`, -18 LUFS)
+  after its persona's filter; the user's volume applies after that, so a
+  persona's filter sets its timbre, not its level.
 - A line is asked at most every 45 s on success and every 5 s on an error or
   refusal, and never while the previous one is still being spoken. Every call
   counts toward a run of like outcomes: from the second denial or failure in
