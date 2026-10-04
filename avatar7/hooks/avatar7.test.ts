@@ -1,11 +1,12 @@
 import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
-import { withPrivate } from './register'
+import { drawsPictures, withPrivate } from './register'
 import { facePixel, faceSample, faceCells, pickFace, TINT, type View } from './draw'
 import { commandEvent, heard, heardSay, landed, nextStreak, streakNote } from './hearing'
 import { speakScript, synthArgv } from './voice'
 import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona } from './speech'
 import { ambientCells, ambientPixel } from './ambient'
+import { hdFrame, hdKey, hdSize, PX, type Hd, type HdView } from './hd'
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
 import { answered, ask as askFace, calm, hold, react, release, stage, tick } from './mood'
 import { begin, end, HOLD_FRAMES, isHeard, restored, silent, start, typeOn, voiced } from './line'
@@ -599,4 +600,61 @@ test('a refusal acted in a scene shakes the portrait less than one a call earned
   }
   expect(moved(0.4)).toBeLessThan(moved(1))
   expect(moved(0.4)).toBeGreaterThan(0)
+})
+
+// Real images only where the Image element draws them (kitty's Unicode
+// placeholders): kitty and Ghostty yes, WezTerm and the rest no.
+test('pictures are drawn in kitty and Ghostty only, and AVATAR7_HD=0 keeps the half blocks', () => {
+  expect(drawsPictures('xterm-kitty||')).toBe(true)
+  expect(drawsPictures('xterm-ghostty|ghostty|')).toBe(true)
+  expect(drawsPictures('xterm-256color|WezTerm|')).toBe(false)
+  expect(drawsPictures('xterm-256color||')).toBe(false)
+  expect(drawsPictures('xterm-kitty||0')).toBe(false)
+})
+
+// A gray portrait on a black ground over a blue scene.
+const hdView = (mood: HdView['mood']): HdView => {
+  const side = 8
+  const base = new Uint8Array(side * side * 3)
+  for (let y = 2; y < 6; y++) for (let x = 2; x < 6; x++) base.fill(200, (y * side + x) * 3, (y * side + x) * 3 + 3)
+  const scene = { width: 16, height: 4, pixels: new Uint8Array(16 * 4 * 3).map((_, i) => (i % 3 === 2 ? 255 : 0)) }
+  const hd: Hd = { side, base, talk: null, deny: null, scene }
+  return { hd, mood, face: 'base', glitchStep: 0, glitch: 1, color: '#00ff9c', cutout: 12, columns: 20, rows: 4, size: 8 }
+}
+const at = (img: Uint8Array, width: number, x: number, y: number): number[] => Array.from(img.slice((y * width + x) * 4, (y * width + x) * 4 + 3))
+
+test('the HD picture is the band in pixels: PX a column, twice that a row', () => {
+  const v = hdView('idle')
+  const { width, height } = hdSize(v.columns, v.rows)
+  expect([width, height]).toEqual([20 * PX, 4 * 2 * PX])
+  expect(hdFrame(v).length).toBe(width * height * 4)
+})
+
+test('the scene shows beside the face and through its dark ground, the portrait over it', () => {
+  const v = hdView('idle')
+  const { width, height } = hdSize(v.columns, v.rows)
+  const img = hdFrame(v)
+  const left = Math.floor((v.columns - v.size) / 2) * PX
+  const side = v.size * PX
+  // Beside the face, low in the band: the scene's blue.
+  const beside = at(img, width, 2, height - 2)
+  expect(beside[2]).toBeGreaterThan(0)
+  expect(beside[0]).toBe(0)
+  // In the face's black ground, away from the frame: the scene again.
+  const ground = at(img, width, left + 4, side - 4)
+  expect(ground[2]).toBeGreaterThan(0)
+  // In the portrait's middle: its gray, opaque.
+  const middle = at(img, width, left + side / 2, side / 2)
+  expect(middle[0]).toBeGreaterThan(100)
+  expect(middle[0]).toBe(middle[2])
+})
+
+test('the frame takes the persona color at rest and the mood color on a refusal', () => {
+  const idle = hdView('idle')
+  const deny = hdView('deny')
+  const { width } = hdSize(idle.columns, idle.rows)
+  const left = Math.floor((idle.columns - idle.size) / 2) * PX
+  expect(at(hdFrame(idle), width, left, 0)).toEqual([0x00, 0xff, 0x9c])
+  expect(at(hdFrame(deny), width, left, 0)).toEqual([0xff, 0x2a, 0x6d])
+  expect(hdKey(idle)).not.toBe(hdKey(deny))
 })

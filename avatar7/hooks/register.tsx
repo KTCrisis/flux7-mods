@@ -51,6 +51,7 @@ import {
 import { ASKED_CHARS, commandEvent, heard, heardSay, landed, nextStreak, streakNote, type Streak } from './hearing'
 import { detachedArgv, PLAY_START_MS, SAPI_PLAY, synthArgv } from './voice'
 import { faceCells, H, noise, TINT, W, type Faces, type View } from './draw'
+import { hdFrame, hdKey, hdSize, pickHdFace, type Hd, type HdView } from './hd'
 import { begin, end, isHeard, restored, silent, start, typeOn, voiced, type Typing } from './line'
 import { answered, ask as askFace, calm, hold, isWaiting, react, release, stage as stageFace, tick, type Face, type Mood } from './mood'
 
@@ -210,6 +211,43 @@ async function relayEnd($: Engine, r: Relay, reason: string): Promise<void> {
 // A persona's faces (draw.ts): the portrait, and the optional frames baked
 // beside it (tools/bake.py --frame): mouth open for speaking, a frown for a
 // refusal.
+// Whether this terminal draws pictures for the Image element: kitty and
+// Ghostty implement the Unicode placeholders it needs, WezTerm and Windows
+// Terminal do not. AVATAR7_HD=0 keeps the half blocks anyway. Set at
+// session start, before the faces load.
+let isHdTerminal = false
+export const drawsPictures = (env: string): boolean => {
+  const [term = '', program = '', flag = ''] = env.split('|')
+  if (flag === '0') return false
+  return term === 'xterm-kitty' || term === 'xterm-ghostty' || program === 'ghostty'
+}
+
+// The faces and scene tools/bake_hd.py baked for this persona, null when
+// they are not there (a fresh clone: they are derived, kept out of git).
+async function loadHd($: Engine, dir: string): Promise<Hd | null> {
+  const bytes = async (name: string): Promise<Uint8Array | null> => {
+    try {
+      return Uint8Array.fromBase64((await $.fs.read(`${dir}/${name}`, { as: 'bytes' })).base64)
+    } catch {
+      return null
+    }
+  }
+  let meta: { size?: number; sceneWidth?: number; sceneHeight?: number }
+  try {
+    meta = JSON.parse(String(await $.fs.read(`${dir}/hd.json`))) as typeof meta
+  } catch {
+    return null
+  }
+  const side = meta.size ?? 0
+  const base = await bytes('face-hd.rgb')
+  if (base === null || side === 0 || base.length !== side * side * 3) return null
+  const pixels = await bytes('scene-hd.rgb')
+  const width = meta.sceneWidth ?? 0
+  const height = meta.sceneHeight ?? 0
+  const scene = pixels !== null && pixels.length === width * height * 3 ? { pixels, width, height } : null
+  return { side, base, talk: await bytes('face-talk-hd.rgb'), deny: await bytes('face-deny-hd.rgb'), scene }
+}
+
 async function loadFaces($: Engine, dir: string): Promise<Faces> {
   const read = async (name: string): Promise<Uint8Array | null> => {
     try {
@@ -220,7 +258,7 @@ async function loadFaces($: Engine, dir: string): Promise<Faces> {
   }
   const base = await read('face.rgb')
   if (base === null) throw new Error(`${dir}/face.rgb unreadable`)
-  return { base, talk: await read('face-talk.rgb'), deny: await read('face-deny.rgb') }
+  return { base, talk: await read('face-talk.rgb'), deny: await read('face-deny.rgb'), hd: isHdTerminal ? await loadHd($, dir) : null }
 }
 
 
@@ -483,6 +521,45 @@ export const register: Register = (on, options) => {
   }
   const cells = (): string => faceCells(view())
 
+  // The face as a real image (hd.ts), where the terminal draws pictures and
+  // the persona has its HD bake: the band's width in columns, set at each
+  // render; whether the last render mounted the Image; the key of the
+  // picture it shows, so the clock blits only when the picture changes; and
+  // the last pictures made, since the same few come back (moods, mouth).
+  let hdColumns = 0
+  let isHdShown = false
+  let hdShownKey = ''
+  const hdMade = new Map<string, string>()
+  const HD_KEPT = 24
+  const hdView = (): HdView | null => {
+    const v = view()
+    const hd = v.faces?.hd
+    if (!isHdTerminal || hd === undefined || hd === null || v.persona === null || hdColumns === 0) return null
+    return {
+      hd,
+      mood: v.mood,
+      face: pickHdFace(hd, v.mood, v.isHeard, noise(v.frame >> 2, 7)),
+      // A new tear every four frames while refused: a picture is ~1 MB.
+      glitchStep: v.mood === 'deny' ? v.frame >> 2 : 0,
+      glitch: v.glitch,
+      color: v.persona.color ?? '#00ff9c',
+      cutout: v.persona.cutout ?? 12,
+      columns: hdColumns,
+      rows: size / 2,
+      size,
+    }
+  }
+  const hdSource = (hv: HdView): { key: string; source: { rgba: string; width: number; height: number } } => {
+    const key = hdKey(hv)
+    let rgba = hdMade.get(key)
+    if (rgba === undefined) {
+      rgba = hdFrame(hv).toBase64()
+      hdMade.set(key, rgba)
+      if (hdMade.size > HD_KEPT) hdMade.delete(hdMade.keys().next().value as string)
+    }
+    return { key, source: { rgba, ...hdSize(hv.columns, hv.rows) } }
+  }
+
   // The weather of whoever is shown: the guest's during a visit.
   const ambientLayers = (): AmbientLayer[] =>
     (stage.isGuestShown && stage.guest !== null ? stage.guest.persona.ambient : who?.ambient) ?? []
@@ -501,8 +578,9 @@ export const register: Register = (on, options) => {
       cells: ambientCells(layers, ambField, x0, y0, columns, height, ambT, isStorm),
     })
     return [
-      ...(ambLeft > 0 ? [paint(AMB_LEFT, 0, 0, ambLeft, rows)] : []),
-      ...(ambRight > 0 ? [paint(AMB_RIGHT, ambLeft + size, 0, ambRight, rows)] : []),
+      // Beside the face only in half blocks: the HD picture holds its own scene.
+      ...(ambLeft > 0 && !isHdShown ? [paint(AMB_LEFT, 0, 0, ambLeft, rows)] : []),
+      ...(ambRight > 0 && !isHdShown ? [paint(AMB_RIGHT, ambLeft + size, 0, ambRight, rows)] : []),
       ...(ambBand > 0 ? [paint(AMB_BAND, 0, size + TEXT_ROWS * 2, ambField.width / QUAD, ambBand)] : []),
     ]
   }
@@ -517,6 +595,8 @@ export const register: Register = (on, options) => {
     // inherits the plugin dirs but nobody watches it: no face, no voice.
     const kind = await $.process.run(['sh', '-c', 'printf %s "$CLAUDE_CODE_SESSION_KIND"'])
     if (kind.stdout === 'bg') return next(e)
+    const env = await $.process.run(['sh', '-c', 'printf %s "$TERM|$TERM_PROGRAM|$AVATAR7_HD"'])
+    isHdTerminal = drawsPictures(env.stdout)
     // A reload mid-line kills the timer that would lower it: jukebox7 would
     // stay ducked.
     if (await read($, isVoicing)) await update($, isVoicing, () => false)
@@ -649,7 +729,14 @@ export const register: Register = (on, options) => {
           $.ui.invalidate('ui.render')
         },
       })
-      void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
+      if (isHdShown) {
+        const hv = hdView()
+        if (hv !== null && hdKey(hv) !== hdShownKey) {
+          const { key, source } = hdSource(hv)
+          hdShownKey = key
+          void $.ui.blit({ requestId: PANE, key: FACE, source })
+        }
+      } else void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (frame % AMBIENT_FRAMES === 0) {
         ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (face.mood === 'deny' || face.mood === 'error' ? 2 : face.mood === 'wait' ? 0.5 : 1)
         for (const each of ambientBlits()) void $.ui.blit(each)
@@ -959,7 +1046,7 @@ export const register: Register = (on, options) => {
       )
     }
 
-    const { Box, Text, Raster, Button, Input } = $.ui.resolve(e)
+    const { Box, Text, Raster, Button, Input, Image } = $.ui.resolve(e)
     const muted = await read($, isMuted)
     const vol = await read($, volume)
     const current = await read($, onDuty)
@@ -981,6 +1068,11 @@ export const register: Register = (on, options) => {
     const ambient = (key: string, x0: number, y0: number, columns: number, rows: number) => (
       <Raster key={key} columns={columns} rows={rows} cells={ambientCells(layers, ambField, x0, y0, columns, rows, ambT, face.mood === 'deny')} />
     )
+    hdColumns = cols
+    const hv = hdView()
+    const hdShown = hv === null ? null : hdSource(hv)
+    isHdShown = hdShown !== null
+    hdShownKey = hdShown?.key ?? ''
     const isBlink = Math.floor(frame / REFIT_FRAMES) % 2 === 0
     const moodColor = face.mood === 'idle' ? color : `#${TINT[face.mood].toString(16).padStart(6, '0')}`
     const seconds = Math.floor((frame * FRAME_MS) / 1000)
@@ -1006,9 +1098,10 @@ export const register: Register = (on, options) => {
       // The body's own height, so the controls can sit on its last row.
       <Box flexDirection="column" flexGrow={1} width="100%" height={e.props.scroll.bodyRows} backgroundColor="#000000">
         <Box flexDirection="row" justifyContent="center" width="100%" flexShrink={0} backgroundColor="#000000">
-          {ambLeft > 0 && ambient(AMB_LEFT, 0, 0, ambLeft, size / 2)}
-          <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />
-          {ambRight > 0 && ambient(AMB_RIGHT, ambLeft + size, 0, ambRight, size / 2)}
+          {hdShown !== null && <Image key={FACE} source={hdShown.source} columns={cols} rows={size / 2} alt=" " />}
+          {hdShown === null && ambLeft > 0 && ambient(AMB_LEFT, 0, 0, ambLeft, size / 2)}
+          {hdShown === null && <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />}
+          {hdShown === null && ambRight > 0 && ambient(AMB_RIGHT, ambLeft + size, 0, ambRight, size / 2)}
         </Box>
         {rule('rule-face', (who?.name ?? 'avatar7').toUpperCase(), `[${face.mood.toUpperCase()}]`, moodColor, 0)}
         <Text color={color} backgroundColor="#000000">

@@ -485,6 +485,22 @@ images' edges, within `--reach` pixels (40 by default; GLaDOS needed 200).
 Only a few personas are animated: Lain, duck7, Kaneda, the Tachikoma and
 the PDA. The others keep a single face.
 
+### 2c. Real images (kitty, Ghostty)
+
+    ~/py_env/bin/python tools/bake_hd.py <id>      # or --all
+
+Where the terminal draws pictures for the `Image` element, the band of the
+face is one real image instead of half blocks: the portrait at 384 px cut out
+over the scene at 768 px, tinted, glitched, scanlined and framed as below
+(`hooks/hd.ts`). It needs kitty's Unicode placeholders, so kitty and Ghostty
+only; WezTerm and Windows Terminal keep the half blocks, and so does
+`AVATAR7_HD=0`. The tool writes `face-hd.rgb` (and the `talk`/`deny` frames,
+aligned as `bake.py --frame` aligns them) and `scene-hd.rgb`, derived and kept
+out of git, and `hd.json`, tracked: the box from the table above and the
+baked sizes. A persona without a box in `hd.json` gets one recovered from its
+`face.rgb`. The picture is blitted only when it changes (mood, mouth, a new
+tear every four frames on a refusal), about 1 MB each, the last 24 kept.
+
 ### 3. Features
 
 Read the eyes and the mouth on `face-preview.png` and divide by 8 (the preview

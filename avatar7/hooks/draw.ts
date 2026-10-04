@@ -5,6 +5,7 @@
 
 import { ambientPixel, QUAD, type AmbientLayer, type Field } from './ambient'
 import type { Mood } from './mood'
+import type { Hd } from './hd'
 
 // Portraits are baked by tools/bake.py into W x H raw RGB pixels; each cell
 // is an upper half block, so two pixel rows per cell row.
@@ -29,7 +30,9 @@ export const noise = (a: number, b: number): number => {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296
 }
 
-export type Faces = { base: Uint8Array; talk: Uint8Array | null; deny: Uint8Array | null }
+// `hd`: the same faces as real images (hd.ts), where the terminal draws them
+// and tools/bake_hd.py has baked them; null otherwise.
+export type Faces = { base: Uint8Array; talk: Uint8Array | null; deny: Uint8Array | null; hd?: Hd | null }
 
 // Which face to draw now: the frown on a refusal or a failure, the mouth
 // flapping at an uneven pace while the voice is heard, else the portrait.
