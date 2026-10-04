@@ -1121,14 +1121,14 @@ export const register: Register = (on, options) => {
     // cursor that blinks at each redraw, dashes that glitch on a denial.
     const cols = Math.max(8, e.props.bodyColumns)
     // The weather fills the margins beside the face and the band under the
-    // text, sized short of the rows the text may take (an open field, the
-    // buttons wrapping on a narrow pane), none while the picker is open.
+    // text. The band is drawn as tall as it could be and sits in the room the
+    // text leaves, anchored to its bottom: when the line wraps or a field
+    // opens, its faded top is clipped instead of the face being squeezed.
     const layers = ambientLayers()
     const isAmbient = layers.length > 0
     ambLeft = isAmbient ? Math.floor((cols - size) / 2) : 0
     ambRight = isAmbient ? cols - size - ambLeft : 0
-    const extraRows = (openQuestion !== null ? 1 : 0) + (isConsulting ? 1 : 0) + (cols < 75 ? 1 : 0) + 1
-    ambBand = isAmbient && !isPicking ? Math.max(0, e.props.scroll.bodyRows - size / 2 - TEXT_ROWS - extraRows) : 0
+    ambBand = isAmbient ? Math.max(0, e.props.scroll.bodyRows - size / 2 - 4) : 0
     ambField = { width: cols * QUAD, height: size + TEXT_ROWS * 2 + ambBand * 2 }
     const ambient = (key: string, x0: number, y0: number, columns: number, rows: number) => (
       <Raster key={key} columns={columns} rows={rows} cells={ambientCells(layers, ambField, x0, y0, columns, rows, ambT, mood === 'deny')} />
@@ -1157,7 +1157,7 @@ export const register: Register = (on, options) => {
     return (
       // The body's own height, so the controls can sit on its last row.
       <Box flexDirection="column" flexGrow={1} width="100%" height={e.props.scroll.bodyRows} backgroundColor="#000000">
-        <Box flexDirection="row" justifyContent="center" width="100%" backgroundColor="#000000">
+        <Box flexDirection="row" justifyContent="center" width="100%" flexShrink={0} backgroundColor="#000000">
           {ambLeft > 0 && ambient(AMB_LEFT, 0, 0, ambLeft, size / 2)}
           <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />
           {ambRight > 0 && ambient(AMB_RIGHT, ambLeft + size, 0, ambRight, size / 2)}
@@ -1205,7 +1205,7 @@ export const register: Register = (on, options) => {
             }}
           />
         )}
-        <Box flexGrow={1} flexDirection="column" justifyContent="flex-end" backgroundColor="#000000">
+        <Box flexGrow={1} height={0} overflow="hidden" flexDirection="column" justifyContent="flex-end" backgroundColor="#000000">
           {ambBand > 0 && ambient(AMB_BAND, 0, size + TEXT_ROWS * 2, cols, ambBand)}
         </Box>
         {rule('rule-controls', 'CTRL', `UP ${clock}`, color, 7)}
