@@ -276,3 +276,11 @@ test('a private complement adds scenes and character, keeps the public ones', as
   expect(merged.nobody).toBe('Dave')
   expect(withPrivate(pub, null)).toBe(pub)
 })
+
+test('a chat is the user speaking: urgent, never stale, never answered by a stock line', async () => {
+  const fallback = { idle: ['x'], watch: ['x'], deny: ['x'], error: ['x'] } as never
+  expect(rankOf({ chat: 'hello' })).toBe(4)
+  expect(fallbackPool({ chat: 'hello' }, fallback)).toEqual([])
+  expect(fresh([{ ask: { chat: 'hello' }, rank: 4, at: 0 }], 1_000_000)).toHaveLength(1)
+  expect(parseRemote('{"cmd":"chat","text":"bonsoir"}')).toEqual({ cmd: 'chat', text: 'bonsoir' })
+})

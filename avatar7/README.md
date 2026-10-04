@@ -21,6 +21,7 @@ sessions.
 | `/avatar <id>` | switch avatar (`shodan`, `hal`, `glados`, `ada`, `duck7`, `pod042`, `kaneda`, `commis`, `fox`, `adjutant`, `morte`), greet, remember the choice across sessions |
 | `/avatar-talk` | ask the avatar what it thinks of the conversation; the `talk` button under the face (hotkey `t` while the pane has the focus) does the same |
 | `/avatar-ask <question>` | ask the avatar on duty its opinion on the session: it reads the last 12 messages (600 characters each) and answers in two or three sentences; an answer ending on a question opens the `answer` field. The `ask` button (hotkey `q`) opens a field for the same |
+| `/avatar-chat <what you say>` | talk to the avatar personally, about anything but the session: it answers from its own world and what it knows of you (see the private complement below), in two or three sentences, and remembers your last six exchanges, per persona. The `chat` button (hotkey `h`) opens a field that stays open for the conversation |
 | `avatars` button (hotkey `c`) | lists every avatar by name above the controls; click one and it takes over, as `/avatar <id>` does |
 | `/avatar-mute` | toggle the voice for this session; the `mute` / `unmute` button under the face (hotkey `m`) does the same |
 | `/avatar remote on\|off` | send the voice to another machine instead of this one (see [Remote voice](#remote-voice)) |

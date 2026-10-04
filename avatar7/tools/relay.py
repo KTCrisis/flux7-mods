@@ -34,7 +34,7 @@ SPOOL = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "avatar
 STATE = SPOOL / "state.json"
 # The page's buttons, one JSON file each, which avatar7 reads and removes.
 COMMANDS_DIR = SPOOL / "cmd"
-COMMANDS = {"talk", "ask", "answer", "avatar", "mute", "events", "visits", "volume"}
+COMMANDS = {"talk", "ask", "answer", "chat", "avatar", "mute", "events", "visits", "volume"}
 MAX_COMMAND = 2048
 KEEP_S = 120  # a WAV no tab fetched within this is dropped
 

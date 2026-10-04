@@ -68,11 +68,13 @@ font-size:11px;opacity:.45;white-space:nowrap;overflow:hidden;text-overflow:elli
   <div id="frame"><img id="face" alt=""><div id="tint"></div><div id="crt"></div></div>
   <div id="line"></div>
   <form id="answer"><input name="t" placeholder="answer" autocomplete="off"><button>answer</button></form>
-  <form id="ask"><input name="t" placeholder="ask the avatar" autocomplete="off"><button>ask</button></form>
+  <form id="ask"><input name="t" placeholder="ask about the session" autocomplete="off"><button>ask</button></form>
+  <form id="chat"><input name="t" placeholder="say anything" autocomplete="off"><button>say</button></form>
   <div id="picker"></div>
   <div id="controls">
     <button data-c="talk">talk</button>
     <button id="askBtn">ask</button>
+    <button id="chatBtn">chat</button>
     <button id="pickBtn">avatars</button>
     <button id="floatBtn">float</button>
     <button id="pixelBtn">pixel</button>
@@ -163,8 +165,10 @@ const send = body => fetch('/command', { method: 'POST', headers: { 'Content-Typ
 document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => send({ cmd: b.dataset.c }));
 document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => send({ cmd: 'volume', step: +b.dataset.v }));
 $('askBtn').onclick = () => { $('ask').classList.toggle('open'); $('ask').t.focus(); };
+// The chat field stays open: a conversation goes on until closed.
+$('chatBtn').onclick = () => { $('chat').classList.toggle('open'); $('chatBtn').classList.toggle('on'); $('chat').t.focus(); };
 $('pickBtn').onclick = () => $('picker').classList.toggle('open');
-for (const [id, cmd] of [['ask', 'ask'], ['answer', 'answer']]) {
+for (const [id, cmd] of [['ask', 'ask'], ['answer', 'answer'], ['chat', 'chat']]) {
   $(id).onsubmit = e => {
     e.preventDefault(); const t = $(id).t.value.trim(); if (!t) return;
     send({ cmd, text: t }); $(id).t.value = ''; if (id === 'ask') $(id).classList.remove('open');

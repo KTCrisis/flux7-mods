@@ -165,7 +165,7 @@ const drainArgv = (): string[] => [
 // beyond the avatar itself.
 export type Remote =
   | { cmd: 'talk' | 'mute' | 'events' | 'visits' }
-  | { cmd: 'ask' | 'answer'; text: string }
+  | { cmd: 'ask' | 'answer' | 'chat'; text: string }
   | { cmd: 'avatar'; id: string }
   | { cmd: 'volume'; step: 1 | -1 }
 export const parseRemote = (line: string): Remote | undefined => {
@@ -178,7 +178,7 @@ export const parseRemote = (line: string): Remote | undefined => {
   if (typeof r !== 'object' || r === null) return undefined
   const o = r as Record<string, unknown>
   if (o.cmd === 'talk' || o.cmd === 'mute' || o.cmd === 'events' || o.cmd === 'visits') return { cmd: o.cmd }
-  if ((o.cmd === 'ask' || o.cmd === 'answer') && typeof o.text === 'string') return { cmd: o.cmd, text: o.text }
+  if ((o.cmd === 'ask' || o.cmd === 'answer' || o.cmd === 'chat') && typeof o.text === 'string') return { cmd: o.cmd, text: o.text }
   if (o.cmd === 'avatar' && typeof o.id === 'string') return { cmd: 'avatar', id: o.id }
   if (o.cmd === 'volume' && (o.step === 1 || o.step === -1)) return { cmd: 'volume', step: o.step }
   return undefined
@@ -283,6 +283,8 @@ const TALK_CHARS = 300
 const CONSULT_MESSAGES = 12
 const CONSULT_CHARS = 600
 const CONSULT_CHARS_ASKED = 400
+// A chat remembers its last six exchanges, per persona.
+const CHAT_LINES = 12
 
 type Mood = 'idle' | 'watch' | 'deny' | 'error' | 'wait'
 
@@ -355,6 +357,7 @@ type Ask =
   | 'question'
   | { question: string; answer: string }
   | { consult: string }
+  | { chat: string }
   | Duo
   | { greet: string }
 
@@ -389,7 +392,7 @@ export const fallbackPool = (ask: Ask, fallback: Persona['fallback']): string[] 
   if ('duo' in ask) return []
   if ('story' in ask || 'answer' in ask || 'greet' in ask) return fallback.idle
   // A stock line is no answer to a question: better silent.
-  if ('consult' in ask) return []
+  if ('consult' in ask || 'chat' in ask) return []
   return ask.mood === 'wait' ? (fallback.wait ?? fallback.watch) : fallback[ask.mood as Exclude<Mood, 'idle' | 'wait'>]
 }
 
@@ -421,7 +424,7 @@ export const rankOf = (ask: Ask): number => {
   if (ask === 'talk') return 4
   if (ask === 'question') return 0
   if ('duo' in ask) return 0
-  if ('answer' in ask || 'greet' in ask || 'consult' in ask) return 4
+  if ('answer' in ask || 'greet' in ask || 'consult' in ask || 'chat' in ask) return 4
   if ('story' in ask) return 0
   return ask.mood === 'deny' ? 3 : ask.mood === 'error' || ask.mood === 'wait' ? 2 : 1
 }
@@ -433,7 +436,7 @@ export const fresh = (queue: Queued[], now: number): Queued[] =>
   queue.filter(
     q =>
       q.ask === 'talk' ||
-      (typeof q.ask === 'object' && ('answer' in q.ask || 'greet' in q.ask || 'consult' in q.ask)) ||
+      (typeof q.ask === 'object' && ('answer' in q.ask || 'greet' in q.ask || 'consult' in q.ask || 'chat' in q.ask)) ||
       now - q.at <= STALE_FRAMES,
   )
 
@@ -626,6 +629,8 @@ export const register: Register = (on, options) => {
     speakLater(ask)
   }
   const recentLines: string[] = []
+  // Each persona's own thread with the user, for /avatar-chat: lines, by name.
+  const chats = new Map<string, string[]>()
   let isSpeaking = false
   let faces: Faces | null = null
   // Until when the voice is heard, in frames: the mouth moves meanwhile.
@@ -658,6 +663,8 @@ export const register: Register = (on, options) => {
   let isPicking = false
   // The field where the user asks the avatar's opinion, open or not.
   let isConsulting = false
+  // The field where the user talks to the avatar personally.
+  let isChatting = false
   // Display names for the picker, read from each persona.json.
   const names: Record<string, string> = {}
   // A mesh7 approval this session's call is held on, by its short id.
@@ -836,6 +843,10 @@ export const register: Register = (on, options) => {
     await $.command.register({ name: 'avatar-mute', description: 'Toggle the avatar voice' })
     await $.command.register({ name: 'avatar-talk', description: 'Ask the avatar what it thinks of the conversation' })
     await $.command.register({
+      name: 'avatar-chat',
+      description: 'Talk to the avatar personally, not about the session: /avatar-chat <what you say>',
+    })
+    await $.command.register({
       name: 'avatar-ask',
       description: 'Ask the avatar its opinion on the session: /avatar-ask <question>',
     })
@@ -937,6 +948,9 @@ export const register: Register = (on, options) => {
             else if (r.cmd === 'ask') {
               const question = r.text.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
               if (question !== '') speakLater({ consult: question })
+            } else if (r.cmd === 'chat') {
+              const said = r.text.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
+              if (said !== '') speakLater({ chat: said })
             } else if (r.cmd === 'answer') {
               const answer = r.text.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
               const q = openQuestion
@@ -1026,7 +1040,9 @@ export const register: Register = (on, options) => {
       $.clock.after(1, async () => {
         try {
           // The line: a greeting as written, anything else from the model.
-          const isConsult = typeof ask === 'object' && 'consult' in ask
+          // A consultation and a chat keep all their sentences.
+          const isConsult = typeof ask === 'object' && ('consult' in ask || 'chat' in ask)
+          const isChat = typeof ask === 'object' && 'chat' in ask
           const write = async (): Promise<string> => {
             let prompt: string
             const conversation = async (count = TALK_MESSAGES, chars = TALK_CHARS): Promise<string> =>
@@ -1064,6 +1080,14 @@ export const register: Register = (on, options) => {
                 `The user asks you: ${ask.consult}\n` +
                 `Answer in character, in two or three sentences: take a position, name what you would change or keep. ` +
                 `You may end on one question back.`
+            } else if ('chat' in ask) {
+              const past = chats.get(voiceId) ?? []
+              prompt =
+                `The user talks to you personally, about whatever they like, not about the terminal session. ` +
+                `This time you may use two or three sentences instead of one.\n` +
+                (past.length > 0 ? `Your conversation so far, oldest first:\n${past.join('\n')}\n` : '') +
+                `The user says: ${ask.chat}\n` +
+                `Answer in character, from your own world and what you know of the user; you may ask one question back.`
             } else if ('answer' in ask) {
               prompt =
                 `You asked the user: ${ask.question}\nThe user answered: ${ask.answer}\n` +
@@ -1090,7 +1114,12 @@ export const register: Register = (on, options) => {
           const text = typeof ask === 'object' && 'greet' in ask ? ask.greet : await write()
           if (text === '') return
           // An opinion that ends on a question opens the answer field too.
-          if (ask === 'question' || (isConsult && text.endsWith('?'))) {
+          // A chat's question is answered by the next chat.
+          if (isChat && typeof ask === 'object' && 'chat' in ask) {
+            const past = [...(chats.get(voiceId) ?? []), `User: ${ask.chat}`, `${voice.name}: ${text}`]
+            chats.set(voiceId, past.slice(-CHAT_LINES))
+          }
+          if (ask === 'question' || (isConsult && !isChat && text.endsWith('?'))) {
             openQuestion = { text, at: frame }
             $.ui.invalidate('ui.render')
           }
@@ -1217,6 +1246,13 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'avatar-talk' }, async () => {
     speakLater('talk')
     return { text: `${who?.name ?? 'avatar7'} reads the conversation.` }
+  })
+
+  on('command.run', { command: 'avatar-chat' }, async ($, e) => {
+    const said = e.args.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
+    if (said === '') return { text: 'Usage: /avatar-chat <what you say>' }
+    speakLater({ chat: said })
+    return { text: `${who?.name ?? 'avatar7'} listens.` }
   })
 
   on('command.run', { command: 'avatar-ask' }, async ($, e) => {
@@ -1479,6 +1515,21 @@ export const register: Register = (on, options) => {
             }}
           />
         )}
+        {isChatting && (
+          <Input
+            key="chat"
+            label="chat: "
+            placeholder="ctrl+x tab, say anything, Enter"
+            submitLabel="say"
+            autoFocus
+            onSubmit={value => {
+              const said = value.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
+              if (said === '') return
+              speakLater({ chat: said })
+              $.ui.invalidate('ui.render')
+            }}
+          />
+        )}
         {isConsulting && (
           <Input
             key="consult"
@@ -1526,6 +1577,17 @@ export const register: Register = (on, options) => {
             dimColor
             onPress={() => {
               isConsulting = !isConsulting
+              $.ui.invalidate('ui.render')
+            }}
+          />
+          <Button
+            key="chat"
+            label={isChatting ? 'close chat' : 'chat'}
+            hotkey="h"
+            plain
+            dimColor
+            onPress={() => {
+              isChatting = !isChatting
               $.ui.invalidate('ui.render')
             }}
           />
