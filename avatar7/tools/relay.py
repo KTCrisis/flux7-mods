@@ -28,6 +28,10 @@ PERSONAS = Path(__file__).resolve().parent.parent / "personas"
 ASSETS = ("portrait.png", "portrait-talk.png", "portrait-deny.png", "scene.png")
 SPOOL = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "avatar7" / "relay"
 STATE = SPOOL / "state.json"
+# The page's buttons, one JSON file each, which avatar7 reads and removes.
+COMMANDS_DIR = SPOOL / "cmd"
+COMMANDS = {"talk", "ask", "answer", "avatar", "mute", "events", "visits", "volume"}
+MAX_COMMAND = 2048
 KEEP_S = 120  # a WAV no tab fetched within this is dropped
 
 PAGE = """<!doctype html>
@@ -63,6 +67,18 @@ border-left:2px solid var(--tone);white-space:pre-wrap}
 gap:12px;background:rgba(5,7,10,.88);z-index:2;cursor:pointer;color:#7fe7e1}
 #gate b{border:1px solid currentColor;padding:.6em 1.6em;font-weight:normal}
 #gate span{opacity:.6;font-size:13px}
+#controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:min(92vw,640px)}
+#controls button,#picker button,form button{background:rgba(0,0,0,.6);color:var(--ink);border:1px solid #2a3a3a;
+font:inherit;font-size:13px;padding:.45em .9em;cursor:pointer}
+#controls button.on{border-color:var(--tone);color:var(--tone)}
+#vol{display:flex;align-items:center;gap:6px;font-size:13px}
+#picker{display:none;flex-wrap:wrap;gap:6px;justify-content:center;width:min(92vw,640px)}
+#picker.open{display:flex}
+#picker button.cur{border-color:var(--tone);color:var(--tone)}
+form{display:none;gap:6px;width:min(92vw,640px)}
+form.open{display:flex}
+form input{flex:1;min-width:0;background:#000;color:var(--ink);border:1px solid var(--tone);font:inherit;padding:.45em .6em}
+#stage{overflow-y:auto}
 #status{position:fixed;bottom:max(8px,env(safe-area-inset-bottom));right:12px;font-size:11px;opacity:.45}
 </style></head><body>
 <div id="scene"></div>
@@ -70,6 +86,18 @@ gap:12px;background:rgba(5,7,10,.88);z-index:2;cursor:pointer;color:#7fe7e1}
   <div id="name">avatar7</div>
   <div id="frame"><img id="face" alt=""><div id="tint"></div></div>
   <div id="line"></div>
+  <form id="answer"><input name="t" placeholder="answer" autocomplete="off"><button>answer</button></form>
+  <form id="ask"><input name="t" placeholder="ask the avatar" autocomplete="off"><button>ask</button></form>
+  <div id="picker"></div>
+  <div id="controls">
+    <button data-c="talk">talk</button>
+    <button id="askBtn">ask</button>
+    <button id="pickBtn">avatars</button>
+    <button id="mute" data-c="mute">mute</button>
+    <button id="events" data-c="events">events</button>
+    <button id="visits" data-c="visits">visits</button>
+    <span id="vol">vol <button data-v="-1">-</button><span id="volN">-</span><button data-v="1">+</button></span>
+  </div>
 </div>
 <div id="gate"><b>listen</b><span>tap once: the browser plays nothing before a gesture</span></div>
 <div id="status">waiting</div>
@@ -98,30 +126,44 @@ async function loadPersona(id) {
   $('scene').style.backgroundImage = files.includes('scene.png') ? `url(/persona/${id}/scene.png)` : 'none';
 }
 
-// The line, typed: at a reading pace, then over the voice's length once known.
-let typedSeq = -1, text = '', shown = 0, rate = 1, typer = 0;
-function type(s) {
-  if (s.seq !== typedSeq) { typedSeq = s.seq; text = s.line; shown = 0; rate = 1; }
-  if (s.speakMs > 0) rate = Math.max(.2, (text.length - shown) / (s.speakMs / 50));
-  clearInterval(typer);
+// The line, typed as the voice is heard HERE: the WAV reaches this tab later
+// than the state does, so text and mouth follow the audio element, not void.
+let text = '', seq = -1, shown = 0, rate = 1, typer = 0, fallback = 0;
+function typeOver(ms) {
+  clearInterval(typer); shown = 0;
+  rate = Math.max(.2, text.length / Math.max(1, ms / 50));
   typer = setInterval(() => {
     shown = Math.min(text.length, shown + rate);
     $('line').textContent = text.slice(0, Math.floor(shown));
     if (shown >= text.length) clearInterval(typer);
   }, 50);
 }
+audio.onplaying = () => { clearTimeout(fallback); if (isFinite(audio.duration)) typeOver(audio.duration * 1000); };
+const isHeard = () => !audio.paused && !audio.ended && audio.src.includes('/wav/');
 
 function draw() {
   if (!st) return;
   const isDown = st.mood === 'deny' || st.mood === 'error';
   let f = 'portrait';
   if (isDown && faces[persona + 'portrait-deny']) f = 'portrait-deny';
-  else if (st.isSpeaking && faces[persona + 'portrait-talk'] && performance.now() < flapAt) f = 'portrait-talk';
+  else if (isHeard() && faces[persona + 'portrait-talk'] && performance.now() < flapAt) f = 'portrait-talk';
   const src = faces[persona + f] || faces[persona + 'portrait'];
   if (src && $('face').src !== new URL(src, location).href) $('face').src = src;
 }
 // The mouth flaps at an uneven pace while the voice is heard.
-setInterval(() => { if (st && st.isSpeaking && Math.random() < .55) flapAt = performance.now() + 140; draw(); }, 160);
+setInterval(() => { if (isHeard() && Math.random() < .55) flapAt = performance.now() + 140; draw(); }, 160);
+
+const send = body => fetch('/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => send({ cmd: b.dataset.c }));
+document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => send({ cmd: 'volume', step: +b.dataset.v }));
+$('askBtn').onclick = () => { $('ask').classList.toggle('open'); $('ask').t.focus(); };
+$('pickBtn').onclick = () => $('picker').classList.toggle('open');
+for (const [id, cmd] of [['ask', 'ask'], ['answer', 'answer']]) {
+  $(id).onsubmit = e => {
+    e.preventDefault(); const t = $(id).t.value.trim(); if (!t) return;
+    send({ cmd, text: t }); $(id).t.value = ''; if (id === 'ask') $(id).classList.remove('open');
+  };
+}
 
 async function onState(s) {
   if (s.persona !== persona) await loadPersona(s.persona);
@@ -132,7 +174,22 @@ async function onState(s) {
   $('frame').className = s.mood;
   $('name').textContent = s.name;
   document.title = s.name + ' / avatar7';
-  type(s); draw();
+  if (s.seq !== seq) {
+    seq = s.seq; text = s.line; clearInterval(typer); clearTimeout(fallback);
+    // Muted, or no voice within a while: typed at a reading pace.
+    fallback = setTimeout(() => typeOver(text.length * 45), s.isMuted ? 0 : 12000);
+  }
+  $('mute').textContent = s.isMuted ? 'unmute' : 'mute';
+  $('events').textContent = 'events: ' + (s.eventsOn ? 'on' : 'off'); $('events').classList.toggle('on', s.eventsOn);
+  $('visits').textContent = 'visits: ' + (s.visitsOn ? 'on' : 'off'); $('visits').classList.toggle('on', s.visitsOn);
+  $('volN').textContent = s.volume;
+  $('answer').classList.toggle('open', !!s.question);
+  if (s.question) $('answer').t.placeholder = 'answer: ' + s.question.slice(0, 60);
+  $('picker').replaceChildren(...(s.avatars || []).map(a => {
+    const b = document.createElement('button'); b.textContent = a.name; if (a.id === s.persona) b.className = 'cur';
+    b.onclick = () => { send({ cmd: 'avatar', id: a.id }); $('picker').classList.remove('open'); }; return b;
+  }));
+  draw();
 }
 
 $('gate').onclick = () => {
@@ -184,6 +241,29 @@ class Handler(BaseHTTPRequestHandler):
             self.persona(self.path[9:])
         else:
             self.send_error(404)
+
+    def do_POST(self):
+        if self.path != "/command":
+            self.send_error(404)
+            return
+        size = int(self.headers.get("Content-Length") or 0)
+        if not 0 < size <= MAX_COMMAND:
+            self.send_error(413)
+            return
+        try:
+            cmd = json.loads(self.rfile.read(size))
+        except ValueError:
+            self.send_error(400)
+            return
+        # avatar7 checks each command again; this only keeps junk out of the spool.
+        if not isinstance(cmd, dict) or cmd.get("cmd") not in COMMANDS:
+            self.send_error(400)
+            return
+        COMMANDS_DIR.mkdir(exist_ok=True)
+        part = COMMANDS_DIR / f"{time.time_ns()}.part"
+        part.write_text(json.dumps(cmd))
+        part.rename(part.with_suffix(".json"))
+        self.send_bytes(b"{}", "application/json")
 
     def send_bytes(self, body: bytes, kind: str, cache: bool = False):
         self.send_response(200)

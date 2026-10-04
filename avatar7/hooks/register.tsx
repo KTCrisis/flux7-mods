@@ -134,11 +134,57 @@ export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
 const RELAY_SPOOL = '${XDG_CACHE_HOME:-$HOME/.cache}/avatar7/relay'
 // The face as the relay's page draws it: who, in which mood, saying what, for
 // how long; written whole to the spool when it changes, while the relay runs.
-export type Mirror = { persona: string; name: string; color: string; mood: string; line: string; seq: number; speakMs: number; isSpeaking: boolean }
+// The pane's controls ride along, so the page can draw them as they stand.
+export type Mirror = {
+  persona: string
+  name: string
+  color: string
+  mood: string
+  line: string
+  seq: number
+  speakMs: number
+  isSpeaking: boolean
+  question: string
+  avatars: { id: string; name: string }[]
+  isMuted: boolean
+  eventsOn: boolean
+  visitsOn: boolean
+  volume: number
+}
 const mirrorArgv = (): string[] => ['sh', '-c', `d="${RELAY_SPOOL}"; [ -d "$d" ] && cat > "$d/state.part" && mv "$d/state.part" "$d/state.json"`]
-// How often the clock looks for the relay's spool, and how often it mirrors.
+// The page's buttons, queued by the relay as one JSON file each under cmd/:
+// read in order and removed, one per line.
+const drainArgv = (): string[] => [
+  'sh',
+  '-c',
+  `for f in "${RELAY_SPOOL}"/cmd/*.json; do [ -f "$f" ] && cat "$f" && echo && rm -f "$f"; done; true`,
+]
+// What the page may ask: the pane's gestures, nothing that reaches the session
+// beyond the avatar itself.
+export type Remote =
+  | { cmd: 'talk' | 'mute' | 'events' | 'visits' }
+  | { cmd: 'ask' | 'answer'; text: string }
+  | { cmd: 'avatar'; id: string }
+  | { cmd: 'volume'; step: 1 | -1 }
+export const parseRemote = (line: string): Remote | undefined => {
+  let r: unknown
+  try {
+    r = JSON.parse(line)
+  } catch {
+    return undefined
+  }
+  if (typeof r !== 'object' || r === null) return undefined
+  const o = r as Record<string, unknown>
+  if (o.cmd === 'talk' || o.cmd === 'mute' || o.cmd === 'events' || o.cmd === 'visits') return { cmd: o.cmd }
+  if ((o.cmd === 'ask' || o.cmd === 'answer') && typeof o.text === 'string') return { cmd: o.cmd, text: o.text }
+  if (o.cmd === 'avatar' && typeof o.id === 'string') return { cmd: 'avatar', id: o.id }
+  if (o.cmd === 'volume' && (o.step === 1 || o.step === -1)) return { cmd: 'volume', step: o.step }
+  return undefined
+}
+// How often the clock looks for the relay's spool, mirrors, and reads the page.
 const RELAY_CHECK_FRAMES = 30
 const MIRROR_FRAMES = 3
+const DRAIN_FRAMES = 8
 
 const playArgv = (wav: string): string[] => [
   'bash',
@@ -482,6 +528,7 @@ export const register: Register = (on, options) => {
   // The relay's spool seen at the last check, and the last state written there.
   let isRelayed = false
   let isMirroring = false
+  let isDraining = false
   let mirrored = ''
   // Characters typed per frame, from which frame, and which line they belong to.
   let typeRate = 2
@@ -783,8 +830,9 @@ export const register: Register = (on, options) => {
         })
       }
       if (isRelayed && !isMirroring && frame % MIRROR_FRAMES === 0 && who !== null) {
+        isMirroring = true
         const shownWho = isGuestShown && guest !== null ? guest.persona : who
-        const state: Mirror = {
+        const base = {
           persona: isGuestShown && guest !== null ? guest.id : whoId,
           name: shownWho.name,
           color: shownWho.color ?? '',
@@ -793,15 +841,57 @@ export const register: Register = (on, options) => {
           seq: lineSeq,
           speakMs: Math.max(0, speakUntil - typeFrom) * FRAME_MS,
           isSpeaking: frame < speakUntil,
+          question: openQuestion?.text ?? '',
+          avatars: AVATARS.map(id => ({ id, name: names[id] ?? id })),
+          eventsOn,
+          visitsOn,
         }
-        const json = JSON.stringify(state)
-        if (json !== mirrored) {
-          isMirroring = true
-          void $.process.run(mirrorArgv(), { stdin: json }).finally(() => {
-            mirrored = json
-            isMirroring = false
-          })
-        }
+        void (async () => {
+          const state: Mirror = { ...base, isMuted: await read($, isMuted), volume: await read($, volume) }
+          const json = JSON.stringify(state)
+          if (json !== mirrored) await $.process.run(mirrorArgv(), { stdin: json })
+          mirrored = json
+        })().finally(() => {
+          isMirroring = false
+        })
+      }
+      if (isRelayed && !isDraining && frame % DRAIN_FRAMES === 0) {
+        isDraining = true
+        void (async () => {
+          const out = await $.process.run(drainArgv())
+          for (const each of out.stdout.split('\n')) {
+            const r = parseRemote(each)
+            if (r === undefined) continue
+            if (r.cmd === 'talk') speakLater('talk')
+            else if (r.cmd === 'ask') {
+              const question = r.text.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
+              if (question !== '') speakLater({ consult: question })
+            } else if (r.cmd === 'answer') {
+              const answer = r.text.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
+              const q = openQuestion
+              if (answer !== '' && q !== null) {
+                openQuestion = null
+                speakLater({ question: q.text, answer })
+              }
+            } else if (r.cmd === 'avatar') {
+              if (AVATARS.includes(r.id) && r.id !== whoId) pendingAvatar = r.id
+            } else if (r.cmd === 'mute') await update($, isMuted, was => !was)
+            else if (r.cmd === 'events') {
+              eventsOn = !eventsOn
+              await $.store.set('events', eventsOn)
+            } else if (r.cmd === 'visits') {
+              visitsOn = !visitsOn
+              await $.store.set('visits', visitsOn)
+            } else {
+              const step = r.step * VOLUME_STEP
+              const v = await update($, volume, was => Math.min(100, Math.max(0, was + step)))
+              await $.store.set('volume', v)
+            }
+            $.ui.invalidate('ui.render')
+          }
+        })().finally(() => {
+          isDraining = false
+        })
       }
       void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (frame % AMBIENT_FRAMES === 0) {

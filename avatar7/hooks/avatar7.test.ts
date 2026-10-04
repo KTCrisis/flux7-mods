@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { commandEvent, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
+import { commandEvent, parseRemote, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
 import { ambientCells, ambientPixel } from './ambient'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
@@ -254,4 +254,14 @@ test('the ambient draws only where a layer lights, and stays dim', async () => {
   // A cell shows two colors: a lone drop on black is a quadrant, lit in the drop's color.
   const words = new Uint32Array(Uint8Array.fromBase64(ambientCells([], f, 0, 0, 2, 2, 0, false)).buffer)
   expect(words[1]).toBe(0)
+})
+
+test('the relay page may only ask for the pane gestures, well formed', async () => {
+  expect(parseRemote('{"cmd":"talk"}')).toEqual({ cmd: 'talk' })
+  expect(parseRemote('{"cmd":"ask","text":"why?"}')).toEqual({ cmd: 'ask', text: 'why?' })
+  expect(parseRemote('{"cmd":"volume","step":-1}')).toEqual({ cmd: 'volume', step: -1 })
+  expect(parseRemote('{"cmd":"volume","step":50}')).toBeUndefined()
+  expect(parseRemote('{"cmd":"approve","id":"x"}')).toBeUndefined()
+  expect(parseRemote('{"cmd":"ask"}')).toBeUndefined()
+  expect(parseRemote('not json')).toBeUndefined()
 })
