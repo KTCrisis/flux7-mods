@@ -564,6 +564,8 @@ export const register: Register = (on, options) => {
     }
   }
   const cells = (): string => faceCells(view())
+  // The face last blitted, to skip the frames that change nothing.
+  let lastFace = ''
 
   // The face as a real image (hd.ts), where the terminal draws pictures and
   // the persona has its HD bake: the band's width in columns, set at each
@@ -865,7 +867,17 @@ export const register: Register = (on, options) => {
         isRefit ||= tick.isRefit
       }
       if (isRefit) $.ui.invalidate('ui.render')
-      if (!isHdShown()) void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
+      // Sent only when it changed: each blit redraws the screen, and in a
+      // terminal without synchronized output (WezTerm) the cursor jumped at
+      // 15 i/s. A full render draws the face afresh, so a skip never leaves
+      // a stale one.
+      if (!isHdShown()) {
+        const drawn = cells()
+        if (drawn !== lastFace) {
+          lastFace = drawn
+          void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: drawn })
+        }
+      }
       if (frame % AMBIENT_FRAMES === 0) {
         ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (face.mood === 'deny' || face.mood === 'error' ? 2 : face.mood === 'wait' ? 0.5 : 1)
         for (const each of ambientBlits()) void $.ui.blit(each)
