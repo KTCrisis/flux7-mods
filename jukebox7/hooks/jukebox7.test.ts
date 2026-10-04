@@ -242,3 +242,20 @@ test('each song that starts is handed to avatar7 to introduce, by say, without t
   expect(says).toEqual([{ mood: 'watch', event: introEvent('Tranquility - Deep Healing Ambient'), at: expect.any(Number) } as never])
   expect(introEvent('✦ Grimes - Oblivion')).toContain('"Grimes - Oblivion"')
 })
+
+test('a session that never played leaves the VLC alone when it ends', async ($, on) => {
+  const { argv } = engine(on, '{"action":"none"}')
+  on('session.end', ($, e) => ({ sessionId: e.sessionId }) as never)
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 's', resume: { id: 's' } } as never)
+  expect(argv).not.toContainEqual(detachedKillVlcArgv)
+})
+
+test('next past the last result ends the list instead of wrapping to the first', async ($, on) => {
+  const { argv } = engine(on, '{"action":"play","query":"ambient music","long":true}')
+  await $.prompt.submit(typed('joue moi un peu de musique ambient'))
+  const r = await $.command.run({ command: 'music', args: 'next' })
+  expect(r.text).toContain('Aero Skyway')
+  const end = await $.command.run({ command: 'music', args: 'next' })
+  expect(end.text).toBe('End of the list.')
+  expect(argv.filter(a => a[0] === 'bash' && a.at(-1) === 'DRFHklnN-SM')).toHaveLength(1)
+})

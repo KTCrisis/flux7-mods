@@ -385,10 +385,28 @@ async function playAt($: Engine, tracks: Track[], index: number, genre: string |
   return track
 }
 
+// One change of song at a time: a search takes up to 40 s, and the poll, a
+// button and a command would each start their own song meanwhile.
+let isMoving = false
+async function once($: Engine, change: () => Promise<Track | undefined>): Promise<Track | undefined> {
+  if (isMoving) {
+    $.ui.toast('music: a song is already on its way')
+    return undefined
+  }
+  isMoving = true
+  try {
+    return await change()
+  } finally {
+    isMoving = false
+  }
+}
+
+// Past the last result the list ends (playAt goes idle): no wrapping back to
+// the first, which would loop for ever over tracks that cannot play.
 async function skip($: Engine, by: number): Promise<Track | undefined> {
   const p = await read($, player)
   if (typeof p.genre === 'string') return playGenre($, p.genre)
-  return playAt($, p.tracks, (p.index + by) % Math.max(1, p.tracks.length))
+  return playAt($, p.tracks, p.index + by)
 }
 
 async function toggle($: Engine): Promise<Player> {
@@ -545,13 +563,18 @@ export const register: Register = on => {
     $.clock.every(POLL_MS, () => {
       void (async () => {
         const p = await read($, player)
-        if (p.pgid === null || !p.isPlaying) return
+        if (p.pgid === null || !p.isPlaying || isMoving) return
         const alive = await $.process.run(['kill', '-0', '--', `-${p.pgid}`])
         if (alive.exitCode === 0) {
           $.ui.invalidate('ui.render')
           return
         }
-        await skip($, 1)
+        // Nothing to follow (the list ended, no network, no station): the
+        // jukebox goes idle rather than retry every tick.
+        if ((await once($, () => skip($, 1))) === undefined) {
+          await update($, player, () => IDLE)
+          $.ui.status(undefined)
+        }
       })()
     })
 
@@ -574,13 +597,15 @@ export const register: Register = on => {
   // detached pipeline. The end chain runs under one short bound and
   // PowerShell starts slower than that: the group goes at once, the VLC
   // kill is detached so it outlives the exit.
+  // A session that never played (another window, a background spare) leaves
+  // the VLC alone: it may be another session's song.
   on('session.end', async ($, e, next) => {
     const p = await read($, player)
     if (p.pgid !== null) {
       await $.process.run(signal('CONT', p.pgid))
       await $.process.run(signal('TERM', p.pgid))
+      await $.process.run(detachedKillVlcArgv)
     }
-    await $.process.run(detachedKillVlcArgv)
     return next(e)
   })
 
@@ -613,11 +638,11 @@ export const register: Register = on => {
         return { drop: `jukebox7: volume ${v}%` }
       }
       if (intent.action === 'similar') {
-        const t = await playSimilar($)
+        const t = await once($, () => playSimilar($))
         return { drop: `jukebox7: ${t === undefined ? 'no radio for this one' : `like it, ${t.title}`}` }
       }
       if (intent.action === 'next') {
-        const t = await skip($, 1)
+        const t = await once($, () => skip($, 1))
         $.ui.toast(t === undefined ? 'music: end of the list' : `music now playing: ${t.title}`)
         return { drop: `jukebox7: ${t === undefined ? 'end of the list' : `next, ${t.title}`}` }
       }
@@ -627,7 +652,7 @@ export const register: Register = on => {
       return { drop: `jukebox7: ${said}` }
     }
 
-    const track = await play($, intent.query, intent.long)
+    const track = await once($, () => play($, intent.query, intent.long))
     if (track === undefined) return { drop: `jukebox7: nothing found on YouTube for "${intent.query}".` }
     $.ui.toast(`music now playing: ${track.title}`)
     return { drop: `jukebox7: playing "${track.title}" (https://youtu.be/${track.id})` }
@@ -652,7 +677,7 @@ export const register: Register = on => {
     }
 
     if (args === 'similar' || args === 'like') {
-      const t = await playSimilar($)
+      const t = await once($, () => playSimilar($))
       return { text: t === undefined ? 'No radio for this one.' : `Like it: ${t.title}` }
     }
 
@@ -663,14 +688,14 @@ export const register: Register = on => {
         return { text: 'Stopped.' }
       }
       if (args === 'next') {
-        const t = await skip($, 1)
+        const t = await once($, () => skip($, 1))
         return { text: t === undefined ? 'End of the list.' : `Next: ${t.title}` }
       }
       const q = await toggle($)
       return { text: q.isPlaying ? 'Resumed.' : 'Paused.' }
     }
 
-    const track = await play($, args, false)
+    const track = await once($, () => play($, args, false))
     if (track === undefined) return { text: `Nothing found on YouTube for "${args}".` }
     return { text: `Playing "${track.title}" (https://youtu.be/${track.id})` }
   })
@@ -693,8 +718,8 @@ export const register: Register = on => {
     // its own, which stacked the controls one per row and cut off `u: vol+`.
     const controls = [
       <Button key="toggle" label={p.isPlaying ? 'pause' : 'play'} hotkey="p" plain onPress={() => void toggle($)} />,
-      <Button key="next" label="next" hotkey="n" plain onPress={() => void skip($, 1)} />,
-      <Button key="similar" label="similar" hotkey="r" plain onPress={() => void playSimilar($)} />,
+      <Button key="next" label="next" hotkey="n" plain onPress={() => void once($, () => skip($, 1))} />,
+      <Button key="similar" label="similar" hotkey="r" plain onPress={() => void once($, () => playSimilar($))} />,
       <Button key="stop" label="stop" hotkey="s" plain dimColor onPress={() => void stop($)} />,
       <Button key="quieter" label="vol−" hotkey="d" plain dimColor onPress={() => void louder($, -VOLUME_STEP)} />,
       <Button key="louder" label="vol+" hotkey="u" plain dimColor onPress={() => void louder($, VOLUME_STEP)} />,
@@ -702,10 +727,10 @@ export const register: Register = on => {
     const stations = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor={isTerminal ? BLACK : undefined}>
         {GENRES.map(g => (
-          <Button key={g.label} label={g.label} hotkey={g.key} plain dimColor onPress={() => void playGenre($, g.label)} />
+          <Button key={g.label} label={g.label} hotkey={g.key} plain dimColor onPress={() => void once($, () => playGenre($, g.label))} />
         ))}
         {station !== undefined && avatar !== undefined && (
-          <Button key="avatar" label={`${station.name}'s pick`} hotkey="a" plain onPress={() => void playGenre($, avatar)} />
+          <Button key="avatar" label={`${station.name}'s pick`} hotkey="a" plain onPress={() => void once($, () => playGenre($, avatar))} />
         )}
       </Box>
     )
