@@ -55,5 +55,5 @@
     {"story": "you rewrite the Makefile again; it is Tuesday, after all", "mood": "wait"}
   ],
   "asks": "chaos, build systems, why logs lie, and whether a duck can be a senior engineer",
-  "friends": ["kaneda", "fox", "morte"]
+  "friends": ["kaneda", "fox", "morte", "nova"]
 }
