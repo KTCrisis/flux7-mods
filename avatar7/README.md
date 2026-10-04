@@ -184,9 +184,11 @@ frame (5 a second), about 3 ms in all on a 160-column pane. Each cell is a
 quadrant block (`▖▗▘▝▚▞...`): four pixels, two colors chosen as chafa does,
 twice the face's horizontal resolution.
 
-- A `scene` layer is a wide studio render baked by `tools/bake_scene.py`,
-  fitted to the pane's width and anchored to the band's bottom, its top fading
-  into the black. `animate` picks what moves in it: `beacons` (red lights
+- A `scene` layer is a wide studio render baked by `tools/bake_scene.py`. It
+  stands behind the face across the pane (cropped like a CSS cover, sky
+  first) and runs six rows past the text before fading out. The portrait's
+  dark background lets it through by degrees: `cutout` in `persona.json`
+  (default 12, on 0-255 luminance) is lowered for a face with dark hair. `animate` picks what moves in it: `beacons` (red lights
   blink), `neon` (saturated signs flicker), `windows` (points of light go dark
   and come back).
 - The layers above it add their light: `rain`, `rise` (bubbles, embers,
