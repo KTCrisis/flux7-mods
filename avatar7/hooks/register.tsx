@@ -189,6 +189,16 @@ const DRAIN_FRAMES = 8
 // The relay belongs to the session that ran /avatar remote on, named in its
 // spool's `owner`: every other session keeps its voice and face on this machine.
 const ownsRelay = `[ "$(cat "${RELAY_SPOOL}/owner" 2>/dev/null)" = "$2" ]`
+// Take the relay (when it runs), or give it back (when this session has it).
+const takeArgv = (session: string): string[] => [
+  'sh',
+  '-c',
+  `[ -d "${RELAY_SPOOL}" ] && printf %s "$2" > "${RELAY_SPOOL}/owner"`,
+  'avatar7-take',
+  '',
+  session,
+]
+const releaseArgv = (session: string): string[] => ['sh', '-c', `${ownsRelay} && rm -f "${RELAY_SPOOL}/owner"; true`, 'avatar7-release', '', session]
 const playArgv = (wav: string, session: string): string[] => [
   'bash',
   '-c',
@@ -534,6 +544,8 @@ export const register: Register = (on, options) => {
   let isMirroring = false
   let isDraining = false
   let sessionId = ''
+  // /avatar remote on holds the relay; otherwise the voice follows the prompts.
+  let isRemoteForced = false
   let mirrored = ''
   // Characters typed per frame, from which frame, and which line they belong to.
   let typeRate = 2
@@ -1123,19 +1135,23 @@ export const register: Register = (on, options) => {
       return { text: all.length === 0 ? 'No mod has asked for a voice in this session.' : all.join('\n') }
     }
     if (id === 'remote on' || id === 'remote off') {
-      const pid = `"${RELAY_SPOOL}/relay.pid"`
       if (id === 'remote off') {
-        await $.process.run(['sh', '-c', `[ -f ${pid} ] && kill "$(cat ${pid})"; sleep 0.5; rm -rf "${RELAY_SPOOL}"`])
+        isRemoteForced = false
+        await $.process.run(releaseArgv(sessionId))
         return { text: 'The voice comes back to this machine.' }
       }
+      // The relay runs as a user service (tools/avatar7-relay.service); without
+      // it, started here, detached.
+      const pid = `"${RELAY_SPOOL}/relay.pid"`
       const alive = await $.process.run(['sh', '-c', `[ -f ${pid} ] && kill -0 "$(cat ${pid})" 2>/dev/null && echo up`])
       if (alive.stdout.trim() !== 'up') {
         await $.process.run(['sh', '-c', `rm -rf "${RELAY_SPOOL}"`])
         await $.process.run(detachedArgv(['python3', `${$.plugin.root}/tools/relay.py`]))
         await $.clock.sleep(1500)
       }
-      // This session takes the relay, from another one if it had it.
-      await $.process.run(['sh', '-c', `[ -d "${RELAY_SPOOL}" ] && printf %s "$1" > "${RELAY_SPOOL}/owner"`, 'avatar7-owner', sessionId])
+      // Held until /avatar remote off, whatever the next prompt's origin.
+      isRemoteForced = true
+      await $.process.run(takeArgv(sessionId))
       const ip = await $.process.run(['sh', '-c', 'tailscale ip -4 | head -1'])
       return { text: `The voice leaves this machine: open http://${ip.stdout.trim()}:8797/ on the other one and click listen.` }
     }
@@ -1191,6 +1207,10 @@ export const register: Register = (on, options) => {
     if (e.origin.kind === 'composer' || e.origin.kind === 'bridge') {
       asked = e.text.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
     }
+    // The voice follows the user: away through the relay for a prompt sent by
+    // Remote Control, back here for one typed at this terminal.
+    if (e.origin.kind === 'bridge') await $.process.run(takeArgv(sessionId))
+    else if (e.origin.kind === 'composer' && !isRemoteForced) await $.process.run(releaseArgv(sessionId))
     return next(e)
   })
 

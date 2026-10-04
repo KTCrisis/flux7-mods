@@ -37,18 +37,28 @@ It is deliberately not in the global `CLAUDE_CODE_PLUGIN_DIRS`: a plain
 
 ### Remote voice
 
-A session driven from elsewhere (remote control, a phone, another PC) keeps
-its mods on the host: the pane and the voice stay there. `/avatar remote on`
-starts `tools/relay.py` detached; while it runs, each WAV goes to its spool
-instead of the speakers, and a browser tab on `http://<host>:8797/` plays it
-(click `listen` once: browsers play nothing before a gesture). `/avatar remote
-off` stops the relay and gives the voice back to the host. Piper voices only:
-a persona speaking through SAPI itself has no WAV to send.
+A session driven from elsewhere (Remote Control from a phone or another PC)
+keeps its mods on the host: the pane and the voice stay there. `tools/relay.py`
+carries them to a browser tab on `http://<host>:8797/`: the full-size portrait
+over the persona's scene, tinted by the mood, the line typed as the voice is
+heard in that tab, and the pane's controls (talk, ask, answer, avatars, mute,
+events, visits, volume). Tap `listen` once: browsers play nothing before a
+gesture. Added to the phone's home screen, it opens like an app.
 
-The relay binds to the machine's Tailscale address by default
-(`tailscale ip -4`); without Tailscale, run it by hand with
-`--host <address>`. The page has no authentication: keep it on a private
-network, never on a public interface.
+The voice follows the user: a prompt sent through Remote Control takes the
+relay for this session, a prompt typed at the terminal gives it back. While a
+session holds it, its WAVs go to the relay instead of the speakers, and the
+page's buttons reach that session only; other sessions keep their voice on the
+host. `/avatar remote on` starts the relay if needed and holds it whatever the
+next prompt's origin; `/avatar remote off` gives the voice back. Piper voices
+only: a persona speaking through SAPI itself has no WAV to send.
+
+Run the relay as a service so it is ready before any session needs it:
+`tools/avatar7-relay.service` (instructions inside). It binds to the machine's
+Tailscale address (`tailscale ip -4`); without Tailscale, pass
+`--host <address>`. The page has no authentication and its buttons act on the
+avatar (never on mesh7 approvals): keep it on a private network, never on a
+public interface.
 
 ### Your name
 

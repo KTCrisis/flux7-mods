@@ -1,0 +1,18 @@
+# avatar7's relay as a service, ready for any session to take. A system unit:
+# under WSL the user manager's bus does not always answer (`systemctl --user`
+# fails with "Failed to connect to bus" even with linger on).
+#   sudo cp avatar7/tools/avatar7-relay.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now avatar7-relay
+# Set User and the path to the repo to yours first.
+[Unit]
+Description=avatar7 relay: the avatar's voice and face on another machine of the tailnet
+After=network-online.target tailscaled.service
+
+[Service]
+User=fluxart
+ExecStart=/usr/bin/python3 /home/fluxart/flux7-mods/avatar7/tools/relay.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
