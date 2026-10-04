@@ -132,6 +132,14 @@ export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
 // browser tab on another machine of the tailnet, and this one stays silent
 // (renamed in place, so never served half written).
 const RELAY_SPOOL = '${XDG_CACHE_HOME:-$HOME/.cache}/avatar7/relay'
+// The face as the relay's page draws it: who, in which mood, saying what, for
+// how long; written whole to the spool when it changes, while the relay runs.
+export type Mirror = { persona: string; name: string; color: string; mood: string; line: string; seq: number; speakMs: number; isSpeaking: boolean }
+const mirrorArgv = (): string[] => ['sh', '-c', `d="${RELAY_SPOOL}"; [ -d "$d" ] && cat > "$d/state.part" && mv "$d/state.part" "$d/state.json"`]
+// How often the clock looks for the relay's spool, and how often it mirrors.
+const RELAY_CHECK_FRAMES = 30
+const MIRROR_FRAMES = 3
+
 const playArgv = (wav: string): string[] => [
   'bash',
   '-c',
@@ -470,6 +478,11 @@ export const register: Register = (on, options) => {
   let moodUntil = 0
   let typed = 0
   let lineLength = 0
+  let lineText = ''
+  // The relay's spool seen at the last check, and the last state written there.
+  let isRelayed = false
+  let isMirroring = false
+  let mirrored = ''
   // Characters typed per frame, from which frame, and which line they belong to.
   let typeRate = 2
   let typeFrom = 0
@@ -543,6 +556,7 @@ export const register: Register = (on, options) => {
   // A new line under the face: held until its voice is ready, unless muted.
   const startLine = (text: string, isQuiet: boolean): number => {
     lineLength = text.length
+    lineText = text
     typed = 0
     typeRate = 2
     typeFrom = isQuiet ? frame : frame + HOLD_FRAMES
@@ -762,6 +776,33 @@ export const register: Register = (on, options) => {
         })()
       }
       if (frame > moodUntil && mood !== 'idle') mood = 'idle'
+      if (frame % RELAY_CHECK_FRAMES === 0) {
+        void $.process.run(['sh', '-c', `[ -d "${RELAY_SPOOL}" ] && echo up`]).then(r => {
+          isRelayed = r.stdout.trim() === 'up'
+          if (!isRelayed) mirrored = ''
+        })
+      }
+      if (isRelayed && !isMirroring && frame % MIRROR_FRAMES === 0 && who !== null) {
+        const shownWho = isGuestShown && guest !== null ? guest.persona : who
+        const state: Mirror = {
+          persona: isGuestShown && guest !== null ? guest.id : whoId,
+          name: shownWho.name,
+          color: shownWho.color ?? '',
+          mood,
+          line: lineText,
+          seq: lineSeq,
+          speakMs: Math.max(0, speakUntil - typeFrom) * FRAME_MS,
+          isSpeaking: frame < speakUntil,
+        }
+        const json = JSON.stringify(state)
+        if (json !== mirrored) {
+          isMirroring = true
+          void $.process.run(mirrorArgv(), { stdin: json }).finally(() => {
+            mirrored = json
+            isMirroring = false
+          })
+        }
+      }
       void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (frame % AMBIENT_FRAMES === 0) {
         ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (mood === 'deny' || mood === 'error' ? 2 : mood === 'wait' ? 0.5 : 1)
