@@ -138,8 +138,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
-        # Only WAVs that arrive after the tab connects: no backlog on reconnect.
-        seen = {p.name for p in voices()}
+        # A new tab hears only what arrives after it connects. A tab that lost
+        # the link (a dead zone, a cell change) sends back the last voice it
+        # got, as Last-Event-ID: what came after, still in the spool
+        # (KEEP_S), is replayed.
+        try:
+            last = int(self.headers.get("Last-Event-ID", ""))
+        except ValueError:
+            last = None
+        seen = {p.name for p in voices() if last is None or p.stat().st_mtime_ns <= last}
         last_ping = time.monotonic()
         state_at = 0.0
         try:
@@ -159,7 +166,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 for p in fresh:
                     seen.add(p.name)
-                    self.wfile.write(f"data: {p.name}\n\n".encode())
+                    self.wfile.write(f"id: {p.stat().st_mtime_ns}\ndata: {p.name}\n\n".encode())
                 if fresh or time.monotonic() - last_ping > 15:
                     if not fresh:
                         self.wfile.write(b": ping\n\n")
