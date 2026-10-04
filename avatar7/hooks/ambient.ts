@@ -79,8 +79,7 @@ const bolt = (f: Field, t: number, isStorm: boolean): number[] | null => {
   return boltPath
 }
 
-// One layer's light at a pixel, 0 to 1; the skyline's body comes back
-// negative so it can be drawn darker than its windows.
+// One layer's light at a pixel, 0 to 1.
 const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, isStorm: boolean): number => {
   const density = layer.density
   const speed = layer.speed
@@ -112,12 +111,18 @@ const light = (layer: AmbientLayer, f: Field, x: number, y: number, t: number, i
       return d === 0 ? 1 : d === 1 ? 0.25 : 0
     }
     case 'skyline': {
-      const roof = roofs(f)[x] ?? f.height
-      if (y < roof) return 0
+      // Wireframe: roofs, the walls between buildings and the ground, no fill.
+      const all = roofs(f)
+      const roof = all[x] ?? f.height
+      if (y < roof) {
+        const before = all[x - 1] ?? f.height
+        return x > 0 && y >= before ? 0.7 : 0
+      }
+      const before = all[x - 1] ?? roof
+      if (y === roof || y === f.height - 1 || x === 0 || roof !== before) return 0.7
       // Windows on a 3 px grid below the roof, lit and dimmed every few seconds.
       const isWindow = x % 3 === 1 && (y - roof) % 3 === 1 && y - roof > 1
-      if (!isWindow) return -1
-      return hash(x, y, Math.floor(t / 3 + hash(x, y, 43) * 5)) < 0.35 ? 0.8 : -1
+      return isWindow && hash(x, y, Math.floor(t / 3 + hash(x, y, 43) * 5)) < 0.25 ? 0.5 : 0
     }
     case 'pulse': {
       // Wires every 9 rows, a bright pulse running along each.
@@ -137,7 +142,6 @@ export const ambientPixel = (layers: AmbientLayer[], f: Field, x: number, y: num
   for (const layer of layers) {
     const k = light(layer, f, x, y, t, isStorm)
     if (k > 0) out = scale(rgb(layer.color), k * DIM)
-    else if (k < 0) out = scale(rgb(layer.color), 0.1)
   }
   return out
 }

@@ -251,7 +251,7 @@ test('the ambient draws only where a layer lights, and stays dim', async () => {
   }
   expect(lit).toBeGreaterThan(0)
   expect(brightest).toBeLessThanOrEqual(128)
-  // The skyline's body is drawn, darker than its windows, along the bottom.
+  // The skyline is a wireframe: the ground line is drawn, the sky is not.
   const city = [{ kind: 'skyline' as const, color: '#ffb347' }]
   expect(ambientPixel(city, f, 0, f.height - 1, 0, false)).not.toBe(0)
   expect(ambientPixel(city, f, 0, 0, 0, false)).toBe(0)
