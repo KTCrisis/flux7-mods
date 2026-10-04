@@ -35,7 +35,14 @@ MAX_COMMAND = 2048
 KEEP_S = 120  # a WAV no tab fetched within this is dropped
 
 # The page, read at each request: edit it without restarting the relay.
-PAGE = Path(__file__).resolve().parent / "relay.html"
+TOOLS = Path(__file__).resolve().parent
+PAGE = TOOLS / "relay.html"
+# The page as an installed app: its manifest and icon (Pod 042's face).
+STATIC = {
+    "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
+    "/icon-192.png": ("icons/icon-192.png", "image/png"),
+    "/icon-512.png": ("icons/icon-512.png", "image/png"),
+}
 
 
 def tailnet_ip() -> str:
@@ -69,6 +76,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path in STATIC:
+            name, kind = STATIC[self.path]
+            self.send_bytes((TOOLS / name).read_bytes(), kind, cache=True)
         elif self.path.startswith("/persona/"):
             self.persona(self.path[9:])
         else:

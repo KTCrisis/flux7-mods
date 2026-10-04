@@ -4,6 +4,9 @@
 <meta name="theme-color" content="#05070a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>avatar7</title>
 <style>
 :root{--tone:#00ff9c;--bg:#05070a;--ink:#cfe9e6}
@@ -67,7 +70,7 @@ font-size:11px;opacity:.45;white-space:nowrap;overflow:hidden;text-overflow:elli
 </div>
 <div id="gate"><b>listen</b><span>tap once: the browser plays nothing before a gesture</span></div>
 <div id="status">waiting</div>
-<canvas id="pipCanvas" width="320" height="320" hidden></canvas>
+<canvas id="pipCanvas" width="320" height="440" hidden></canvas>
 <video id="pipVideo" muted playsinline hidden></video>
 <script>
 const TINT = { watch: '#00e5ff', deny: '#ff2a6d', error: '#ffb000', wait: '#7a5cff' };
@@ -137,18 +140,34 @@ for (const [id, cmd] of [['ask', 'ask'], ['answer', 'answer']]) {
 // picture-in-picture over the other apps. Drawn on a timer, not on frames:
 // a page in the background gets no animation frames.
 const pc = $('pipCanvas'), pg = pc.getContext('2d'), pv = $('pipVideo');
+// The face on top, the line typed beneath as subtitles: its last lines only.
+const PIP_LINES = 4, PIP_FONT = 17;
+function wrap(text, width) {
+  const out = []; let cur = '';
+  for (const w of text.split(' ')) {
+    const t = cur ? cur + ' ' + w : w;
+    if (pg.measureText(t).width > width && cur) { out.push(cur); cur = w; } else cur = t;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
 function drawPip() {
-  const S = pc.width, img = $('face');
-  pg.fillStyle = '#000'; pg.fillRect(0, 0, S, S);
-  if (img.complete && img.naturalWidth) pg.drawImage(img, 0, 0, S, S);
+  const W = pc.width, F = W, img = $('face');
+  pg.fillStyle = '#000'; pg.fillRect(0, 0, W, pc.height);
+  if (img.complete && img.naturalWidth) pg.drawImage(img, 0, 0, F, F);
   const tone = getComputedStyle(document.documentElement).getPropertyValue('--tone').trim() || '#00ff9c';
   const mix = st ? (MIX[st.mood] ?? 0) : 0;
   if (mix > 0) {
     pg.globalCompositeOperation = 'color'; pg.globalAlpha = mix;
-    pg.fillStyle = tone; pg.fillRect(0, 0, S, S);
+    pg.fillStyle = tone; pg.fillRect(0, 0, F, F);
     pg.globalCompositeOperation = 'source-over'; pg.globalAlpha = 1;
   }
-  pg.lineWidth = 6; pg.strokeStyle = tone; pg.strokeRect(3, 3, S - 6, S - 6);
+  pg.font = `${PIP_FONT}px "JetBrains Mono", ui-monospace, monospace`;
+  pg.fillStyle = '#cfe9e6'; pg.textBaseline = 'top';
+  const lines = wrap($('line').textContent, W - 20).slice(-PIP_LINES);
+  lines.forEach((l, i) => pg.fillText(l, 10, F + 10 + i * (PIP_FONT + 7)));
+  pg.lineWidth = 6; pg.strokeStyle = tone; pg.strokeRect(3, 3, W - 6, pc.height - 6);
+  pg.lineWidth = 2; pg.beginPath(); pg.moveTo(0, F); pg.lineTo(W, F); pg.stroke();
 }
 let pipTimer = 0;
 $('floatBtn').onclick = async () => {
