@@ -194,6 +194,27 @@ def sweep():
         time.sleep(10)
 
 
+def reload_on_edit():
+    """Become the new relay.py when the file changes, keeping the PID (systemd
+    or not) and the spool; the pages reconnect and get what they missed. A
+    version that does not compile is skipped: this one keeps running."""
+    me = Path(__file__).resolve()
+    at = me.stat().st_mtime_ns
+    while True:
+        time.sleep(2)
+        try:
+            now = me.stat().st_mtime_ns
+            if now == at:
+                continue
+            at = now
+            compile(me.read_text(), str(me), "exec")
+        except (OSError, SyntaxError, ValueError) as e:
+            print(f"relay.py changed but not reloaded: {e}", flush=True)
+            continue
+        print("relay.py changed: reloading", flush=True)
+        os.execv(sys.executable, [sys.executable, str(me), *sys.argv[1:]])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default=None, help="address to bind (default: this machine's tailnet IPv4)")
@@ -213,6 +234,7 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     threading.Thread(target=sweep, daemon=True).start()
+    threading.Thread(target=reload_on_edit, daemon=True).start()
     print(f"avatar7 relay on http://{host}:{args.port}/ (spool {SPOOL})", flush=True)
     try:
         server.serve_forever()
