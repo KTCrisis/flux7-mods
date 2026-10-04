@@ -240,6 +240,7 @@ if ('mediaSession' in navigator) {
 pv.addEventListener('leavepictureinpicture', () => { clearInterval(pipTimer); status('docked'); });
 
 async function onState(s) {
+  if (!s.persona) { status('no session holds the relay: send a message from the session you want'); return; }
   if (s.persona !== persona) await loadPersona(s.persona);
   st = s;
   const tone = TINT[s.mood] || s.color || '#00ff9c';

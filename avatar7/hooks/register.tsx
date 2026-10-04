@@ -200,7 +200,16 @@ const takeArgv = (session: string): string[] => [
   '',
   session,
 ]
-const releaseArgv = (session: string): string[] => ['sh', '-c', `${ownsRelay} && rm -f "${RELAY_SPOOL}/owner"; true`, 'avatar7-release', '', session]
+// Given back, the page hears that nobody holds the relay rather than keeping
+// the last face it saw.
+const releaseArgv = (session: string): string[] => [
+  'sh',
+  '-c',
+  `${ownsRelay} && rm -f "${RELAY_SPOOL}/owner" && printf '{}' > "${RELAY_SPOOL}/state.part" && mv "${RELAY_SPOOL}/state.part" "${RELAY_SPOOL}/state.json"; true`,
+  'avatar7-release',
+  '',
+  session,
+]
 const playArgv = (wav: string, session: string): string[] => [
   'bash',
   '-c',
@@ -1207,6 +1216,13 @@ export const register: Register = (on, options) => {
     return { text: muted ? 'The avatar falls silent.' : 'The avatar speaks again.' }
   })
 
+  // A session that ends gives the relay back: an owner gone for good would
+  // hold the page on its last face, and keep the others' voices off it.
+  on('session.end', async ($, e, next) => {
+    await $.process.run(releaseArgv(sessionId))
+    return next(e)
+  })
+
   // The user's prompt judges the calls of its own turn only; a toast or a
   // story an hour later is not measured against it.
   on('turn.complete', async ($, e, next) => {
@@ -1224,6 +1240,8 @@ export const register: Register = (on, options) => {
     // Remote Control or typed over ssh, back here for one typed at this terminal.
     if (e.origin.kind === 'bridge' || (e.origin.kind === 'composer' && isSsh)) await $.process.run(takeArgv(sessionId))
     else if (e.origin.kind === 'composer' && !isRemoteForced) await $.process.run(releaseArgv(sessionId))
+    // Written whole again at the next mirror: a release left `{}` behind.
+    mirrored = ''
     return next(e)
   })
 
