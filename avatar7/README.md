@@ -501,7 +501,10 @@ aligned as `bake.py --frame` aligns them) and `scene-hd.rgb`, derived and kept
 out of git, and `hd.json`, tracked: the box from the table above and the
 baked sizes. A persona without a box in `hd.json` gets one recovered from its
 `face.rgb`. The picture is blitted only when it changes (mood, mouth, a new
-tear every four frames on a refusal), about 1 MB each, the last 24 kept.
+tear every four frames on a refusal, six tears in turn). Each picture is
+written once to `/dev/shm/avatar7-hd/` and kitty reads the file itself: a
+change sends a path, not a megabyte, so the face does not blink out while one
+arrives. Files a day old are removed at session start.
 
 ### 3. Features
 

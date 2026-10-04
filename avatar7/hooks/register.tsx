@@ -51,7 +51,7 @@ import {
 import { ASKED_CHARS, commandEvent, heard, heardSay, landed, nextStreak, streakNote, type Streak } from './hearing'
 import { detachedArgv, PLAY_START_MS, SAPI_PLAY, synthArgv } from './voice'
 import { faceCells, H, noise, TINT, W, type Faces, type View } from './draw'
-import { DEFAULT_GRAIN, GRAINS, hdFrame, hdKey, hdSize, pickHdFace, type Hd, type HdView } from './hd'
+import { DEFAULT_GRAIN, GLITCH_STEPS, GRAINS, hdFrame, hdKey, hdSize, pickHdFace, type Hd, type HdView } from './hd'
 import { begin, end, isHeard, restored, silent, start, typeOn, voiced, type Typing } from './line'
 import { answered, ask as askFace, calm, hold, isWaiting, react, release, stage as stageFace, tick, type Face, type Mood } from './mood'
 
@@ -246,6 +246,36 @@ async function loadHd($: Engine, dir: string): Promise<Hd | null> {
   const height = meta.sceneHeight ?? 0
   const scene = pixels !== null && pixels.length === width * height * 3 ? { pixels, width, height } : null
   return { side, base, talk: await bytes('face-talk-hd.rgb'), deny: await bytes('face-deny-hd.rgb'), scene }
+}
+
+// Where the HD pictures go, one file per picture key: kitty reads them
+// itself, so a change of picture sends a path, not a megabyte through the
+// terminal, and the face no longer blinks out while one arrives. Memory, on
+// Linux; shared by sessions, a key always meaning the same pixels.
+const HD_DIR = '/dev/shm/avatar7-hd'
+const hdPath = (key: string): string => `${HD_DIR}/${key.replace(/[^A-Za-z0-9.-]/g, '_')}.rgba`
+
+// $.fs.write takes text: the pixels go as base64, decoded beside.
+async function writeHd($: Engine, key: string, rgba: Uint8Array): Promise<void> {
+  const path = hdPath(key)
+  await $.fs.write(`${path}.b64`, rgba.toBase64())
+  const done = await $.process.run(['sh', '-c', 'base64 -d "$1.b64" > "$1.part" && mv "$1.part" "$1" && rm -f "$1.b64"', 'sh', path])
+  if (done.exitCode !== 0) throw new Error(`${path}: ${done.stderr}`)
+}
+
+// Starts writing a picture's file unless it is there or on its way; `files`
+// marks it pending, then ready.
+function hdEnsure($: Engine, files: Map<string, 'pending' | 'ready'>, hv: HdView): void {
+  const key = hdKey(hv)
+  if (files.has(key)) return
+  files.set(key, 'pending')
+  void writeHd($, key, hdFrame(hv)).then(
+    () => files.set(key, 'ready'),
+    err => {
+      files.delete(key)
+      $.ui.log(`avatar7: HD picture not written: ${String(err)}`)
+    },
+  )
 }
 
 async function loadFaces($: Engine, dir: string): Promise<Faces> {
@@ -531,18 +561,23 @@ export const register: Register = (on, options) => {
   let grain: number = DEFAULT_GRAIN
   let isHdShown = false
   let hdShownKey = ''
-  const hdMade = new Map<string, string>()
-  const HD_KEPT = 24
+  type HdSource = { file: string; format: 'rgba'; width: number; height: number } | { rgba: string; width: number; height: number }
+  // The picture keys whose file is written, or being written.
+  const hdFiles = new Map<string, 'pending' | 'ready'>()
+  // The source the face shows: kept as one object, so a redraw that changes
+  // nothing hands the engine the very same source and nothing is sent.
+  let hdShown: HdSource | null = null
   const hdView = (): HdView | null => {
     const v = view()
     const hd = v.faces?.hd
     if (!isHdTerminal || hd === undefined || hd === null || v.persona === null || hdColumns === 0) return null
+    const isGuest = stage.isGuestShown && stage.guest !== null
     return {
+      who: isGuest && stage.guest !== null ? stage.guest.id : whoId,
       hd,
       mood: v.mood,
       face: pickHdFace(hd, v.mood, v.isHeard, noise(v.frame >> 2, 7)),
-      // A new tear every four frames while refused: a picture is ~1 MB.
-      glitchStep: v.mood === 'deny' ? v.frame >> 2 : 0,
+      glitchStep: v.mood === 'deny' ? 1 + ((v.frame >> 2) % GLITCH_STEPS) : 0,
       glitch: v.glitch,
       grain,
       color: v.persona.color ?? '#00ff9c',
@@ -552,16 +587,7 @@ export const register: Register = (on, options) => {
       size,
     }
   }
-  const hdSource = (hv: HdView): { key: string; source: { rgba: string; width: number; height: number } } => {
-    const key = hdKey(hv)
-    let rgba = hdMade.get(key)
-    if (rgba === undefined) {
-      rgba = hdFrame(hv).toBase64()
-      hdMade.set(key, rgba)
-      if (hdMade.size > HD_KEPT) hdMade.delete(hdMade.keys().next().value as string)
-    }
-    return { key, source: { rgba, ...hdSize(hv.columns, hv.rows) } }
-  }
+  const fileSource = (hv: HdView): HdSource => ({ file: hdPath(hdKey(hv)), format: 'rgba', ...hdSize(hv.columns, hv.rows) })
 
   // The weather of whoever is shown: the guest's during a visit.
   const ambientLayers = (): AmbientLayer[] =>
@@ -600,6 +626,8 @@ export const register: Register = (on, options) => {
     if (kind.stdout === 'bg') return next(e)
     const env = await $.process.run(['sh', '-c', 'printf %s "$TERM|$TERM_PROGRAM|$AVATAR7_HD"'])
     isHdTerminal = drawsPictures(env.stdout)
+    // Pictures a day old belong to panes long gone.
+    if (isHdTerminal) await $.process.run(['sh', '-c', `mkdir -p ${HD_DIR} && find ${HD_DIR} -type f -mmin +1440 -delete`])
     // A reload mid-line kills the timer that would lower it: jukebox7 would
     // stay ducked.
     if (await read($, isVoicing)) await update($, isVoicing, () => false)
@@ -737,9 +765,11 @@ export const register: Register = (on, options) => {
       if (isHdShown) {
         const hv = hdView()
         if (hv !== null && hdKey(hv) !== hdShownKey) {
-          const { key, source } = hdSource(hv)
-          hdShownKey = key
-          void $.ui.blit({ requestId: PANE, key: FACE, source })
+          if (hdFiles.get(hdKey(hv)) === 'ready') {
+            hdShown = fileSource(hv)
+            hdShownKey = hdKey(hv)
+            void $.ui.blit({ requestId: PANE, key: FACE, source: hdShown })
+          } else hdEnsure($, hdFiles, hv)
         }
       } else void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (frame % AMBIENT_FRAMES === 0) {
@@ -1083,9 +1113,24 @@ export const register: Register = (on, options) => {
     )
     hdColumns = cols
     const hv = hdView()
-    const hdShown = hv === null ? null : hdSource(hv)
+    if (hv === null) {
+      hdShown = null
+      hdShownKey = ''
+    } else if (hdFiles.get(hdKey(hv)) === 'ready') {
+      if (hdShownKey !== hdKey(hv)) {
+        hdShown = fileSource(hv)
+        hdShownKey = hdKey(hv)
+      }
+    } else {
+      // Not on disk yet: the last picture stays until the clock swaps it in,
+      // and a first one goes as bytes, once.
+      hdEnsure($, hdFiles, hv)
+      if (hdShown === null || hdShown.width !== hdSize(hv.columns, hv.rows).width || hdShown.height !== hdSize(hv.columns, hv.rows).height) {
+        hdShown = { rgba: hdFrame(hv).toBase64(), ...hdSize(hv.columns, hv.rows) }
+        hdShownKey = hdKey(hv)
+      }
+    }
     isHdShown = hdShown !== null
-    hdShownKey = hdShown?.key ?? ''
     const isBlink = Math.floor(frame / REFIT_FRAMES) % 2 === 0
     const moodColor = face.mood === 'idle' ? color : `#${TINT[face.mood].toString(16).padStart(6, '0')}`
     const seconds = Math.floor((frame * FRAME_MS) / 1000)
@@ -1111,7 +1156,7 @@ export const register: Register = (on, options) => {
       // The body's own height, so the controls can sit on its last row.
       <Box flexDirection="column" flexGrow={1} width="100%" height={e.props.scroll.bodyRows} backgroundColor="#000000">
         <Box flexDirection="row" justifyContent="center" width="100%" flexShrink={0} backgroundColor="#000000">
-          {hdShown !== null && <Image key={FACE} source={hdShown.source} columns={cols} rows={size / 2} alt=" " />}
+          {hdShown !== null && <Image key={FACE} source={hdShown} columns={cols} rows={size / 2} alt=" " />}
           {hdShown === null && ambLeft > 0 && ambient(AMB_LEFT, 0, 0, ambLeft, size / 2)}
           {hdShown === null && <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />}
           {hdShown === null && ambRight > 0 && ambient(AMB_RIGHT, ambLeft + size, 0, ambRight, size / 2)}

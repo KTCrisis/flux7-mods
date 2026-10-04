@@ -12,6 +12,9 @@ import type { Mood } from './mood'
 // the picture to the cells, so this is the detail kept, not a size on screen.
 export const PX = 6
 
+// The tears a refusal cycles through: a finite set, so each is made once.
+export const GLITCH_STEPS = 6
+
 // The pictures tools/bake_hd.py writes beside a persona's PNGs: the portrait
 // and its frames, `side` x `side` RGB, and the scene, RGB too.
 export type Hd = {
@@ -23,11 +26,13 @@ export type Hd = {
 }
 
 export type HdView = {
+  // Whose face: two personas may share a color, never a picture.
+  who: string
   hd: Hd
   mood: Mood
   // Which face: the frown, the open mouth or the portrait (draw.ts pickFace).
   face: 'base' | 'talk' | 'deny'
-  // The glitch's draw: a new one each step while a refusal shows, 0 else.
+  // The glitch's draw: one of GLITCH_STEPS tears while a refusal shows, 0 else.
   glitchStep: number
   glitch: number
   // The art pixel's side in output pixels (GRAINS).
@@ -59,7 +64,7 @@ export const pickHdFace = (hd: Hd, mood: string, isSpeaking: boolean, flap: numb
 }
 
 // What decides the picture: equal keys, equal pixels.
-export const hdKey = (v: HdView): string => [v.face, v.mood, v.glitchStep, v.grain, v.columns, v.rows, v.size, v.color, v.cutout, v.hd.side].join('|')
+export const hdKey = (v: HdView): string => [v.who, v.face, v.mood, v.glitchStep, v.grain, v.columns, v.rows, v.size, v.color, v.cutout, v.hd.side].join('|')
 
 export const hdSize = (columns: number, rows: number): { width: number; height: number } => ({ width: columns * PX, height: rows * 2 * PX })
 
