@@ -97,12 +97,19 @@ export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
     'if [ -n "$6" ] && [ -f "$c.onnx" ]; then m="$c.onnx"; set -- "$c" "$2" 1 "$4" "$(cat "$c.fx" 2>/dev/null)" "$6" ""; fi',
     `if [ -n "$1" ] && [ -f "$m" ] && [ -x "${PIPER}/.venv/bin/python" ]; then`,
     '  w=$(mktemp --suffix=.wav)',
+    // With ffmpeg the user's volume is applied after the leveling below.
+    '  v="$2"; command -v ffmpeg >/dev/null && v=1',
     // $7: a speaker of a multi-speaker model (vctk, libritts_r), by its id.
-    `  printf %s "$t" | "${PIPER}/.venv/bin/python" -m piper -m "$m" \${7:+-s "$7"} -f "$w" --volume "$2" --length-scale "$3" 2>/dev/null || exit 1`,
+    `  printf %s "$t" | "${PIPER}/.venv/bin/python" -m piper -m "$m" \${7:+-s "$7"} -f "$w" --volume "$v" --length-scale "$3" 2>/dev/null || exit 1`,
     // The persona's ffmpeg filter (pitch, metal, glitch), skipped without ffmpeg.
     '  if [ -n "$5" ] && command -v ffmpeg >/dev/null; then',
     '    f=$(mktemp --suffix=.wav)',
     '    ffmpeg -loglevel error -y -i "$w" -af "$5" "$f" && mv "$f" "$w"',
+    '  fi',
+    // Every voice leveled to the same loudness, then the user's volume.
+    '  if command -v ffmpeg >/dev/null; then',
+    '    f=$(mktemp --suffix=.wav)',
+    '    ffmpeg -loglevel error -y -i "$w" -af "loudnorm=I=-18:TP=-2:LRA=11,aresample=22050,volume=$2" "$f" && mv "$f" "$w"',
     '  fi',
     `  "${PIPER}/.venv/bin/python" -c 'import sys, wave; w = wave.open(sys.argv[1]); print(sys.argv[1]); print(w.getnframes() / w.getframerate())' "$w"`,
     'else',
