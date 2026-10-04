@@ -98,7 +98,8 @@ wait at once.
 
 **In the code.** `hooks/mood.ts` holds the face's state and its transitions
 (react, hold, release, ask, answered, tick): a wait keeps the face, written
-once. `hooks/relay.ts` holds the relay's protocol (the page's
+once. `hooks/line.ts` holds the line under the face: its text, typing pace,
+the voice's timing and the one speaking slot. `hooks/relay.ts` holds the relay's protocol (the page's
 presses, the mirrored face), the shell that touches the spool, the state and
 the decisions (who takes, who gives back); `hooks/register.tsx` keeps only its
 few engine calls, in one section, since the engine follows `$` into nothing

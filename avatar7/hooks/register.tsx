@@ -23,6 +23,7 @@ import {
   type Relay,
   type RelayHost,
 } from './relay'
+import { begin, end, isHeard, restored, silent, start, typeOn, voiced, type Typing } from './line'
 import { answered, ask as askFace, calm, hold, isWaiting, react, release, tick, type Face, type Mood } from './mood'
 
 const PANE = 'avatar7'
@@ -157,10 +158,6 @@ export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
 // relay, when this session holds it, takes the WAV instead (relay.ts).
 const SAPI_PLAY = `"${POWERSHELL}" -NoProfile -Command "\\$v=New-Object -ComObject SAPI.SpVoice; \\$s=New-Object -ComObject SAPI.SpFileStream; \\$s.Open('$(wslpath -w "$1")'); [void]\\$v.SpeakStream(\\$s); \\$s.Close()"`
 
-// The line waits for its voice: typed from when SAPI starts the WAV (PowerShell
-// takes ~0.3 s to get there), over the audio's length. Without a WAV within
-// HOLD_FRAMES (Piper missing, SAPI speaking itself) it is typed anyway.
-const PLAY_LEAD_FRAMES = 5
 // How long a line about a call through mesh7 waits for mesh7-pane's verdict:
 // its poll runs every 1.5 s.
 const SAY_WAIT_FRAMES = 27
@@ -171,7 +168,6 @@ const PLAY_START_MS = 900
 // A command run in its own session: the engine kills a module's children on
 // reload, and a line half spoken was cut with them.
 const detachedArgv = (argv: string[]): string[] => ['bash', '-c', 'setsid "$0" "$@" </dev/null >/dev/null 2>&1 &', ...argv]
-const HOLD_FRAMES = 75
 
 // The remote voice's engine calls (relay.ts holds the rest): declared here,
 // in this file, as the engine follows $ into nothing imported.
@@ -608,19 +604,13 @@ export const register: Register = (on, options) => {
   let frame = 0
   // The face: its mood and the waits that hold it (mood.ts).
   let face: Face = calm
-  let typed = 0
-  let lineLength = 0
-  let lineText = ''
+  // The line under the face and its voice (line.ts).
+  let typing: Typing = silent
   // The remote voice, its own state (relay.ts); relay.session is '' in a
   // background session.
   const relay = newRelay()
   let sessionDir = ''
   let lastPrompt = ''
-  // Characters typed per frame, from which frame, and which line they belong to.
-  let typeRate = 2
-  let typeFrom = 0
-  let lineSeq = 0
-  let lastSpoke = -Infinity
   let streak: Streak = { mood: 'watch', count: 0 }
   // The persona's own events: on unless /avatar events off; the next one's frame.
   let eventsOn = true
@@ -648,10 +638,7 @@ export const register: Register = (on, options) => {
   const recentLines: string[] = []
   // Each persona's own thread with the user, for /avatar-chat: lines, by name.
   const chats = new Map<string, string[]>()
-  let isSpeaking = false
   let faces: Faces | null = null
-  // Until when the voice is heard, in frames: the mouth moves meanwhile.
-  let speakUntil = 0
   // A visiting persona during a dialogue, and whether its face is on screen.
   let guest: Guest | null = null
   let isGuestShown = false
@@ -687,39 +674,13 @@ export const register: Register = (on, options) => {
   const names: Record<string, string> = {}
   let lastModel = ''
 
-  // A new line under the face: held until its voice is ready, unless muted.
-  const startLine = (text: string, isQuiet: boolean): number => {
-    lineLength = text.length
-    lineText = text
-    typed = 0
-    typeRate = 2
-    typeFrom = isQuiet ? frame : frame + HOLD_FRAMES
-    lineSeq += 1
-    return lineSeq
-  }
-
-  // The WAV synthArgv made, its line then typed over the audio's length while
-  // SAPI plays it; '' when SAPI already spoke.
-  const voiced = (seq: number, stdout: string, length: number): { wav: string; ms: number } => {
-    const [wav = '', seconds = ''] = stdout.trim().split('\n')
-    const ms = Number(seconds) * 1000
-    const frames = Math.round(ms / FRAME_MS)
-    if (wav === '' || !(frames > 0)) return { wav: '', ms: 0 }
-    if (seq === lineSeq) {
-      typeRate = Math.max(length / frames, 0.2)
-      typeFrom = frame + PLAY_LEAD_FRAMES
-      speakUntil = typeFrom + frames
-    }
-    return { wav, ms }
-  }
-
   const pixel = (x: number, y: number): number => {
     const t = frame * (FRAME_MS / 1000)
     const isGlitch = face.mood === 'deny' && noise(frame, y >> 2) < 0.35
     const gx = isGlitch ? Math.min(W - 1, Math.max(0, x + Math.round((noise(y, frame) - 0.5) * 10))) : x
 
     const shown = isGuestShown && guest !== null ? guest.faces : faces
-    const img = shown === null ? null : pickFace(shown, face.mood, frame < speakUntil, noise(frame >> 2, 7))
+    const img = shown === null ? null : pickFace(shown, face.mood, isHeard(typing, frame), noise(frame >> 2, 7))
     if (img === null || who === null) return noise(x * 7 + frame, y) < 0.3 ? 0x1a2a22 : 0x020806
 
     const i = (y * W + gx) * 3
@@ -891,8 +852,7 @@ export const register: Register = (on, options) => {
     }
 
     const last = await read($, line)
-    lineLength = last.text.length
-    typed = lineLength
+    typing = restored(typing, last.text)
     eventsOn = (await $.store.get('events')) !== false
     visitsOn = (await $.store.get('visits')) !== false
     nextEventAt = frame + nextGap()
@@ -934,10 +894,10 @@ export const register: Register = (on, options) => {
             name: shownWho.name,
             color: shownWho.color ?? '',
             mood: face.mood,
-            line: lineText,
-            seq: lineSeq,
-            speakMs: Math.max(0, speakUntil - typeFrom) * FRAME_MS,
-            isSpeaking: frame < speakUntil,
+            line: typing.text,
+            seq: typing.seq,
+            speakMs: Math.max(0, typing.speakUntil - typing.from) * FRAME_MS,
+            isSpeaking: isHeard(typing, frame),
             question: openQuestion?.text ?? '',
             avatars: AVATARS.map(id => ({ id, name: names[id] ?? id })),
             eventsOn,
@@ -983,8 +943,9 @@ export const register: Register = (on, options) => {
         ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (face.mood === 'deny' || face.mood === 'error' ? 2 : face.mood === 'wait' ? 0.5 : 1)
         for (const each of ambientBlits()) void $.ui.blit(each)
       }
-      if (typed < lineLength && frame >= typeFrom) {
-        typed = Math.min(lineLength, typed + typeRate)
+      const typedOn = typeOn(typing, frame)
+      if (typedOn !== typing) {
+        typing = typedOn
         $.ui.invalidate('ui.render')
       } else if (frame % REFIT_FRAMES === 0) {
         $.ui.invalidate('ui.render')
@@ -1000,10 +961,10 @@ export const register: Register = (on, options) => {
         who !== null &&
         frame >= nextEventAt &&
         queue.length === 0 &&
-        !isSpeaking &&
+        !typing.isSpeaking &&
         !isWaiting(face) &&
         openQuestion === null &&
-        frame - lastSpoke > EVENT_QUIET_FRAMES
+        frame - typing.lastSpoke > EVENT_QUIET_FRAMES
       ) {
         nextEventAt = frame + nextGap()
         // One event in three is a visit from another persona.
@@ -1026,11 +987,10 @@ export const register: Register = (on, options) => {
       // A line may wait a moment for a mod to say better (a mesh7 verdict).
       const ready = queue.findIndex(q => typeof q.ask !== 'object' || !('after' in q.ask) || (q.ask.after ?? 0) <= frame)
       const first = queue[ready]
-      if (first === undefined || isSpeaking || who === null) return
+      if (first === undefined || typing.isSpeaking || who === null) return
       queue = queue.filter((_, i) => i !== ready)
       const ask = first.ask
-      isSpeaking = true
-      lastSpoke = frame
+      typing = begin(typing, frame)
       // In a dialogue the guest speaks the odd turns, with its own voice and face.
       const isGuestTurn = typeof ask === 'object' && 'duo' in ask && ask.turn % 2 === 1 && guest !== null
       const voice = isGuestTurn && guest !== null ? guest.persona : who
@@ -1130,14 +1090,17 @@ export const register: Register = (on, options) => {
           const isDuo = typeof ask === 'object' && 'duo' in ask
           const shown = isDuo ? `${voice.name}: ${text}` : text
           const isQuiet = await read($, isMuted)
-          const seq = startLine(shown, isQuiet)
+          typing = start(typing, shown, isQuiet, frame)
+          const seq = typing.seq
           await update($, line, () => ({ text: shown, at: frame }) satisfies Line)
           if (!isQuiet) {
             const made = await $.process.run(synthArgv(voiceId, voice, await read($, volume)), {
               stdin: text,
               timeoutMs: 30_000,
             })
-            const { wav, ms } = voiced(seq, made.stdout, shown.length)
+            const heard = voiced(typing, seq, made.stdout, frame, FRAME_MS)
+            typing = heard.t
+            const { wav, ms } = heard
             if (wav !== '') {
               // Detached, so a reload of this module no longer cuts the line;
               // the voice is held for the WAV's length plus PowerShell's start.
@@ -1159,7 +1122,7 @@ export const register: Register = (on, options) => {
             isGuestShown = false
             guest = null
           }
-          isSpeaking = false
+          typing = end(typing)
           if (await read($, isVoicing)) await update($, isVoicing, () => false)
         }
       })
@@ -1378,7 +1341,7 @@ export const register: Register = (on, options) => {
     const quiet = now === 'watch' && note === '' ? 45_000 / FRAME_MS : 5_000 / FRAME_MS
     // A plain success waits for silence; a refusal or a failure takes its
     // place in the queue, ahead of the calmer lines.
-    if (frame - lastSpoke < quiet || (now === 'watch' && (isSpeaking || queue.length > 0))) return ran
+    if (frame - typing.lastSpoke < quiet || (now === 'watch' && (typing.isSpeaking || queue.length > 0))) return ran
     // A refusal, a failure, or any call through mesh7 waits ~1.8 s: mesh7-pane,
     // when loaded, may say what mesh7 decided and replace this line.
     const mayBeSaid = now !== 'watch' || e.tool.startsWith('mcp__mesh7__')
@@ -1398,7 +1361,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const last = await read($, line)
-    const shown = last.text.slice(0, Math.floor(typed))
+    const shown = last.text.slice(0, Math.floor(typing.typed))
     const color = who?.color ?? '#00ff9c'
 
     if (e.surface !== 'terminal') {
@@ -1465,7 +1428,7 @@ export const register: Register = (on, options) => {
         {rule('rule-face', (who?.name ?? 'avatar7').toUpperCase(), `[${face.mood.toUpperCase()}]`, moodColor, 0)}
         <Text color={color} backgroundColor="#000000">
           {shown.length > 0 ? `> ${shown}` : '> ...'}
-          {typed < last.text.length ? '█' : ''}
+          {typing.typed < last.text.length ? '█' : ''}
         </Text>
         {face.held !== null && (
           <Text color="#7a5cff" backgroundColor="#000000" wrap="truncate-end">

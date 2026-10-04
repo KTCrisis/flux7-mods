@@ -4,6 +4,7 @@ import { commandEvent, withPrivate, fallbackPool, pickFace, synthArgv, enqueue, 
 import { ambientCells, ambientPixel } from './ambient'
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
 import { answered, ask as askFace, calm, hold, react, release, tick } from './mood'
+import { begin, end, HOLD_FRAMES, isHeard, restored, silent, start, typeOn, voiced } from './line'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -404,4 +405,30 @@ test('a wait whose end never comes lets the face go after the cap', () => {
   expect(tick(freed, 102, 100).mood).toBe('idle')
   const asked = tick(askFace(calm, 'x', 0), 101, 100)
   expect(asked.askSince).toBeNull()
+})
+
+test('a line waits for its voice, then types over the length of the audio; a late voice types only its own line', () => {
+  const t = start(silent, 'Hello there.', false, 100)
+  expect([t.seq, t.typed, t.from]).toEqual([1, 0, 100 + HOLD_FRAMES])
+  expect(typeOn(t, 120)).toBe(t)
+  // 12 characters over a 0.66 s WAV: 10 frames of 66 ms, from 5 frames on.
+  const { t: v, wav, ms } = voiced(t, 1, '/tmp/x.wav\n0.66\n', 120, 66)
+  expect([wav, ms]).toEqual(['/tmp/x.wav', 660])
+  expect([v.from, v.speakUntil, v.rate]).toEqual([125, 135, 1.2])
+  expect(isHeard(v, 130)).toBe(true)
+  expect(typeOn(v, 125).typed).toBe(1.2)
+  // A newer line took the screen: the old voice plays, the new line keeps its pace.
+  const newer = start(v, 'Next.', false, 121)
+  expect(voiced(newer, 1, '/tmp/x.wav\n0.66\n', 122, 66).t).toBe(newer)
+  // SAPI spoke it itself: nothing to time.
+  expect(voiced(t, 1, '', 120, 66)).toEqual({ t, wav: '', ms: 0 })
+})
+
+test('a muted line types at once; a line kept across a reload shows whole; the slot opens and closes', () => {
+  expect(start(silent, 'Quiet.', true, 50).from).toBe(50)
+  const kept = restored(silent, 'From before.')
+  expect(typeOn(kept, 999)).toBe(kept)
+  const busy = begin(silent, 40)
+  expect([busy.isSpeaking, busy.lastSpoke]).toEqual([true, 40])
+  expect(end(busy).isSpeaking).toBe(false)
 })
