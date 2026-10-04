@@ -153,7 +153,14 @@ export type Mirror = {
   // Which session holds the relay: short id, folder, last prompt typed.
   session: string
 }
-const mirrorArgv = (): string[] => ['sh', '-c', `d="${RELAY_SPOOL}"; [ -d "$d" ] && cat > "$d/state.part" && mv "$d/state.part" "$d/state.json"`]
+const mirrorArgv = (session: string): string[] => [
+  'sh',
+  '-c',
+  `d="${RELAY_SPOOL}"; ${ownsRelay} && cat > "$d/state.part" && mv "$d/state.part" "$d/state.json"`,
+  'avatar7-mirror',
+  '',
+  session,
+]
 // The page's buttons, queued by the relay as one JSON file each under cmd/:
 // read in order and removed, one per line.
 const drainArgv = (): string[] => [
@@ -834,6 +841,9 @@ export const register: Register = (on, options) => {
     // inherits the plugin dirs but nobody watches it: no face, no voice.
     const kind = await $.process.run(['sh', '-c', 'printf %s "$CLAUDE_CODE_SESSION_KIND"'])
     if (kind.stdout === 'bg') return next(e)
+    // A reload mid-line kills the timer that would lower it: jukebox7 would
+    // stay ducked.
+    if (await read($, isVoicing)) await update($, isVoicing, () => false)
     sessionId = await $.session.id()
     sessionDir = e.cwd.split('/').filter(Boolean).at(-1) ?? '/'
     isSsh = (await $.process.run(['sh', '-c', 'printf %s "$SSH_CONNECTION"'])).stdout.trim() !== ''
@@ -907,10 +917,18 @@ export const register: Register = (on, options) => {
       }
       if (frame > moodUntil && mood !== 'idle') mood = 'idle'
       if (frame % RELAY_CHECK_FRAMES === 0) {
-        void $.process.run(['sh', '-c', `${ownsRelay} && echo up`, 'avatar7-relay', '', sessionId]).then(r => {
+        void (async () => {
+          // After a /clear the process goes on under a new id, with no
+          // session.start: a relay held by force follows it there.
+          const id = await $.session.id()
+          if (id !== sessionId) {
+            sessionId = id
+            if (isRemoteForced) await $.process.run(takeArgv(sessionId))
+          }
+          const r = await $.process.run(['sh', '-c', `${ownsRelay} && echo up`, 'avatar7-relay', '', sessionId])
           isRelayed = r.stdout.trim() === 'up'
           if (!isRelayed) mirrored = ''
-        })
+        })().catch(() => {})
       }
       if (isRelayed && !isMirroring && frame % MIRROR_FRAMES === 0 && who !== null) {
         isMirroring = true
@@ -933,7 +951,7 @@ export const register: Register = (on, options) => {
         void (async () => {
           const state: Mirror = { ...base, isMuted: await read($, isMuted), volume: await read($, volume) }
           const json = JSON.stringify(state)
-          if (json !== mirrored) await $.process.run(mirrorArgv(), { stdin: json })
+          if (json !== mirrored) await $.process.run(mirrorArgv(sessionId), { stdin: json })
           mirrored = json
         })().finally(() => {
           isMirroring = false
@@ -1222,6 +1240,7 @@ export const register: Register = (on, options) => {
       if (id === 'remote off') {
         isRemoteForced = false
         await $.process.run(releaseArgv(sessionId))
+        isRelayed = false
         return { text: 'The voice comes back to this machine.' }
       }
       // The relay runs as a user service (tools/avatar7-relay.service); without
@@ -1288,8 +1307,13 @@ export const register: Register = (on, options) => {
 
   // A session that ends gives the relay back: an owner gone for good would
   // hold the page on its last face, and keep the others' voices off it.
+  // A /clear goes on in this process: a relay held by force stays held, and
+  // the clock hands it to the new session id.
   on('session.end', async ($, e, next) => {
-    await $.process.run(releaseArgv(sessionId))
+    if (!(e.reason === 'clear' && isRemoteForced)) {
+      await $.process.run(releaseArgv(sessionId))
+      isRelayed = false
+    }
     return next(e)
   })
 
@@ -1309,7 +1333,10 @@ export const register: Register = (on, options) => {
     // The voice follows the user: away through the relay for a prompt sent by
     // Remote Control or typed over ssh, back here for one typed at this terminal.
     if (e.origin.kind === 'bridge' || (e.origin.kind === 'composer' && isSsh)) await $.process.run(takeArgv(sessionId))
-    else if (e.origin.kind === 'composer' && !isRemoteForced) await $.process.run(releaseArgv(sessionId))
+    else if (e.origin.kind === 'composer' && !isRemoteForced) {
+      await $.process.run(releaseArgv(sessionId))
+      isRelayed = false
+    }
     // Written whole again at the next mirror: a release left `{}` behind.
     mirrored = ''
     return next(e)

@@ -5,7 +5,7 @@ import { ambientCells, ambientPixel } from './ambient'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
-const engine = (on: On, kind: string): { commands: string[]; panes: string[] } => {
+const engine = (on: On, kind: string, seen?: (argv: string[]) => void): { commands: string[]; panes: string[] } => {
   const commands: string[] = []
   const panes: string[] = []
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -16,6 +16,7 @@ const engine = (on: On, kind: string): { commands: string[]; panes: string[] } =
   })
   on('process.run', ($, e) => {
     const a = (e as { argv: string[] }).argv
+    seen?.(a)
     const stdout = a.join(' ').includes('CLAUDE_CODE_SESSION_KIND') ? kind : ''
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
   })
@@ -283,4 +284,21 @@ test('a chat is the user speaking: urgent, never stale, never answered by a stoc
   expect(fallbackPool({ chat: 'hello' }, fallback)).toEqual([])
   expect(fresh([{ ask: { chat: 'hello' }, rank: 4, at: 0 }], 1_000_000)).toHaveLength(1)
   expect(parseRemote('{"cmd":"chat","text":"bonsoir"}')).toEqual({ cmd: 'chat', text: 'bonsoir' })
+})
+
+test('a /clear keeps a relay held by force; any other end gives it back', async ($, on) => {
+  const released: string[] = []
+  engine(on, '', a => {
+    if (a[3] === 'avatar7-release') released.push(a[5] ?? '')
+  })
+  on('clock.sleep', () => ({ value: undefined }) as never)
+  on('session.end', () => ({ sessionId: 'test-session' }))
+  await $.session.start({ cwd: '/home/u' } as never)
+  await $.session.end({ reason: 'clear' } as never)
+  expect(released).toEqual(['test-session'])
+  await $.command.run({ command: 'avatar', args: 'remote on' })
+  await $.session.end({ reason: 'clear' } as never)
+  expect(released).toEqual(['test-session'])
+  await $.session.end({ reason: 'prompt_input_exit' } as never)
+  expect(released).toEqual(['test-session', 'test-session'])
 })
