@@ -63,6 +63,8 @@ const announcers = atom({ plugin: 'avatar7', key: 'announcers' } as const, {} as
 // An ask the mode may settle alone (auto mode): the face waits at once, the
 // avatar speaks only if the permission prompt is still up after ~2 s.
 const ASK_FRAMES = 30
+// The longest a wait keeps the face: 15 minutes.
+const WAIT_CAP_FRAMES = Math.round((15 * 60_000) / FRAME_MS)
 
 const POWERSHELL = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
 // A persona with a `pitch` (-10 to 10) speaks through the SAPI COM voice,
@@ -96,11 +98,14 @@ export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
     `c="${PIPER}/custom/$6"`,
     'if [ -n "$6" ] && [ -f "$c.onnx" ]; then m="$c.onnx"; set -- "$c" "$2" 1 "$4" "$(cat "$c.fx" 2>/dev/null)" "$6" ""; fi',
     `if [ -n "$1" ] && [ -f "$m" ] && [ -x "${PIPER}/.venv/bin/python" ]; then`,
-    '  w=$(mktemp --suffix=.wav)',
+    '  w=$(mktemp --suffix=.wav); f=""; keep=""',
+    // Every temporary goes on exit, but the WAV handed to the player.
+    '  trap \'[ -n "$keep" ] || rm -f "$w"; rm -f "$f"\' EXIT',
     // With ffmpeg the user's volume is applied after the leveling below.
     '  v="$2"; command -v ffmpeg >/dev/null && v=1',
     // $7: a speaker of a multi-speaker model (vctk, libritts_r), by its id.
-    `  printf %s "$t" | "${PIPER}/.venv/bin/python" -m piper -m "$m" \${7:+-s "$7"} -f "$w" --volume "$v" --length-scale "$3" 2>/dev/null || exit 1`,
+    // A Piper that fails speaks through SAPI, as a missing one does.
+    `  printf %s "$t" | "${PIPER}/.venv/bin/python" -m piper -m "$m" \${7:+-s "$7"} -f "$w" --volume "$v" --length-scale "$3" 2>/dev/null || { printf %s "$t" | "${POWERSHELL}" -NoProfile -Command "$4"; exit 0; }`,
     // The persona's ffmpeg filter (pitch, metal, glitch), skipped without ffmpeg.
     '  if [ -n "$5" ] && command -v ffmpeg >/dev/null; then',
     '    f=$(mktemp --suffix=.wav)',
@@ -111,7 +116,7 @@ export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
     '    f=$(mktemp --suffix=.wav)',
     '    ffmpeg -loglevel error -y -i "$w" -af "loudnorm=I=-18:TP=-2:LRA=11,aresample=22050,volume=$2" "$f" && mv "$f" "$w"',
     '  fi',
-    `  "${PIPER}/.venv/bin/python" -c 'import sys, wave; w = wave.open(sys.argv[1]); print(sys.argv[1]); print(w.getnframes() / w.getframerate())' "$w"`,
+    `  "${PIPER}/.venv/bin/python" -c 'import sys, wave; w = wave.open(sys.argv[1]); print(sys.argv[1]); print(w.getnframes() / w.getframerate())' "$w" && keep=1`,
     'else',
     `  printf %s "$t" | "${POWERSHELL}" -NoProfile -Command "$4"`,
     'fi',
@@ -262,7 +267,6 @@ const ASKED_CHARS = 200
 export const COMMANDS: Record<string, { mood: Exclude<Mood, 'idle'>; means: string }> = {
   clear: { mood: 'watch', means: 'wipes the whole conversation and starts over; say farewell to what is gone' },
   compact: { mood: 'watch', means: 'compacts the conversation: the assistant keeps a summary and forgets the rest' },
-  model: { mood: 'watch', means: 'switches the model the assistant runs on' },
   fast: { mood: 'watch', means: 'toggles fast mode for the assistant' },
   rewind: { mood: 'error', means: 'rewinds the conversation to undo what went wrong' },
   resume: { mood: 'watch', means: 'resumes an older session' },
@@ -624,11 +628,14 @@ export const register: Register = (on, options) => {
   // A question the avatar put to the user, until answered or five minutes pass.
   let openQuestion: { text: string; at: number } | null = null
   // A visit: the guest read (loadGuest), then the host opens.
-  const startDuo = (g: Guest, topic: Duo['topic']): void => {
+  const startDuo = (g: Guest, topic: Duo['topic']): boolean => {
+    // One visit at a time: a second would take over the first's turns.
+    if (guest !== null) return false
     guest = g
     mood = 'watch'
     moodUntil = frame + 30
     speakLater({ duo: g.id, turn: 0, topic, history: [] })
+    return true
   }
   const startEvent = (ask: Ask): void => {
     if (typeof ask === 'object' && 'story' in ask) {
@@ -669,6 +676,7 @@ export const register: Register = (on, options) => {
   const saidHere = new Map<string, Say>()
   // An avatar picked in the pane or by /avatar; the clock swaps it in.
   let pendingAvatar: string | null = null
+  let avatarPick = 0
   let isPicking = false
   // The field where the user asks the avatar's opinion, open or not.
   let isConsulting = false
@@ -682,6 +690,9 @@ export const register: Register = (on, options) => {
   // A call put to the permission prompt (a mesh7 hook's `ask`, a settings rule).
   let askSince: number | null = null
   let askCall = ''
+  let lastModel = ''
+  // When a human-approval wait began, so a release that never comes ends it.
+  let heldSince = 0
 
   // A new line under the face: held until its voice is ready, unless muted.
   const startLine = (text: string, isQuiet: boolean): number => {
@@ -899,13 +910,19 @@ export const register: Register = (on, options) => {
       if (pendingAvatar !== null) {
         const id = pendingAvatar
         pendingAvatar = null
+        const pick = ++avatarPick
         void (async () => {
           const dir = `${$.plugin.root}/personas/${id}`
-          who = await readPersona($, id)
+          // Loaded whole before anything switches: a persona that cannot be
+          // read leaves the one on duty, and of two quick picks the last wins.
+          const chosen = await readPersona($, id)
+          const chosenFaces = await loadFaces($, dir)
+          if (pick !== avatarPick) return
+          who = chosen
           whoId = id
+          faces = chosenFaces
           await update($, tint, () => who?.color ?? '')
           await update($, station, () => ({ name: who?.name ?? '', artists: who?.station ?? [] }))
-          faces = await loadFaces($, dir)
           await $.store.set('avatar', id)
           await update($, onDuty, () => id)
           await $.ui.open({ id: PANE, title: who.name })
@@ -913,7 +930,7 @@ export const register: Register = (on, options) => {
           // Through the queue like any line: never over another voice, and
           // jukebox7 hears isVoicing for it too.
           speakLater({ greet: personalize(who.greeting, userName, who.nobody) })
-        })()
+        })().catch(err => $.ui.log(`avatar7: personas/${id} could not take over: ${String(err)}`))
       }
       if (frame > moodUntil && mood !== 'idle') mood = 'idle'
       if (frame % RELAY_CHECK_FRAMES === 0) {
@@ -953,9 +970,11 @@ export const register: Register = (on, options) => {
           const json = JSON.stringify(state)
           if (json !== mirrored) await $.process.run(mirrorArgv(sessionId), { stdin: json })
           mirrored = json
-        })().finally(() => {
-          isMirroring = false
-        })
+        })()
+          .catch(err => $.ui.log(`avatar7: the relay's mirror failed: ${String(err)}`, { to: 'debug' }))
+          .finally(() => {
+            isMirroring = false
+          })
       }
       if (isRelayed && !isDraining && frame % DRAIN_FRAMES === 0) {
         isDraining = true
@@ -994,9 +1013,11 @@ export const register: Register = (on, options) => {
             }
             $.ui.invalidate('ui.render')
           }
-        })().finally(() => {
-          isDraining = false
-        })
+        })()
+          .catch(err => $.ui.log(`avatar7: the page's commands failed: ${String(err)}`, { to: 'debug' }))
+          .finally(() => {
+            isDraining = false
+          })
       }
       void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (frame % AMBIENT_FRAMES === 0) {
@@ -1010,8 +1031,15 @@ export const register: Register = (on, options) => {
         $.ui.invalidate('ui.render')
       }
 
-      if (askSince !== null && frame - askSince === ASK_FRAMES && queue.length === 0) {
+      if (askSince !== null && frame - askSince === ASK_FRAMES) {
         speakLater({ mood: 'wait', event: `call waiting for the user's permission: ${askCall}` })
+      }
+      // A wait whose end never came (mesh7-pane reloaded before its release,
+      // a prompt that vanished) lets the face go after WAIT_CAP_FRAMES.
+      if ((askSince !== null && frame - askSince > WAIT_CAP_FRAMES) || (heldTool !== null && frame - heldSince > WAIT_CAP_FRAMES)) {
+        askSince = null
+        heldTool = null
+        moodUntil = frame
       }
 
       // Now and then, when nothing else happens, a moment of the persona's own.
@@ -1169,6 +1197,10 @@ export const register: Register = (on, options) => {
           if (typeof ask === 'object' && 'duo' in ask && ask.turn < DUO_TURNS - 1) {
             speakLater({ ...ask, turn: ask.turn + 1, history: [...ask.history, `${voice.name}: ${text}`] })
           }
+        } catch (err) {
+          // A synthesis past its timeout, a model call that failed: the line
+          // is lost, the reason kept.
+          $.ui.log(`avatar7: a line was lost: ${String(err)}`, { to: 'debug' })
         } finally {
           // A dialogue ends on its last turn, or on a turn that said nothing.
           if (typeof ask === 'object' && 'duo' in ask && !queue.some(q => typeof q.ask === 'object' && 'duo' in q.ask)) {
@@ -1214,7 +1246,7 @@ export const register: Register = (on, options) => {
       }
       const g = await loadGuest($, gid)
       if (g === null) return { text: `personas/${gid} is unreadable.` }
-      startDuo(g, Math.random() < 0.5 ? 'session' : 'stories')
+      if (!startDuo(g, Math.random() < 0.5 ? 'session' : 'stories')) return { text: `${guest?.persona.name ?? 'A guest'} is visiting already.` }
       return { text: `${g.persona.name} visits ${who?.name ?? 'avatar7'}.` }
     }
     if (id === 'visits on' || id === 'visits off') {
@@ -1310,7 +1342,7 @@ export const register: Register = (on, options) => {
   // A /clear goes on in this process: a relay held by force stays held, and
   // the clock hands it to the new session id.
   on('session.end', async ($, e, next) => {
-    if (!(e.reason === 'clear' && isRemoteForced)) {
+    if (sessionId !== '' && !(e.reason === 'clear' && isRemoteForced)) {
       await $.process.run(releaseArgv(sessionId))
       isRelayed = false
     }
@@ -1319,8 +1351,18 @@ export const register: Register = (on, options) => {
 
   // The user's prompt judges the calls of its own turn only; a toast or a
   // story an hour later is not measured against it.
+  // A model switch is no command the mod sees (the /model picker settles it
+  // after the command has run, and Remote Control or /config switch without
+  // one): the model in use is compared at each turn's end.
   on('turn.complete', async ($, e, next) => {
     asked = ''
+    if (sessionId !== '') {
+      const model = await $.session.model()
+      if (lastModel !== '' && model !== lastModel && who !== null) {
+        speakLater({ mood: 'watch', event: `the assistant now runs on ${model}, no longer on ${lastModel}` })
+      }
+      lastModel = model
+    }
     return next(e)
   })
 
@@ -1332,6 +1374,8 @@ export const register: Register = (on, options) => {
     }
     // The voice follows the user: away through the relay for a prompt sent by
     // Remote Control or typed over ssh, back here for one typed at this terminal.
+    // A background session (sessionId never set) holds no relay.
+    if (sessionId === '') return next(e)
     if (e.origin.kind === 'bridge' || (e.origin.kind === 'composer' && isSsh)) await $.process.run(takeArgv(sessionId))
     else if (e.origin.kind === 'composer' && !isRemoteForced) {
       await $.process.run(releaseArgv(sessionId))
@@ -1362,6 +1406,7 @@ export const register: Register = (on, options) => {
       if (s.tool !== undefined) queue = queue.filter(q => !(typeof q.ask === 'object' && 'tool' in q.ask && q.ask.tool === s.tool))
       if (s.hold === true) {
         heldTool = s.tool ?? 'a call'
+        heldSince = frame
         mood = 'wait'
         moodUntil = Infinity
       } else if (s.release === true) {
@@ -1414,8 +1459,13 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.call', async ($, e, next) => {
-    const ran = await next(e)
-    askSince = null
+    let ran: Awaited<ReturnType<typeof next>>
+    try {
+      ran = await next(e)
+    } finally {
+      // An interrupt at the permission prompt still ends the wait.
+      askSince = null
+    }
 
     const call = describe(e as unknown as Record<string, unknown>)
     const now: Mood = ran.deny !== undefined ? 'deny' : ran.isError === true ? 'error' : 'watch'
@@ -1433,7 +1483,9 @@ export const register: Register = (on, options) => {
     const note = streakNote(was, streak)
 
     const quiet = now === 'watch' && note === '' ? 45_000 / FRAME_MS : 5_000 / FRAME_MS
-    if (isSpeaking || queue.length > 0 || frame - lastSpoke < quiet) return ran
+    // A plain success waits for silence; a refusal or a failure takes its
+    // place in the queue, ahead of the calmer lines.
+    if (frame - lastSpoke < quiet || (now === 'watch' && (isSpeaking || queue.length > 0))) return ran
     // A refusal, a failure, or any call through mesh7 waits ~1.8 s: mesh7-pane,
     // when loaded, may say what mesh7 decided and replace this line.
     const mayBeSaid = now !== 'watch' || e.tool.startsWith('mcp__mesh7__')
