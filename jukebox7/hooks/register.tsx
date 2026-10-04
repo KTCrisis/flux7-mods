@@ -285,7 +285,7 @@ export const volumeArgv = (percent: number, retry = false): string[] => [
 // not at all. force* are idempotent, so a missed click cannot invert them.
 export const pauseArgv = (isPaused: boolean): string[] => [
   CURL,
-  '-s',
+  '-sf',
   '-o',
   'NUL',
   '-u',
@@ -409,23 +409,33 @@ async function skip($: Engine, by: number): Promise<Track | undefined> {
   return playAt($, p.tracks, p.index + by)
 }
 
-async function toggle($: Engine): Promise<Player> {
+async function toggle($: Engine): Promise<Player | undefined> {
   const p = await read($, player)
   if (p.pgid === null) return p
-  await $.process.run(pauseArgv(p.isPlaying))
+  // VLC not listening (still starting, gone): the state stays as it is, so
+  // the poll keeps watching a song that still plays.
+  const sent = await $.process.run(pauseArgv(p.isPlaying))
+  if (sent.exitCode !== 0) {
+    $.ui.toast('music: VLC did not answer, try again')
+    return undefined
+  }
   const now = await $.clock.now()
   const q: Player = p.isPlaying
     ? { ...p, isPlaying: false, pausedAt: now }
     : { ...p, isPlaying: true, pausedAt: null, startedAt: (p.startedAt ?? now) + (now - (p.pausedAt ?? now)) }
   await update($, player, () => q)
+  // A voice that started or ended while paused: the level follows it again.
+  if (q.isPlaying) await $.process.run(detached(duckArgv(await read($, volume), await isAvatarVoicing($))))
   $.ui.status(show(q))
   return q
 }
 
+const isAvatarVoicing = async ($: Engine): Promise<boolean> => (await $.state.get({ plugin: 'avatar7', key: 'isVoicing' })) === true
+
 async function louder($: Engine, delta: number): Promise<number> {
   const v = clampVolume((await read($, volume)) + delta)
   await update($, volume, () => v)
-  if ((await read($, player)).pgid !== null) await $.process.run(volumeArgv(v))
+  if ((await read($, player)).pgid !== null) await $.process.run(duckArgv(v, await isAvatarVoicing($)))
   return v
 }
 
@@ -440,10 +450,12 @@ async function stop($: Engine) {
 async function play($: Engine, query: string, long: boolean): Promise<Track | undefined> {
   const found = await $.process.run(search(query), { timeoutMs: 20_000 })
   if (found.exitCode !== 0) return undefined
-  const tracks = parseTracks(found.stdout)
   const first = pickTrack(found.stdout, long)
   if (first === undefined) return undefined
-  return playAt($, tracks, tracks.findIndex(t => t.id === first.id))
+  // The track asked for plays whatever its length; next walks songs only
+  // (no hour-long mix, no live stream that never ends).
+  const rest = parseTracks(found.stdout).filter(t => t.id !== first.id && isSong(t))
+  return playAt($, [first, ...rest], 0)
 }
 
 async function playGenre($: Engine, label: string): Promise<Track | undefined> {
@@ -647,6 +659,7 @@ export const register: Register = on => {
         return { drop: `jukebox7: ${t === undefined ? 'end of the list' : `next, ${t.title}`}` }
       }
       const q = await toggle($)
+      if (q === undefined) return { drop: 'jukebox7: VLC did not answer' }
       const said = q.isPlaying ? `resumed: ${q.tracks[q.index]?.title ?? ''}` : 'paused'
       $.ui.toast(`music ${said}`)
       return { drop: `jukebox7: ${said}` }
@@ -692,6 +705,7 @@ export const register: Register = on => {
         return { text: t === undefined ? 'End of the list.' : `Next: ${t.title}` }
       }
       const q = await toggle($)
+      if (q === undefined) return { text: 'VLC did not answer; nothing changed.' }
       return { text: q.isPlaying ? 'Resumed.' : 'Paused.' }
     }
 

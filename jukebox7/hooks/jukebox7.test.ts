@@ -10,7 +10,7 @@ const RESULTS = [
 // The engine beneath: Haiku answers `intent`, yt-dlp the results above, the
 // detached pipeline its process group 4242, the shell `kind` as
 // CLAUDE_CODE_SESSION_KIND, and every command line is kept.
-const engine = (on: On, intent: string, kind = ''): { argv: string[][]; toasts: string[]; say: (next: string) => void } => {
+const engine = (on: On, intent: string, kind = '', fails: (argv: string[]) => boolean = () => false): { argv: string[][]; toasts: string[]; say: (next: string) => void } => {
   const said = { intent }
   const argv: string[][] = []
   const toasts: string[] = []
@@ -20,7 +20,7 @@ const engine = (on: On, intent: string, kind = ''): { argv: string[][]; toasts: 
     const a = [...(e as { argv: string[] }).argv]
     argv.push(a)
     const stdout = a[0] === 'yt-dlp' ? RESULTS : a[0] === 'bash' ? '4242\n' : a[0] === 'sh' ? kind : ''
-    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
+    return { value: { exitCode: fails(a) ? 7 : 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
   })
   on('clock.now', () => ({ value: 1_000_000 }) as never)
   on('ui.status', () => undefined)
@@ -250,12 +250,21 @@ test('a session that never played leaves the VLC alone when it ends', async ($, 
   expect(argv).not.toContainEqual(detachedKillVlcArgv)
 })
 
-test('next past the last result ends the list instead of wrapping to the first', async ($, on) => {
+test('next walks songs only, and past the last one the list ends instead of wrapping', async ($, on) => {
   const { argv } = engine(on, '{"action":"play","query":"ambient music","long":true}')
   await $.prompt.submit(typed('joue moi un peu de musique ambient'))
-  const r = await $.command.run({ command: 'music', args: 'next' })
-  expect(r.text).toContain('Aero Skyway')
+  // The 12000 s mix is no song: nothing follows Tranquility.
   const end = await $.command.run({ command: 'music', args: 'next' })
   expect(end.text).toBe('End of the list.')
   expect(argv.filter(a => a[0] === 'bash' && a.at(-1) === 'DRFHklnN-SM')).toHaveLength(1)
+  expect(argv.some(a => a.at(-1) === 'A8ChCZExAsw')).toBe(false)
+})
+
+test('a pause VLC does not answer leaves the state playing', async ($, on) => {
+  engine(on, '{"action":"play","query":"ambient music","long":true}', '', a => a.some(x => x.includes('pl_forcepause')))
+  await $.prompt.submit(typed('joue moi un peu de musique ambient'))
+  const r = await $.command.run({ command: 'music', args: 'pause' })
+  expect(r.text).toBe('VLC did not answer; nothing changed.')
+  const again = await $.command.run({ command: 'music', args: '' })
+  expect(again.text).toContain('Playing')
 })
