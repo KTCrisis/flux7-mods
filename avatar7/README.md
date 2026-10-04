@@ -101,7 +101,8 @@ and without it the value just sits unread. atelier-bell and usage-bell
 do this. `/avatar voices` lists the mods heard so far.
 
 A mod that wants a line without a toast writes its own `say` key instead,
-each time it has something to say:
+each time it has something to say (its first `say` also takes it off the
+toast readers, so a mod that moved from one to the other is not heard twice):
 
 ```ts
 export type Say = { mood: 'watch' | 'error' | 'deny' | 'wait'; event: string; at: number }

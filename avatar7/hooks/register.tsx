@@ -1040,6 +1040,12 @@ export const register: Register = (on, options) => {
     const s = landed(done) ? heardSay(w) : undefined
     if (s !== undefined) {
       saidHere.set(w.plugin, s)
+      // A mod that speaks by say no longer has its toasts read out: one line
+      // per event (jukebox7 moved from announce to say; a session that heard
+      // its announce before would say each song twice).
+      if (heardHere.delete(w.plugin) || (await read($, announcers))[w.plugin] !== undefined) {
+        await update($, announcers, was => Object.fromEntries(Object.entries(was).filter(([k]) => k !== w.plugin)))
+      }
       // The mod's line replaces the avatar's own waiting line on that call.
       if (s.tool !== undefined) queue = queue.filter(q => !(typeof q.ask === 'object' && 'tool' in q.ask && q.ask.tool === s.tool))
       if (s.hold === true) {
