@@ -153,6 +153,7 @@ test('the persona\'s own events wait behind everything; the user\'s answer goes 
   expect(rankOf({ story: 'x', mood: 'error' })).toBe(0)
   expect(rankOf('question')).toBe(0)
   expect(rankOf({ question: 'q', answer: 'a' })).toBe(4)
+  expect(rankOf({ consult: 'q' })).toBe(4)
   let q = enqueue([], 'question', 0)
   q = enqueue(q, { mood: 'watch', event: 'render ready' }, 1)
   expect(q[0]?.ask).toEqual({ mood: 'watch', event: 'render ready' })
@@ -199,6 +200,7 @@ test('every kind of line finds its fallback without throwing; a poke takes the i
   const fb = { idle: ['i'], watch: ['w'], deny: ['d'], error: ['e'], wait: ['wa'] }
   expect(fallbackPool('talk', fb)).toEqual(['i'])
   expect(fallbackPool('question', fb)).toEqual([])
+  expect(fallbackPool({ consult: 'q' }, fb)).toEqual([])
   expect(fallbackPool({ duo: 'hal', turn: 0, topic: 'stories', history: [] }, fb)).toEqual([])
   expect(fallbackPool({ story: 's', mood: 'error' }, fb)).toEqual(['i'])
   expect(fallbackPool({ mood: 'wait', event: 'x' }, fb)).toEqual(['wa'])
@@ -214,4 +216,16 @@ test('a say carries its tool, hold and release through; a stray field is not kep
     hold: true,
   })
   expect(heardSay({ plugin: 'x', key: 'say', value: { mood: 'deny', event: 'e', at: 1, hold: 'yes', other: 3 } })).toEqual({ mood: 'deny', event: 'e', at: 1 })
+})
+
+test('an opinion asked of the avatar outranks its own news and never goes stale', () => {
+  const q = enqueue(enqueue([], { mood: 'deny', event: 'x' }, 0), { consult: 'is this split right?' }, 1)
+  expect(q[0]?.ask).toEqual({ consult: 'is this split right?' })
+  expect(fresh(q, 10_000).map(x => x.ask)).toEqual([{ consult: 'is this split right?' }])
+})
+
+test('/avatar-ask is registered with the other commands', async ($, on) => {
+  const { commands } = engine(on, '')
+  await $.session.start({ cwd: '/home/u' } as never)
+  expect(commands).toContain('avatar-ask')
 })

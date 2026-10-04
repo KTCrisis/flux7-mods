@@ -144,6 +144,10 @@ const ASKED_CHARS = 200
 // to this many characters.
 const TALK_MESSAGES = 6
 const TALK_CHARS = 300
+// Asked for an opinion, it reads further back and may say more.
+const CONSULT_MESSAGES = 12
+const CONSULT_CHARS = 600
+const CONSULT_CHARS_ASKED = 400
 
 type Mood = 'idle' | 'watch' | 'deny' | 'error' | 'wait'
 
@@ -215,6 +219,7 @@ type Ask =
   | { story: string; mood: Mood }
   | 'question'
   | { question: string; answer: string }
+  | { consult: string }
   | Duo
   | { greet: string }
 
@@ -248,6 +253,8 @@ export const fallbackPool = (ask: Ask, fallback: Persona['fallback']): string[] 
   if (ask === 'question') return []
   if ('duo' in ask) return []
   if ('story' in ask || 'answer' in ask || 'greet' in ask) return fallback.idle
+  // A stock line is no answer to a question: better silent.
+  if ('consult' in ask) return []
   return ask.mood === 'wait' ? (fallback.wait ?? fallback.watch) : fallback[ask.mood as Exclude<Mood, 'idle' | 'wait'>]
 }
 
@@ -279,7 +286,7 @@ export const rankOf = (ask: Ask): number => {
   if (ask === 'talk') return 4
   if (ask === 'question') return 0
   if ('duo' in ask) return 0
-  if ('answer' in ask || 'greet' in ask) return 4
+  if ('answer' in ask || 'greet' in ask || 'consult' in ask) return 4
   if ('story' in ask) return 0
   return ask.mood === 'deny' ? 3 : ask.mood === 'error' || ask.mood === 'wait' ? 2 : 1
 }
@@ -289,7 +296,10 @@ export const enqueue = (queue: Queued[], ask: Ask, at: number): Queued[] =>
 
 export const fresh = (queue: Queued[], now: number): Queued[] =>
   queue.filter(
-    q => q.ask === 'talk' || (typeof q.ask === 'object' && ('answer' in q.ask || 'greet' in q.ask)) || now - q.at <= STALE_FRAMES,
+    q =>
+      q.ask === 'talk' ||
+      (typeof q.ask === 'object' && ('answer' in q.ask || 'greet' in q.ask || 'consult' in q.ask)) ||
+      now - q.at <= STALE_FRAMES,
   )
 
 
@@ -440,6 +450,8 @@ export const register: Register = (on, options) => {
   // An avatar picked in the pane or by /avatar; the clock swaps it in.
   let pendingAvatar: string | null = null
   let isPicking = false
+  // The field where the user asks the avatar's opinion, open or not.
+  let isConsulting = false
   // Display names for the picker, read from each persona.json.
   const names: Record<string, string> = {}
   // A mesh7 approval this session's call is held on, by its short id.
@@ -568,6 +580,10 @@ export const register: Register = (on, options) => {
     })
     await $.command.register({ name: 'avatar-mute', description: 'Toggle the avatar voice' })
     await $.command.register({ name: 'avatar-talk', description: 'Ask the avatar what it thinks of the conversation' })
+    await $.command.register({
+      name: 'avatar-ask',
+      description: 'Ask the avatar its opinion on the session: /avatar-ask <question>',
+    })
 
     const storedVolume = await $.store.get('volume')
     if (typeof storedVolume === 'number') await update($, volume, () => storedVolume)
@@ -680,13 +696,14 @@ export const register: Register = (on, options) => {
       $.clock.after(1, async () => {
         try {
           // The line: a greeting as written, anything else from the model.
+          const isConsult = typeof ask === 'object' && 'consult' in ask
           const write = async (): Promise<string> => {
             let prompt: string
-            const conversation = async (): Promise<string> =>
+            const conversation = async (count = TALK_MESSAGES, chars = TALK_CHARS): Promise<string> =>
               (await $.session.messages())
                 .filter(m => m.text.trim() !== '')
-                .slice(-TALK_MESSAGES)
-                .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, TALK_CHARS)}`)
+                .slice(-count)
+                .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, chars)}`)
                 .join('\n')
             if (ask === 'talk') {
               prompt =
@@ -710,6 +727,13 @@ export const register: Register = (on, options) => {
                   ? `${other} visits your terminal. Open a short exchange with them, speaking to them directly, about ${about}`
                   : `You are talking with ${other}. The exchange so far:\n${ask.history.join('\n')}\n` +
                     (ask.turn === DUO_TURNS - 1 ? 'Close the exchange in one sentence, to them.' : 'Answer them in one sentence.')
+            } else if ('consult' in ask) {
+              prompt =
+                `The user is working with an AI assistant in this terminal session and asks your opinion on it.\n` +
+                `Last messages, oldest first:\n${await conversation(CONSULT_MESSAGES, CONSULT_CHARS)}\n` +
+                `The user asks you: ${ask.consult}\n` +
+                `Answer in character, in two or three sentences: take a position, name what you would change or keep. ` +
+                `You may end on one question back.`
             } else if ('answer' in ask) {
               prompt =
                 `You asked the user: ${ask.question}\nThe user answered: ${ask.answer}\n` +
@@ -722,17 +746,21 @@ export const register: Register = (on, options) => {
               model: 'haiku',
               system: personalize(voice.persona, userName, voice.nobody) + STYLE,
               prompt,
-              maxTokens: 80,
+              maxTokens: isConsult ? 160 : 80,
               timeoutMs: 15_000,
             })
             const pool = fallbackPool(ask, voice.fallback)
+            // An opinion keeps all its sentences; any other line, its first.
             return r.isAnswered
-              ? (r.text.trim().split('\n')[0] ?? '')
+              ? isConsult
+                ? r.text.replace(/\s+/g, ' ').trim()
+                : (r.text.trim().split('\n')[0] ?? '')
               : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
           }
           const text = typeof ask === 'object' && 'greet' in ask ? ask.greet : await write()
           if (text === '') return
-          if (ask === 'question') {
+          // An opinion that ends on a question opens the answer field too.
+          if (ask === 'question' || (isConsult && text.endsWith('?'))) {
             openQuestion = { text, at: frame }
             $.ui.invalidate('ui.render')
           }
@@ -833,6 +861,13 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'avatar-talk' }, async () => {
     speakLater('talk')
     return { text: `${who?.name ?? 'avatar7'} reads the conversation.` }
+  })
+
+  on('command.run', { command: 'avatar-ask' }, async ($, e) => {
+    const question = e.args.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
+    if (question === '') return { text: 'Usage: /avatar-ask <question>' }
+    speakLater({ consult: question })
+    return { text: `${who?.name ?? 'avatar7'} reads the session and thinks it over.` }
   })
 
   on('command.run', { command: 'avatar-mute' }, async $ => {
@@ -1036,6 +1071,22 @@ export const register: Register = (on, options) => {
             }}
           />
         )}
+        {isConsulting && (
+          <Input
+            key="consult"
+            label="ask: "
+            placeholder="ctrl+x tab, your question, Enter"
+            submitLabel="ask"
+            autoFocus
+            onSubmit={value => {
+              const question = value.replace(/\s+/g, ' ').trim().slice(0, CONSULT_CHARS_ASKED)
+              if (question === '') return
+              isConsulting = false
+              speakLater({ consult: question })
+              $.ui.invalidate('ui.render')
+            }}
+          />
+        )}
         <Box flexGrow={1} backgroundColor="#000000" />
         {rule('rule-controls', 'CTRL', `UP ${clock}`, color, 7)}
         {isPicking && (
@@ -1057,6 +1108,17 @@ export const register: Register = (on, options) => {
         )}
         <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor="#000000">
           <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => speakLater('talk')} />
+          <Button
+            key="ask"
+            label={isConsulting ? 'close ask' : 'ask'}
+            hotkey="q"
+            plain
+            dimColor
+            onPress={() => {
+              isConsulting = !isConsulting
+              $.ui.invalidate('ui.render')
+            }}
+          />
           <Button
             key="avatars"
             label={isPicking ? 'close' : 'avatars'}

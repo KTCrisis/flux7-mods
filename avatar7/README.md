@@ -19,6 +19,7 @@ sessions.
 | `/avatar` | open the pane |
 | `/avatar <id>` | switch avatar (`shodan`, `hal`, `glados`, `ada`, `duck7`, `pod042`, `kaneda`, `commis`, `fox`, `adjutant`, `morte`), greet, remember the choice across sessions |
 | `/avatar-talk` | ask the avatar what it thinks of the conversation; the `talk` button under the face (hotkey `t` while the pane has the focus) does the same |
+| `/avatar-ask <question>` | ask the avatar on duty its opinion on the session: it reads the last 12 messages (600 characters each) and answers in two or three sentences; an answer ending on a question opens the `answer` field. The `ask` button (hotkey `q`) opens a field for the same |
 | `avatars` button (hotkey `c`) | lists every avatar by name above the controls; click one and it takes over, as `/avatar <id>` does |
 | `/avatar-mute` | toggle the voice for this session; the `mute` / `unmute` button under the face (hotkey `m`) does the same |
 | `vol - N +` | buttons under the face: SAPI volume by steps of 10, 0 to 100, kept across sessions (`$.store`) |
@@ -63,7 +64,7 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 
 | Hook | Role |
 | --- | --- |
-| `session.start` | registers `/avatar`, `/avatar-talk` and `/avatar-mute`, loads the stored avatar (`$.store`), starts the frame clock, opens the pane |
+| `session.start` | registers `/avatar`, `/avatar-talk`, `/avatar-ask` and `/avatar-mute`, loads the stored avatar (`$.store`), starts the frame clock, opens the pane |
 | `command.run` `avatar` | opens the pane, or loads another persona, stores it, queues its greeting (first in line, never over another voice) |
 | `command.run` `avatar-talk`, the `talk` Button | raise a flag; the frame clock, which holds the session's `$`, reads the last 6 messages (`$.session.messages()`, 300 characters each) and asks Haiku for one line, outside the tool-call rate limits |
 | `command.run` `avatar-mute` | flips the `isMuted` state |
