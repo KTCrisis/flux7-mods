@@ -43,7 +43,10 @@ carries them to a browser tab on `http://<host>:8797/`: the full-size portrait
 over the persona's scene, tinted by the mood, the line typed as the voice is
 heard in that tab, and the pane's controls (talk, ask, answer, avatars, mute,
 events, visits, volume). Tap `listen` once: browsers play nothing before a
-gesture. Added to the phone's home screen, it opens like an app.
+gesture. Added to the phone's home screen, it opens like an app. `float` puts
+the face in picture-in-picture over the other apps (Android draws no buttons
+in it: next track asks the avatar to talk, play/pause mutes it), so the voice
+keeps coming while you type in the Claude app.
 
 The voice follows the user: a prompt sent through Remote Control takes the
 relay for this session, a prompt typed at the terminal gives it back. While a

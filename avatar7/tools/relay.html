@@ -58,6 +58,7 @@ font-size:11px;opacity:.45;white-space:nowrap;overflow:hidden;text-overflow:elli
     <button data-c="talk">talk</button>
     <button id="askBtn">ask</button>
     <button id="pickBtn">avatars</button>
+    <button id="floatBtn">float</button>
     <button id="mute" data-c="mute">mute</button>
     <button id="events" data-c="events">events</button>
     <button id="visits" data-c="visits">visits</button>
@@ -66,6 +67,8 @@ font-size:11px;opacity:.45;white-space:nowrap;overflow:hidden;text-overflow:elli
 </div>
 <div id="gate"><b>listen</b><span>tap once: the browser plays nothing before a gesture</span></div>
 <div id="status">waiting</div>
+<canvas id="pipCanvas" width="320" height="320" hidden></canvas>
+<video id="pipVideo" muted playsinline hidden></video>
 <script>
 const TINT = { watch: '#00e5ff', deny: '#ff2a6d', error: '#ffb000', wait: '#7a5cff' };
 const MIX = { idle: 0, watch: .25, wait: .35, deny: .5, error: .5 };
@@ -130,6 +133,47 @@ for (const [id, cmd] of [['ask', 'ask'], ['answer', 'answer']]) {
   };
 }
 
+// Floating: the face drawn into a canvas, the canvas as a video, the video in
+// picture-in-picture over the other apps. Drawn on a timer, not on frames:
+// a page in the background gets no animation frames.
+const pc = $('pipCanvas'), pg = pc.getContext('2d'), pv = $('pipVideo');
+function drawPip() {
+  const S = pc.width, img = $('face');
+  pg.fillStyle = '#000'; pg.fillRect(0, 0, S, S);
+  if (img.complete && img.naturalWidth) pg.drawImage(img, 0, 0, S, S);
+  const tone = getComputedStyle(document.documentElement).getPropertyValue('--tone').trim() || '#00ff9c';
+  const mix = st ? (MIX[st.mood] ?? 0) : 0;
+  if (mix > 0) {
+    pg.globalCompositeOperation = 'color'; pg.globalAlpha = mix;
+    pg.fillStyle = tone; pg.fillRect(0, 0, S, S);
+    pg.globalCompositeOperation = 'source-over'; pg.globalAlpha = 1;
+  }
+  pg.lineWidth = 6; pg.strokeStyle = tone; pg.strokeRect(3, 3, S - 6, S - 6);
+}
+let pipTimer = 0;
+$('floatBtn').onclick = async () => {
+  try {
+    if (document.pictureInPictureElement) { await document.exitPictureInPicture(); return; }
+    drawPip();
+    if (!pv.srcObject) pv.srcObject = pc.captureStream(15);
+    await pv.play();
+    clearInterval(pipTimer); pipTimer = setInterval(drawPip, 80);
+    await pv.requestPictureInPicture();
+    status('floating');
+  } catch (e) { $('line').textContent = 'float failed: ' + e.name + ' ' + e.message; }
+};
+// The floating window draws no HTML on Android: only the media buttons Chrome
+// puts in it, taken over here. Next: talk; play/pause: mute, the video kept on.
+if ('mediaSession' in navigator) {
+  const ms = navigator.mediaSession;
+  ms.setActionHandler('nexttrack', () => send({ cmd: 'talk' }));
+  for (const a of ['play', 'pause']) ms.setActionHandler(a, () => {
+    send({ cmd: 'mute' }); pv.play().catch(() => {});
+    ms.playbackState = st && !st.isMuted ? 'paused' : 'playing';
+  });
+}
+pv.addEventListener('leavepictureinpicture', () => { clearInterval(pipTimer); status('docked'); });
+
 async function onState(s) {
   if (s.persona !== persona) await loadPersona(s.persona);
   st = s;
@@ -145,6 +189,10 @@ async function onState(s) {
     fallback = setTimeout(() => typeOver(text.length * 45), s.isMuted ? 0 : 12000);
   }
   $('mute').textContent = s.isMuted ? 'unmute' : 'mute';
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.playbackState = s.isMuted ? 'paused' : 'playing';
+    navigator.mediaSession.metadata = new MediaMetadata({ title: s.name, artist: 'avatar7' });
+  }
   $('events').textContent = 'events: ' + (s.eventsOn ? 'on' : 'off'); $('events').classList.toggle('on', s.eventsOn);
   $('visits').textContent = 'visits: ' + (s.visitsOn ? 'on' : 'off'); $('visits').classList.toggle('on', s.visitsOn);
   $('volN').textContent = s.volume;
