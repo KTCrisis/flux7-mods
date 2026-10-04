@@ -51,7 +51,7 @@ import {
 import { ASKED_CHARS, commandEvent, heard, heardSay, landed, nextStreak, streakNote, type Streak } from './hearing'
 import { detachedArgv, PLAY_START_MS, SAPI_PLAY, synthArgv } from './voice'
 import { faceCells, H, noise, TINT, W, type Faces, type View } from './draw'
-import { DEFAULT_GRAIN, GLITCH_STEPS, GRAINS, hdFrame, hdKey, hdSize, isSettled, pickHdFace, type Hd, type HdView, type Settle } from './hd'
+import { DEFAULT_GRAIN, GLITCH_STEPS, GRAINS, hdFrame, hdKey, hdSize, hdStamp, isSettled, pickHdFace, type Hd, type HdView, type Settle } from './hd'
 import { begin, end, isHeard, restored, silent, start, typeOn, voiced, type Typing } from './line'
 import { answered, ask as askFace, calm, hold, isWaiting, react, release, stage as stageFace, tick, type Face, type Mood } from './mood'
 
@@ -248,7 +248,9 @@ async function loadHd($: Engine, dir: string): Promise<Hd | null> {
   const width = meta.sceneWidth ?? 0
   const height = meta.sceneHeight ?? 0
   const scene = pixels !== null && pixels.length === width * height * 3 ? { pixels, width, height } : null
-  return { side, base, talk: await bytes('face-talk-hd.rgb'), deny: await bytes('face-deny-hd.rgb'), scene }
+  const talk = await bytes('face-talk-hd.rgb')
+  const deny = await bytes('face-deny-hd.rgb')
+  return { side, base, talk, deny, scene, stamp: hdStamp(base, talk, deny, pixels) }
 }
 
 // Where the HD pictures go, one file per picture key: kitty reads them
@@ -266,17 +268,25 @@ async function writeHd($: Engine, key: string, rgba: Uint8Array): Promise<void> 
   if (done.exitCode !== 0) throw new Error(`${path}: ${done.stderr}`)
 }
 
-// Starts writing a picture's file unless it is there or on its way; `files`
-// marks it pending, then ready. `rgba`, when the render just made the
+// The pictures already in HD_DIR, written by an earlier load or another
+// session: ready, by path, so a reload makes none of them again.
+async function hdOnDisk($: Engine, files: Map<string, 'pending' | 'ready'>): Promise<void> {
+  const ls = await $.process.run(['sh', '-c', 'ls "$1" 2>/dev/null; true', 'sh', HD_DIR])
+  for (const name of ls.stdout.split('\n')) if (name.endsWith('.rgba')) files.set(`${HD_DIR}/${name}`, 'ready')
+}
+
+// Starts writing a picture's file unless it is there or on its way; `files`,
+// by path, marks it pending, then ready. `rgba`, when the render just made the
 // picture, spares making it twice.
 function hdEnsure($: Engine, files: Map<string, 'pending' | 'ready'>, hv: HdView, rgba?: Uint8Array): void {
   const key = hdKey(hv)
-  if (files.has(key)) return
-  files.set(key, 'pending')
+  const path = hdPath(key)
+  if (files.has(path)) return
+  files.set(path, 'pending')
   void writeHd($, key, rgba ?? hdFrame(hv)).then(
-    () => files.set(key, 'ready'),
+    () => files.set(path, 'ready'),
     err => {
-      files.delete(key)
+      files.delete(path)
       $.ui.log(`avatar7: HD picture not written: ${String(err)}`)
     },
   )
@@ -565,7 +575,7 @@ export const register: Register = (on, options) => {
   let grain: number = DEFAULT_GRAIN
   type HdSource = { file: string; format: 'rgba'; width: number; height: number } | { rgba: string; width: number; height: number }
   type HdBand = HdView['band']
-  // The picture keys whose file is written, or being written.
+  // The picture files written, or being written, by path.
   const hdFiles = new Map<string, 'pending' | 'ready'>()
   // Each band's source as shown, kept as one object, so a redraw that
   // changes nothing hands the engine the very same source and nothing is
@@ -617,6 +627,7 @@ export const register: Register = (on, options) => {
       t: step * HD_STEP_S,
       step,
       isStorm: v.mood === 'deny',
+      stamp: hd.stamp,
     }
   }
   const fileSource = (hv: HdView): HdSource => ({ file: hdPath(hdKey(hv)), format: 'rgba', ...hdSize(hv.columns, hv.rows) })
@@ -635,7 +646,7 @@ export const register: Register = (on, options) => {
     }
     const key = hdKey(hv)
     const was = hdShown[band]
-    const isReady = hdFiles.get(key) === 'ready'
+    const isReady = hdFiles.get(hdPath(key)) === 'ready'
     let rgba: Uint8Array | undefined
     if (isReady) {
       if (was?.key !== key) hdShown[band] = { source: fileSource(hv), key }
@@ -661,12 +672,12 @@ export const register: Register = (on, options) => {
     if (hv === null) return { swap: null, toWrite: null, isRefit: false }
     const key = hdKey(hv)
     // Not shown yet: its file, once written, mounts it at a render.
-    if (shown === null) return { swap: null, toWrite: null, isRefit: hdFiles.get(key) === 'ready' }
+    if (shown === null) return { swap: null, toWrite: null, isRefit: hdFiles.get(hdPath(key)) === 'ready' }
     if (key === shown.key) return { swap: null, toWrite: null, isRefit: false }
     // A new size: once it holds, a render makes its picture.
     const { width, height } = hdSize(hv.columns, hv.rows)
     if (shown.source.width !== width || shown.source.height !== height) return { swap: null, toWrite: null, isRefit: isSettled(hdResize, hdResize.size, frame) }
-    if (hdFiles.get(key) !== 'ready') return { swap: null, toWrite: hv, isRefit: false }
+    if (hdFiles.get(hdPath(key)) !== 'ready') return { swap: null, toWrite: hv, isRefit: false }
     const source = fileSource(hv)
     hdShown[band] = { source, key }
     return { swap: source, toWrite: null, isRefit: false }
@@ -748,6 +759,7 @@ export const register: Register = (on, options) => {
     } catch {
       $.ui.log(`avatar7: personas/${id} unreadable, run tools/bake.py ${id}`)
     }
+    if (isHdTerminal) await hdOnDisk($, hdFiles)
     for (const each of AVATARS) {
       try {
         names[each] = (JSON.parse(String(await $.fs.read(`${$.plugin.root}/personas/${each}/persona.json`))) as Persona).name

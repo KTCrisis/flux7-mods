@@ -26,6 +26,9 @@ export type Hd = {
   talk: Uint8Array | null
   deny: Uint8Array | null
   scene: { pixels: Uint8Array; width: number; height: number } | null
+  // A print of the bytes above, so a picture baked again never meets a file
+  // made from the old one.
+  stamp?: string
 }
 
 export type HdView = {
@@ -58,6 +61,7 @@ export type HdView = {
   t: number
   step: number
   isStorm: boolean
+  stamp?: string
 }
 
 // How bright the scene stays behind the face, and the scanlines.
@@ -74,7 +78,7 @@ export const pickHdFace = (hd: Hd, mood: string, isSpeaking: boolean, flap: numb
 
 // What decides the picture: equal keys, equal pixels.
 export const hdKey = (v: HdView): string =>
-  [v.who, v.band, v.hd === null ? '-' : v.face, v.mood, v.glitchStep, v.grain, v.columns, v.rows, v.size, v.top, v.step, v.isStorm ? 's' : '', v.color, v.cutout, v.hd?.side ?? 0].join('|')
+  [v.who, v.band, v.hd === null ? '-' : v.face, v.mood, v.glitchStep, v.grain, v.columns, v.rows, v.size, v.top, v.step, v.isStorm ? 's' : '', v.color, v.cutout, v.hd?.side ?? 0, v.stamp ?? ''].join('|')
 
 // While the pane is being resized, each column brings a new size and the
 // pictures for it would be made at every render; the band keeps its last
@@ -87,6 +91,16 @@ export const isSettled = (s: Settle, size: string, frame: number): boolean => {
     s.since = frame
   }
   return frame - s.since >= SETTLE_FRAMES
+}
+
+// FNV-1a over a sample of the bytes: enough to tell two bakes apart.
+export const hdStamp = (...parts: (Uint8Array | null)[]): string => {
+  let h = 0x811c9dc5
+  for (const p of parts) {
+    if (p === null) continue
+    for (let i = 0; i < p.length; i += 97) h = Math.imul(h ^ (p[i] ?? 0), 0x01000193)
+  }
+  return (h >>> 0).toString(36)
 }
 
 export const hdSize = (columns: number, rows: number): { width: number; height: number } => ({ width: columns * PX, height: rows * 2 * PX })
