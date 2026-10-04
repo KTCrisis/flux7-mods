@@ -18,7 +18,7 @@ sessions.
 | Command | Effect |
 | --- | --- |
 | `/avatar` | open the pane |
-| `/avatar <id>` | switch avatar (`shodan`, `hal`, `glados`, `ada`, `duck7`, `pod042`, `kaneda`, `commis`, `fox`, `adjutant`, `morte`), greet, remember the choice across sessions |
+| `/avatar <id>` | switch avatar (`shodan`, `hal`, `glados`, `ada`, `duck7`, `pod042`, `kaneda`, `commis`, `fox`, `adjutant`, `morte`, `pda`, `lain`, `tachikoma`, `nova`), greet, remember the choice across sessions |
 | `/avatar-talk` | ask the avatar what it thinks of the conversation; the `talk` button under the face (hotkey `t` while the pane has the focus) does the same |
 | `/avatar-ask <question>` | ask the avatar on duty its opinion on the session: it reads the last 12 messages (600 characters each) and answers in two or three sentences; an answer ending on a question opens the `answer` field. The `ask` button (hotkey `q`) opens a field for the same |
 | `/avatar-chat <what you say>` | talk to the avatar personally, about anything but the session: it answers from its own world and what it knows of you (see the private complement below), in two or three sentences, and remembers your last six exchanges, per persona. The `chat` button (hotkey `h`) opens a field that stays open for the conversation |
@@ -89,8 +89,12 @@ the holder only. The voice follows where the user last typed: a prompt sent
 through Remote Control, or typed in a session reached over ssh, takes the
 relay; a prompt typed at the host's own terminal gives it back, and so does a
 session that ends (the page then says nobody holds it). `/avatar remote on`
-takes it and holds it whatever the next prompt's origin; `/avatar remote off`
-gives it back.
+takes it and holds it whatever the next prompt's origin, a `/clear` included
+(the relay follows the new session id); `/avatar remote off` gives it back.
+A holder counts only while the relay's process lives: a relay that died
+without cleaning up no longer swallows the voice. While nobody holds it the
+page's presses are refused (409) rather than kept for later, and at most 16
+wait at once.
 
 **Running it.** As a service, so it is ready before any session needs it:
 `tools/avatar7-relay.service` (instructions inside). The page
@@ -169,17 +173,18 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 
 | Hook | Role |
 | --- | --- |
-| `session.start` | registers `/avatar`, `/avatar-talk`, `/avatar-ask` and `/avatar-mute`, loads the stored avatar (`$.store`), starts the frame clock, opens the pane |
+| `session.start` | registers `/avatar`, `/avatar-talk`, `/avatar-ask`, `/avatar-chat` and `/avatar-mute`, loads the stored avatar (`$.store`), starts the frame clock, opens the pane |
 | `command.run` `avatar` | opens the pane, or loads another persona, stores it, queues its greeting (first in line, never over another voice) |
 | `command.run` `avatar-talk`, the `talk` Button | raise a flag; the frame clock, which holds the session's `$`, reads the last 6 messages (`$.session.messages()`, 300 characters each) and asks Haiku for one line, outside the tool-call rate limits |
 | `command.run` `avatar-ask`, the `ask` field | queue a consult, ranked with the poke and never stale; the clock reads the last 12 messages (600 characters each), asks Haiku for an opinion in two or three sentences (160 tokens), keeps every sentence, and opens the `answer` field when the opinion ends on a question; no stock line when the model gives none |
-| `command.run` (any other) | a command listed in `COMMANDS` (clear, compact, model, fast, rewind, resume, brief, veille, document, galerie, mesh-approve, code-review, security-review, code7) queues a line with what it means; the rest pass in silence; adding one is one line |
+| `command.run` (any other) | a command listed in `COMMANDS` (clear, compact, fast, rewind, resume, brief, veille, document, galerie, mesh-approve, code-review, security-review, code7) queues a line with what it means; the rest pass in silence; adding one is one line |
+| `turn.complete` | compares the model in use (`$.session.model()`) with the last turn's and queues a line when it changed: the `/model` picker, `/config` and Remote Control switch outside any command the mod sees |
 | `session.compact` | an automatic compaction of the main conversation queues an amber line; a manual one was heard as `/compact` |
 | `command.run` `avatar-mute` | flips the `isMuted` state |
 | `state.set` | another mod's write to its own `announce` key is recorded in `announcers`, by plugin name; a write to its own `say` key queues a line at once (see below) |
 | `ui.toast` | a toast from a recorded mod (`next.origin.plugin`) queues a line announcing it in that mod's mood, past the rate limits |
 | `tool.check` | an `ask` verdict on a real call (a settings rule, or mesh7's hook answering `ask` for Bash) sets the waiting face; the line comes only if the prompt is still up after ~2 s, since auto mode may settle the ask alone |
-| `tool.call` | lets the call run (`await next(e)`), classifies the outcome (denied, failed, succeeded) and queues a line; a refusal, a failure or any call through mesh7 waits ~1.8 s in the queue, so mesh7-pane can replace it with what mesh7 decided |
+| `tool.call` | lets the call run (`await next(e)`), classifies the outcome (denied, failed, succeeded) and queues a line; a success waits for silence, a refusal or a failure takes its place in the queue even while another line plays; a refusal, a failure or any call through mesh7 waits ~1.8 s in the queue, so mesh7-pane can replace it with what mesh7 decided; a wait (permission prompt, mesh7 hold) lets the face go after 15 minutes at most |
 | `ui.render` `Pane` | draws the Raster and the line under it; a text fallback off the terminal |
 
 ### Giving a mod a voice
@@ -353,8 +358,8 @@ twice the face's horizontal resolution.
 
 | Where | Key | Lifetime |
 | --- | --- | --- |
-| `$.state` | `avatar7.line`, `avatar7.isMuted` | the session, across reloads |
-| `$.store` | `avatar` | across sessions |
+| `$.state` | `avatar7.line`, `isMuted`, `volume`, `avatar`, `color`, `station`, `isVoicing` (jukebox7 ducks on it), `announcers` | the session, across reloads |
+| `$.store` | `avatar`, `volume`, `events`, `visits` | across sessions |
 | module variables | frame, mood, loaded face and persona | one load |
 
 ## Making an avatar

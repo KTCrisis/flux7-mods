@@ -1,7 +1,7 @@
 {
   "name": "jukebox7",
   "version": "0.2.0",
-  "description": "Plays music from YouTube when asked in plain words, audio only through ffplay, with a small control pane",
+  "description": "Plays music from YouTube when asked in plain words, audio only through a hidden VLC, with a small control pane",
   "license": "MIT",
   "types": "./types/index.d.ts"
 }

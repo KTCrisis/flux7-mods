@@ -1,7 +1,7 @@
 export type Track = { id: string; title: string; seconds: number | null }
 
 // What plays: the search results, the one playing, and the process group of
-// its yt-dlp | ffplay pipeline. Kept in $.state so a reload still owns it.
+// its yt-dlp | VLC pipeline. Kept in $.state so a reload still owns it.
 export type Player = {
   tracks: Track[]
   index: number

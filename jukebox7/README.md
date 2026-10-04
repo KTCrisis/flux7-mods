@@ -6,18 +6,23 @@ without a browser.
 ## What it does
 
 A prompt that names music (`put on some ambient`, `coupe la musique`, `next`)
-goes to Haiku first, which answers one intent: play, toggle, next, stop, or
-none. Anything else, including requests aimed at play7, keys7, Renoise or a
+goes to Haiku first, which answers one intent: play, toggle, next, similar,
+volume, stop, or none. Anything else, including requests aimed at play7, keys7, Renoise or a
 melody, reaches the session untouched; a prompt without a music word skips
 the model call altogether.
 
 - **play**: `yt-dlp` searches YouTube, keeps songs of two to twenty minutes
   (a mood asked in words prefers five and more), and streams the audio into
-  Windows' VLC with its dummy interface: no window, no focus taken.
+  Windows' VLC with its dummy interface: no window, no focus taken. The
+  track asked for plays whatever its length; next walks the songs alone,
+  and past the last one the list ends.
 - **toggle / next / stop**: the WSL side runs in a process group of its own
   (`setsid`); pause is VLC's own `pl_forcepause` over its HTTP interface, at once,
   stop is `CONT` then `TERM`, and the `vlc.exe` it started is terminated by
   its `--meta-title=jukebox7` tag, so a VLC opened by hand is never touched.
+  A pause VLC does not answer changes nothing and says so. One change of song
+  runs at a time (a search takes up to 40 s): a press meanwhile is refused.
+  A session that never played leaves the VLC alone when it ends.
 
 The **pane** (`/music`, or opened on the first song) shows the title, its
 state and volume, `p` pause, `n` next, `r` similar, `s` stop, `d` and `u` the volume by
@@ -27,8 +32,9 @@ is a radio: a random artist from its list, a random song of theirs; next and
 the end of a song roll again.
 
 A pick searches YouTube Music's songs tab, which holds tracks only: no
-interview, gameplay or full OST. Its listing gives no length, so the bar
-shows the elapsed time alone; plain YouTube, kept to two to twenty minutes,
+interview, gameplay or full OST. Its listing gives no length: yt-dlp is
+asked for it once the song plays, the bar shows the elapsed time until then;
+plain YouTube, kept to two to twenty minutes,
 is the fallback when it finds nothing.
 
 **Discoveries.** Each genre also holds a few artists beyond the listener's

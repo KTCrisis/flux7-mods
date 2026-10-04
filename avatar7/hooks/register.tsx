@@ -173,8 +173,11 @@ const drainArgv = (): string[] => [
   '-c',
   `for f in "${RELAY_SPOOL}"/cmd/*.json; do [ -f "$f" ] && cat "$f" && echo && rm -f "$f"; done; true`,
 ]
-// What the page may ask: the pane's gestures, nothing that reaches the session
-// beyond the avatar itself.
+// What the page may ask: the pane's gestures, never mesh7's approvals. talk,
+// ask and chat do reach the session: Haiku reads its last messages and the
+// answer goes back to the page, which also shows 40 characters of the last
+// prompt. The relay binds to the tailnet only, and takes presses only while a
+// session holds it.
 export type Remote =
   | { cmd: 'talk' | 'mute' | 'events' | 'visits' }
   | { cmd: 'ask' | 'answer' | 'chat'; text: string }
@@ -1275,7 +1278,7 @@ export const register: Register = (on, options) => {
         isRelayed = false
         return { text: 'The voice comes back to this machine.' }
       }
-      // The relay runs as a user service (tools/avatar7-relay.service); without
+      // The relay runs as a system service (tools/avatar7-relay.service); without
       // it, started here, detached.
       const pid = `"${RELAY_SPOOL}/relay.pid"`
       const alive = await $.process.run(['sh', '-c', `[ -f ${pid} ] && kill -0 "$(cat ${pid})" 2>/dev/null && echo up`])

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Carry avatar7's voice to another machine on the tailnet.
 
-While this runs, avatar7 drops each WAV it would play into SPOOL; a browser tab
+While this runs, avatar7 drops each line it would play into SPOOL (Opus, or
+WAV without libopus); a browser tab
 open on http://<tailnet ip>:8797/ hears it a moment later, and sees the face:
 avatar7 mirrors who is on duty, the mood and the line into SPOOL/state.json. Bound to the
 tailnet address only, never the LAN. The spool is created on start and
 removed on exit; while it exists, void stays silent and the voice goes there.
-Started and stopped by /avatar remote on|off.
+Runs as a system service (avatar7-relay.service), or started by /avatar
+remote on when none runs; /avatar remote off gives the relay back without
+stopping it. Reloads itself when this file changes.
 
     python3 avatar7/tools/relay.py [--port 8797] [--host <ip>]
 """
@@ -37,7 +40,7 @@ COMMANDS_DIR = SPOOL / "cmd"
 COMMANDS = {"talk", "ask", "answer", "chat", "avatar", "mute", "events", "visits", "volume"}
 MAX_COMMAND = 2048
 MAX_PENDING = 16  # presses waiting for the session, at most
-KEEP_S = 120  # a WAV no tab fetched within this is dropped
+KEEP_S = 120  # every voice is dropped after this, fetched or not; replay reaches this far
 
 # The page, read at each request: edit it without restarting the relay.
 TOOLS = Path(__file__).resolve().parent
