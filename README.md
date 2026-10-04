@@ -116,6 +116,13 @@ tab and again later for the front does not work: the early open wins.
 ## Checking
 
     claude plugin validate ~/flux7-mods/avatar7
+    claude plugin test ~/flux7-mods/avatar7
+    npx -y -p typescript@5 tsc -p ~/flux7-mods/avatar7 --noEmit
+
+The plugin tests mock every process; the relay's shell scripts run for real
+in their own test, against a spool of their own:
+
+    node --experimental-strip-types --test ~/flux7-mods/avatar7/tools/test_relay_shell.ts
 
 ## License
 
