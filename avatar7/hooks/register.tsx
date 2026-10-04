@@ -51,7 +51,7 @@ import {
 import { ASKED_CHARS, commandEvent, heard, heardSay, landed, nextStreak, streakNote, type Streak } from './hearing'
 import { detachedArgv, PLAY_START_MS, SAPI_PLAY, synthArgv } from './voice'
 import { faceCells, H, noise, TINT, W, type Faces, type View } from './draw'
-import { hdFrame, hdKey, hdSize, pickHdFace, type Hd, type HdView } from './hd'
+import { DEFAULT_GRAIN, GRAINS, hdFrame, hdKey, hdSize, pickHdFace, type Hd, type HdView } from './hd'
 import { begin, end, isHeard, restored, silent, start, typeOn, voiced, type Typing } from './line'
 import { answered, ask as askFace, calm, hold, isWaiting, react, release, stage as stageFace, tick, type Face, type Mood } from './mood'
 
@@ -527,6 +527,8 @@ export const register: Register = (on, options) => {
   // picture it shows, so the clock blits only when the picture changes; and
   // the last pictures made, since the same few come back (moods, mouth).
   let hdColumns = 0
+  // The art pixel's side (hd.ts GRAINS): /avatar pixel <n>, kept in $.store.
+  let grain: number = DEFAULT_GRAIN
   let isHdShown = false
   let hdShownKey = ''
   const hdMade = new Map<string, string>()
@@ -542,6 +544,7 @@ export const register: Register = (on, options) => {
       // A new tear every four frames while refused: a picture is ~1 MB.
       glitchStep: v.mood === 'deny' ? v.frame >> 2 : 0,
       glitch: v.glitch,
+      grain,
       color: v.persona.color ?? '#00ff9c',
       cutout: v.persona.cutout ?? 12,
       columns: hdColumns,
@@ -605,7 +608,7 @@ export const register: Register = (on, options) => {
 
     await $.command.register({
       name: 'avatar',
-      description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar duo [id], /avatar events on|off, /avatar visits on|off, /avatar remote on|off`,
+      description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar duo [id], /avatar events on|off, /avatar visits on|off, /avatar remote on|off, /avatar pixel ${GRAINS.join('|')}`,
     })
     await $.command.register({ name: 'avatar-mute', description: 'Toggle the avatar voice' })
     await $.command.register({ name: 'avatar-talk', description: 'Ask the avatar what it thinks of the conversation' })
@@ -645,6 +648,8 @@ export const register: Register = (on, options) => {
     const last = await read($, line)
     stage.typing = restored(stage.typing, last.text)
     eventsOn = (await $.store.get('events')) !== false
+    const storedGrain = await $.store.get('pixel')
+    if (typeof storedGrain === 'number' && (GRAINS as readonly number[]).includes(storedGrain)) grain = storedGrain
     visitsOn = (await $.store.get('visits')) !== false
     nextEventAt = frame + nextGap()
 
@@ -854,6 +859,14 @@ export const register: Register = (on, options) => {
         ...[...saidHere].map(([plugin, a]) => `${plugin} (say): ${a.mood}, ${a.event}`),
       ]
       return { text: all.length === 0 ? 'No mod has asked for a voice in this session.' : all.join('\n') }
+    }
+    if (id.startsWith('pixel')) {
+      const n = Number(id.slice('pixel'.length).trim())
+      if (!(GRAINS as readonly number[]).includes(n)) return { text: `The pixel's size, in kitty or Ghostty: /avatar pixel ${GRAINS.join('|')} (1 smooth, 6 the half blocks' grid); now ${grain}.` }
+      grain = n
+      await $.store.set('pixel', n)
+      $.ui.invalidate('ui.render')
+      return { text: isHdTerminal ? `Pixels of ${n}.` : `Pixels of ${n}, seen in kitty or Ghostty; this terminal keeps the half blocks.` }
     }
     if (id === 'remote on') return { text: await relayOn($, relay) }
     if (id === 'remote off') return { text: await relayOff($, relay) }

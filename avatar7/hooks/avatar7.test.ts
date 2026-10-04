@@ -619,7 +619,7 @@ const hdView = (mood: HdView['mood']): HdView => {
   for (let y = 2; y < 6; y++) for (let x = 2; x < 6; x++) base.fill(200, (y * side + x) * 3, (y * side + x) * 3 + 3)
   const scene = { width: 16, height: 4, pixels: new Uint8Array(16 * 4 * 3).map((_, i) => (i % 3 === 2 ? 255 : 0)) }
   const hd: Hd = { side, base, talk: null, deny: null, scene }
-  return { hd, mood, face: 'base', glitchStep: 0, glitch: 1, color: '#00ff9c', cutout: 12, columns: 20, rows: 4, size: 8 }
+  return { hd, mood, face: 'base', glitchStep: 0, glitch: 1, grain: 1, color: '#00ff9c', cutout: 12, columns: 20, rows: 4, size: 8 }
 }
 const at = (img: Uint8Array, width: number, x: number, y: number): number[] => Array.from(img.slice((y * width + x) * 4, (y * width + x) * 4 + 3))
 
@@ -657,4 +657,15 @@ test('the frame takes the persona color at rest and the mood color on a refusal'
   expect(at(hdFrame(idle), width, left, 0)).toEqual([0x00, 0xff, 0x9c])
   expect(at(hdFrame(deny), width, left, 0)).toEqual([0xff, 0x2a, 0x6d])
   expect(hdKey(idle)).not.toBe(hdKey(deny))
+})
+
+test('a coarser grain draws square art pixels, each one flat', () => {
+  const v = { ...hdView('idle'), grain: 3 }
+  const { width } = hdSize(v.columns, v.rows)
+  const img = hdFrame(v)
+  for (const [x, y] of [[30, 30], [33, 36], [60, 12]] as const) {
+    const corner = at(img, width, x - (x % 3), y - (y % 3))
+    expect(at(img, width, x - (x % 3) + 2, y - (y % 3) + 2)).toEqual(corner)
+  }
+  expect(hdKey(v)).not.toBe(hdKey(hdView('idle')))
 })

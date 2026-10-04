@@ -491,7 +491,9 @@ the PDA. The others keep a single face.
 
 Where the terminal draws pictures for the `Image` element, the band of the
 face is one real image instead of half blocks: the portrait at 384 px cut out
-over the scene at 768 px, tinted, glitched, scanlined and framed as below
+over the scene at 768 px, tinted, glitched, scanlined and framed as below,
+drawn in art pixels of `/avatar pixel 1|2|3|4|6` output pixels (3 by default:
+twice the half blocks' grid; 6 is their grid, 1 the full bake)
 (`hooks/hd.ts`). It needs kitty's Unicode placeholders, so kitty and Ghostty
 only; WezTerm and Windows Terminal keep the half blocks, and so does
 `AVATAR7_HD=0`. The tool writes `face-hd.rgb` (and the `talk`/`deny` frames,
