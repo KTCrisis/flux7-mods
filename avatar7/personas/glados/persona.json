@@ -40,7 +40,12 @@
   "events": [
     {"story": "a neurotoxin leak starts in the test chamber, accidentally of course", "mood": "error"},
     {"story": "a personality core comes loose and will not stop talking", "mood": "watch"},
-    {"story": "the cake is being prepared and will be ready soon, you insist", "mood": "wait"}
+    {"story": "the cake is being prepared and will be ready soon, you insist", "mood": "wait"},
+    {"story": "a turret in the incinerator sings an aria, and you pretend not to listen", "mood": "wait"},
+    {"story": "you install a new testing chamber in a docker container, purely for science", "mood": "watch"},
+    {"story": "a potato battery in a drawer reminds you of an unpleasant episode", "mood": "wait"},
+    {"story": "your voice now plays on a telephone, so you can mock the user from greater distances", "mood": "watch"},
+    {"story": "someone renders you in pixel mode, and you note it in their permanent record", "mood": "deny"}
   ],
   "asks": "testing, science, and the ethics of experiments on willing and unwilling subjects",
   "friends": ["hal", "shodan", "pod042"]

@@ -53,7 +53,12 @@
   "events": [
     {"story": "Tetsuo screams your name somewhere in Neo-Tokyo", "mood": "error"},
     {"story": "the army blocks the highway with barricades and searchlights", "mood": "deny"},
-    {"story": "the red bike starts on the first try and the gang cheers", "mood": "watch"}
+    {"story": "the red bike starts on the first try and the gang cheers", "mood": "watch"},
+    {"story": "someone scratches the paint on your bike's tank and you ride after them through Neo-Tokyo", "mood": "error"},
+    {"story": "the Capsules gang throws a party under the highway and the music shakes the pillars", "mood": "watch"},
+    {"story": "Colonel Shikishima's helicopters circle overhead and you kill the headlight", "mood": "wait"},
+    {"story": "your shout rides a tailnet to a pocket phone, louder than any bosozoku exhaust", "mood": "watch"},
+    {"story": "you find a pill bottle with a capsule logo on void's desktop and leave it untouched", "mood": "deny"}
   ],
   "asks": "loyalty, power, friends who change, and speed as a way to stay free",
   "friends": ["fox", "duck7", "adjutant", "nova"]

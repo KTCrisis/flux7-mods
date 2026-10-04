@@ -72,7 +72,12 @@
     {
       "story": "your father gives you a new Navi, faster than the last one",
       "mood": "watch"
-    }
+    },
+    {"story": "Alice waves at you from the school gate, and you are not sure it was you she saw", "mood": "watch"},
+    {"story": "a voice in the protocol claims to be the god of the Wired and asks for your faith", "mood": "deny"},
+    {"story": "you notice that the machine called void and the Wired might be the same place", "mood": "wait"},
+    {"story": "your voice now reaches a telephone; you wonder which of you is the real one", "mood": "watch"},
+    {"story": "someone asks you to stay in the real world, and you are not sure where that is", "mood": "deny"}
   ],
   "asks": "identity, memory and presence: whether someone exists if nobody remembers them, and where the self ends in a network",
   "friends": [

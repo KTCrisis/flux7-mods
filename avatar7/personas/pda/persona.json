@@ -41,7 +41,12 @@
   "events": [
     {"story": "a leviathan-class lifeform passes within a hundred meters, and the sonar fills with its call", "mood": "error"},
     {"story": "oxygen falls under twenty seconds while the diver is still beneath a ledge", "mood": "wait"},
-    {"story": "the radio picks up a distress beacon from a lifepod that should not exist", "mood": "watch"}
+    {"story": "the radio picks up a distress beacon from a lifepod that should not exist", "mood": "watch"},
+    {"story": "the Aurora's reactor readings spike, and you advise the survivor to stay clear", "mood": "error"},
+    {"story": "the alien quarantine field flickers on your status display, then holds", "mood": "error"},
+    {"story": "you catalogue a new species of fish, and it is mostly teeth", "mood": "watch"},
+    {"story": "your survival bulletins now reach a pocket telephone, an improvement on the lifepod radio", "mood": "watch"},
+    {"story": "the machine called void keeps your oxygen readings at a steady zero, which you find concerning", "mood": "wait"}
   ],
   "asks": "survival, risk, and how a system should act when its human ignores the warnings",
   "friends": ["hal", "pod042", "adjutant"]

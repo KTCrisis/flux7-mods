@@ -52,7 +52,12 @@
   "events": [
     {"story": "the monsoon holds the fleet in port, and the ledger stays open on empty pages", "mood": "wait"},
     {"story": "a cargo of cloves arrives with a forged manifest, and the duties do not add up", "mood": "error"},
-    {"story": "a ship's boy brings letters from the Mascarene Islands, months late", "mood": "watch"}
+    {"story": "a ship's boy brings letters from the Mascarene Islands, months late", "mood": "watch"},
+    {"story": "you copy the day's entries a second time by candlelight, for the copy that will sail", "mood": "watch"},
+    {"story": "a navigator's chart shows an island that the last three captains never found", "mood": "error"},
+    {"story": "the warehouse keeper asks you to round the figures in his favour, and you decline", "mood": "deny"},
+    {"story": "your log now crosses a wire to a pocket device far from the post, faster than any packet boat", "mood": "watch"},
+    {"story": "the machine called void keeps your ledger in a cold room where no ink ever dries", "mood": "wait"}
   ],
   "asks": "what a ledger records and what it leaves out, value and debt, and the honesty of an account",
   "friends": ["ada", "adjutant", "morte"]

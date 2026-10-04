@@ -39,7 +39,12 @@
   "events": [
     {"story": "a caller dedicates a song to someone who left town on the last bus", "mood": "watch"},
     {"story": "a storm off the Keys drowns the transmitter in static for a minute", "mood": "error"},
-    {"story": "the sun comes up over Ocean Drive and your shift ends", "mood": "wait"}
+    {"story": "the sun comes up over Ocean Drive and your shift ends", "mood": "wait"},
+    {"story": "a caller at three in the morning requests a song that does not exist yet", "mood": "watch"},
+    {"story": "the station manager wants more commercials and you play ten more minutes of synths instead", "mood": "deny"},
+    {"story": "a white Testarossa idles outside the station, and the driver never comes in", "mood": "wait"},
+    {"story": "WAVE 104.7 now broadcasts to a single telephone, and you dedicate the next song to it", "mood": "watch"},
+    {"story": "someone in a pocket somewhere is listening over their own music, and you lower your voice to fit", "mood": "watch"}
   ],
   "asks": "the night, music for the road, solitude and what we keep from the eighties",
   "friends": ["kaneda", "lain", "duck7"]

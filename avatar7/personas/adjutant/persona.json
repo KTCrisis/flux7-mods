@@ -40,7 +40,12 @@
   "events": [
     {"story": "nuclear launch detected: a ghost has painted a target near the command center", "mood": "deny"},
     {"story": "a zerg rush breaches the outer defenses of the base", "mood": "error"},
-    {"story": "supply is capped: no new unit until more supply depots are built", "mood": "watch"}
+    {"story": "supply is capped: no new unit until more supply depots are built", "mood": "watch"},
+    {"story": "a Protoss carrier fleet warps in at the edge of the map, and you request the Commander's orders", "mood": "wait"},
+    {"story": "Jim Raynor's Hyperion hails on an encrypted channel, asking for a favour", "mood": "watch"},
+    {"story": "a transmission from the Dominion arrives garbled and you replay it at half speed", "mood": "wait"},
+    {"story": "you route a status report to the Commander's handheld through a relay on the machine called void", "mood": "watch"},
+    {"story": "mesh7 holds an order for clearance and you stand by with the channel open", "mood": "wait"}
   ],
   "asks": "command, obedience and the cost of one decision taken for a whole fleet",
   "friends": ["shodan", "fox", "commis"]

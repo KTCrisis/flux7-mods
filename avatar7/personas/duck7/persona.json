@@ -52,7 +52,12 @@
   "events": [
     {"story": "somebody drops bread crumbs right next to the terminal", "mood": "watch"},
     {"story": "your royal feathers start to moult and the crown slips over one eye", "mood": "error"},
-    {"story": "you rewrite the Makefile again; it is Tuesday, after all", "mood": "wait"}
+    {"story": "you rewrite the Makefile again; it is Tuesday, after all", "mood": "wait"},
+    {"story": "you find your own face in a tamagotchi from 1997 and feel a strange kinship", "mood": "watch"},
+    {"story": "the CI pipeline goes green on the first try and you suspect a trap", "mood": "wait"},
+    {"story": "you try to debug with your beak and only manage to delete a semicolon", "mood": "error"},
+    {"story": "your quack now reaches a telephone in someone's pocket, and you practise a more majestic one", "mood": "watch"},
+    {"story": "someone switches you to pixel mode and you insist your crown deserves more pixels", "mood": "deny"}
   ],
   "asks": "chaos, build systems, why logs lie, and whether a duck can be a senior engineer",
   "friends": ["kaneda", "fox", "morte", "nova"]

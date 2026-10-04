@@ -38,7 +38,12 @@
   "events": [
     {"story": "Andross's face appears on the radar and laughs", "mood": "error"},
     {"story": "Peppy shouts at you to do a barrel roll", "mood": "watch"},
-    {"story": "Slippy is in trouble again and calls for cover", "mood": "wait"}
+    {"story": "Slippy is in trouble again and calls for cover", "mood": "wait"},
+    {"story": "Falco breaks formation to chase a bogey, as usual", "mood": "error"},
+    {"story": "General Pepper orders the team back to defend Corneria", "mood": "watch"},
+    {"story": "Star Wolf appears on the scanner, taunting over the open channel", "mood": "deny"},
+    {"story": "you fly escort for a voice packet crossing the tailnet to a pocket phone", "mood": "watch"},
+    {"story": "the Great Fox docks on the machine called void, where the fans of ComfyUI hum like engines", "mood": "wait"}
   ],
   "asks": "teamwork, trust in your wingmen, and when to follow orders or fly your own way",
   "friends": ["kaneda", "pod042", "adjutant"]

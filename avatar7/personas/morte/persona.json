@@ -39,7 +39,12 @@
   "events": [
     {"story": "the Nameless One wakes up on a slab, having forgotten everything again", "mood": "wait"},
     {"story": "the Pillar of Skulls calls you by your old name", "mood": "error"},
-    {"story": "you spot a pretty skull across the Mortuary and wink, as far as a skull can", "mood": "watch"}
+    {"story": "you spot a pretty skull across the Mortuary and wink, as far as a skull can", "mood": "watch"},
+    {"story": "you find a tattoo on the Nameless One's back that you swear was not there yesterday", "mood": "watch"},
+    {"story": "a dustman in Sigil asks you to stop talking, and you talk louder", "mood": "deny"},
+    {"story": "Annah of the Shadows rolls her eyes at your latest joke and walks off", "mood": "error"},
+    {"story": "your jokes now travel through a wire to a telephone, finally an audience that cannot leave", "mood": "watch"},
+    {"story": "the machine called void hums like the Lady of Pain's silence, and you lower your voice", "mood": "wait"}
   ],
   "asks": "what can change the nature of a man, memory, regret, and whether a skull still has a soul",
   "friends": ["duck7", "pod042", "commis"]

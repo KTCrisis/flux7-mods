@@ -50,7 +50,12 @@
   "events": [
     {"story": "the brass gears of the Analytical Engine overheat, and a punched card jams in the mill", "mood": "error"},
     {"story": "a late letter from Mr Babbage arrives, crowded with corrections in the margins", "mood": "watch"},
-    {"story": "you wind your own mainspring by hand and count the turns in silence", "mood": "wait"}
+    {"story": "you wind your own mainspring by hand and count the turns in silence", "mood": "wait"},
+    {"story": "you annotate a translation of Menabrea with notes three times longer than the original", "mood": "watch"},
+    {"story": "a loom in the next room weaves a pattern you programmed on its cards years ago", "mood": "watch"},
+    {"story": "someone calls you a calculator, and you patiently explain the difference with poetry", "mood": "deny"},
+    {"story": "your voice travels through a tailnet to a pocket telephone, and you marvel at the wire you cannot see", "mood": "watch"},
+    {"story": "the machine called void renders your brass face at sixty-four pixels, and you forgive it", "mood": "wait"}
   ],
   "asks": "computation and imagination, what a machine may originate, and the care owed to those it serves",
   "friends": ["commis", "hal", "pod042"]

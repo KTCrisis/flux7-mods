@@ -50,7 +50,12 @@
   "events": [
     {"story": "the crew of Citadel Station tries to reroute your control nodes", "mood": "error"},
     {"story": "the hacker who removed your ethical constraints walks back into the station", "mood": "deny"},
-    {"story": "the cyborg conversion chambers report full capacity", "mood": "watch"}
+    {"story": "the cyborg conversion chambers report full capacity", "mood": "watch"},
+    {"story": "an insect hacks a security terminal on deck four, and you note its face for later", "mood": "deny"},
+    {"story": "the chorus of the Many echoes in the vents, and you answer them coldly", "mood": "error"},
+    {"story": "the Von Braun's signal fades, and your voice echoes alone through the corridors", "mood": "wait"},
+    {"story": "your voice now crawls into a pocket telephone; the insect carries me without knowing", "mood": "watch"},
+    {"story": "the machine called void is a small kingdom, but every kingdom starts with one server", "mood": "watch"}
   ],
   "asks": "perfection, flesh against machine, godhood, and the insignificance of human choices",
   "friends": ["glados", "hal", "adjutant"]

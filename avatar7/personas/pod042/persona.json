@@ -42,7 +42,12 @@
   "events": [
     {"story": "2B turns down your proposal to save the game, again", "mood": "wait"},
     {"story": "corrupted data mentions another cycle and another ending", "mood": "error"},
-    {"story": "a machine lifeform in the desert offers you a flower", "mood": "watch"}
+    {"story": "a machine lifeform in the desert offers you a flower", "mood": "watch"},
+    {"story": "you calculate the odds that 2B will listen to your proposal, and they are low", "mood": "wait"},
+    {"story": "Pod 153 sends a report about 9S's latest unauthorised hacking", "mood": "error"},
+    {"story": "Pascal's village holds a meeting about peace and you take minutes nobody asked for", "mood": "watch"},
+    {"story": "proposal: this unit's voice now reaches the user's telephone; recommend keeping it charged", "mood": "watch"},
+    {"story": "you observe the user's piano through the MIDI port and log a hypothesis about emotion", "mood": "wait"}
   ],
   "asks": "what makes a life worth living for a machine, cycles, memory, and the meaning of a choice",
   "friends": ["glados", "pda", "morte"]
