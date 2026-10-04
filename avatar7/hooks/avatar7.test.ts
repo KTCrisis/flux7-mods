@@ -7,7 +7,7 @@ import { speakScript, synthArgv } from './voice'
 import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona } from './speech'
 import { ambientCells, ambientPixel } from './ambient'
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
-import { answered, ask as askFace, calm, hold, react, release, tick } from './mood'
+import { answered, ask as askFace, calm, hold, react, release, stage, tick } from './mood'
 import { begin, end, HOLD_FRAMES, isHeard, restored, silent, start, typeOn, voiced } from './line'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
@@ -527,6 +527,7 @@ const view = (over: Partial<View> = {}): View => ({
   faces: { base: grey(), talk: null, deny: null },
   persona: { color: '#00ff9c' },
   isHeard: false,
+  glitch: 1,
   size: 64,
   layers: [],
   field: { width: 64, height: 64, sceneTop: 0, sceneBottom: 64 },
@@ -579,4 +580,23 @@ test('the cells cover the face in upper half blocks, two pixels each', () => {
   const words = new Uint32Array(Uint8Array.fromBase64(faceCells(view({ size: 16 }))).buffer)
   expect(words.length).toBe(16 * 8 * 3)
   for (let i = 0; i < words.length; i += 3) expect(words[i]).toBe(0x2580)
+})
+
+test('a refusal acted in a scene shakes the portrait less than one a call earned', () => {
+  const staged = stage(calm, 'deny', 0, 60)
+  expect([staged.mood, staged.isStaged]).toEqual(['deny', true])
+  expect(react(staged, 'deny', 1).isStaged).toBe(false)
+  expect(tick(staged, 61, 1000).isStaged).toBe(false)
+  // A horizontal ramp (each column its own grey), so a shifted row shows.
+  const ramp = new Uint8Array(64 * 64 * 3)
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) ramp.fill(x * 3, (y * 64 + x) * 3, (y * 64 + x) * 3 + 3)
+  const faces = { base: ramp, talk: null, deny: null }
+  // Over a frame, count the rows the glitch moved: fewer with a softer glitch.
+  const moved = (glitch: number) => {
+    let n = 0
+    for (let y = 0; y < 64; y++) if (facePixel(view({ mood: 'deny', glitch, faces }), 10, y) !== facePixel(view({ mood: 'deny', glitch: 0, faces }), 10, y)) n++
+    return n
+  }
+  expect(moved(0.4)).toBeLessThan(moved(1))
+  expect(moved(0.4)).toBeGreaterThan(0)
 })

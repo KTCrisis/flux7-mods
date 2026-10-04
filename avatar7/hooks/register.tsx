@@ -52,7 +52,7 @@ import { ASKED_CHARS, commandEvent, heard, heardSay, landed, nextStreak, streakN
 import { detachedArgv, PLAY_START_MS, SAPI_PLAY, synthArgv } from './voice'
 import { faceCells, H, noise, TINT, W, type Faces, type View } from './draw'
 import { begin, end, isHeard, restored, silent, start, typeOn, voiced, type Typing } from './line'
-import { answered, ask as askFace, calm, hold, isWaiting, react, release, tick, type Face, type Mood } from './mood'
+import { answered, ask as askFace, calm, hold, isWaiting, react, release, stage as stageFace, tick, type Face, type Mood } from './mood'
 
 const PANE = 'avatar7'
 const FACE = 'face'
@@ -69,6 +69,8 @@ const DEFAULT = 'shodan'
 const AVATARS = ['shodan', 'hal', 'glados', 'ada', 'duck7', 'pod042', 'kaneda', 'commis', 'fox', 'adjutant', 'morte', 'pda', 'lain', 'tachikoma', 'nova']
 
 const MIN_SIZE = 16
+// A refusal acted in a scene shakes the portrait this much of a real one.
+const SCENE_GLITCH = 0.4
 
 // Rows kept under the face for the line, which may wrap once, the pending
 // approval, the buttons and the two rules between them.
@@ -425,7 +427,7 @@ export const register: Register = (on, options) => {
   }
   const startEvent = (ask: Ask): void => {
     if (typeof ask === 'object' && 'story' in ask) {
-      face = react(face, ask.mood, frame, 60)
+      face = stageFace(face, ask.mood, frame, 60)
     }
     speakLater(ask)
   }
@@ -471,6 +473,7 @@ export const register: Register = (on, options) => {
       faces: isGuest && stage.guest !== null ? stage.guest.faces : faces,
       persona: isGuest && stage.guest !== null ? stage.guest.persona : who,
       isHeard: isHeard(stage.typing, frame),
+      glitch: face.isStaged ? SCENE_GLITCH : 1,
       size,
       layers: ambientLayers(),
       field: ambField,

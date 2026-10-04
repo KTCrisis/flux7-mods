@@ -15,9 +15,12 @@ export type Face = {
   // A call put to the permission prompt (a mesh7 hook's `ask`, a settings rule).
   askSince: number | null
   askCall: string
+  // The mood comes from a moment of the persona's own story, not from a
+  // call: the face shows it, softer (a smaller glitch on a staged refusal).
+  isStaged: boolean
 }
 
-export const calm: Face = { mood: 'idle', until: 0, held: null, heldSince: 0, askSince: null, askCall: '' }
+export const calm: Face = { mood: 'idle', until: 0, held: null, heldSince: 0, askSince: null, askCall: '', isStaged: false }
 
 export const isWaiting = (f: Face): boolean => f.held !== null || f.askSince !== null
 
@@ -26,16 +29,20 @@ export const span = (m: Mood): number => (m === 'watch' ? 12 : 30)
 
 // A mood for a while; a wait keeps the face as it is.
 export const react = (f: Face, mood: Mood, now: number, frames = span(mood)): Face =>
-  isWaiting(f) ? f : { ...f, mood, until: now + frames }
+  isWaiting(f) ? f : { ...f, mood, until: now + frames, isStaged: false }
+
+// A scene of the persona's own: its mood, acted rather than suffered.
+export const stage = (f: Face, mood: Mood, now: number, frames: number): Face =>
+  isWaiting(f) ? f : { ...f, mood, until: now + frames, isStaged: true }
 
 // mesh7 holds a call for a human: the face waits until the release.
-export const hold = (f: Face, call: string, now: number): Face => ({ ...f, held: call, heldSince: now, mood: 'wait', until: Infinity })
+export const hold = (f: Face, call: string, now: number): Face => ({ ...f, held: call, heldSince: now, mood: 'wait', until: Infinity, isStaged: false })
 
 // The human decided: the verdict's mood, for a while.
-export const release = (f: Face, mood: Mood, now: number): Face => ({ ...f, held: null, mood, until: now + 30 })
+export const release = (f: Face, mood: Mood, now: number): Face => ({ ...f, held: null, mood, until: now + 30, isStaged: false })
 
 // A call goes to the permission prompt: the face waits until it ran.
-export const ask = (f: Face, call: string, now: number): Face => ({ ...f, askSince: now, askCall: call, mood: 'wait', until: Infinity })
+export const ask = (f: Face, call: string, now: number): Face => ({ ...f, askSince: now, askCall: call, mood: 'wait', until: Infinity, isStaged: false })
 
 // The call ran (or was interrupted): the prompt is gone. The mood stays until
 // the call's own outcome sets it.
@@ -49,6 +56,6 @@ export const tick = (f: Face, now: number, cap: number): Face => {
   if ((g.askSince !== null && now - g.askSince > cap) || (g.held !== null && now - g.heldSince > cap)) {
     g = { ...g, askSince: null, held: null, until: now }
   }
-  if (now > g.until && g.mood !== 'idle') g = { ...g, mood: 'idle' }
+  if (now > g.until && g.mood !== 'idle') g = { ...g, mood: 'idle', isStaged: false }
   return g
 }

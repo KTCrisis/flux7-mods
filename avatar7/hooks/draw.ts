@@ -50,6 +50,9 @@ export type View = {
   faces: Faces | null
   persona: { color?: string; cutout?: number } | null
   isHeard: boolean
+  // How hard a refusal glitches the portrait: 1 for a call denied, less for
+  // a refusal the persona acts in a scene of its own.
+  glitch: number
   // The face's side in output pixels.
   size: number
   layers: AmbientLayer[]
@@ -61,8 +64,8 @@ export type View = {
 // A portrait pixel, x and y in W x H.
 export const facePixel = (v: View, x: number, y: number): number => {
   const t = v.frame * (v.frameMs / 1000)
-  const isGlitch = v.mood === 'deny' && noise(v.frame, y >> 2) < 0.35
-  const gx = isGlitch ? Math.min(W - 1, Math.max(0, x + Math.round((noise(y, v.frame) - 0.5) * 10))) : x
+  const isGlitch = v.mood === 'deny' && noise(v.frame, y >> 2) < 0.35 * v.glitch
+  const gx = isGlitch ? Math.min(W - 1, Math.max(0, x + Math.round((noise(y, v.frame) - 0.5) * 10 * v.glitch))) : x
 
   const img = v.faces === null ? null : pickFace(v.faces, v.mood, v.isHeard, noise(v.frame >> 2, 7))
   if (img === null || v.persona === null) return noise(x * 7 + v.frame, y) < 0.3 ? 0x1a2a22 : 0x020806
@@ -90,7 +93,7 @@ export const facePixel = (v: View, x: number, y: number): number => {
   if (v.mood === 'wait') k *= 0.8 + 0.2 * Math.sin(t * 2.5)
 
   // Snow when glitching; the scanlines are drawn at the output size.
-  if (isGlitch && noise(x, y + v.frame) < 0.04) return 0xffffff
+  if (isGlitch && noise(x, y + v.frame) < 0.04 * v.glitch) return 0xffffff
 
   const c = (n: number) => Math.min(255, Math.round(n * k))
   return (c(r) << 16) | (c(g) << 8) | c(b)
