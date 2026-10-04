@@ -127,11 +127,16 @@ export const synthArgv = (id: string, who: Persona, vol: number): string[] => [
 ]
 
 // SAPI plays the WAV: SoundPlayer on a \\wsl.localhost path can fall silent
-// (returns at once, no error) while SAPI still reads it.
+// (returns at once, no error) while SAPI still reads it. While tools/relay.py
+// runs (/avatar remote on), its spool exists: the WAV goes there instead, for a
+// browser tab on another machine of the tailnet, and this one stays silent
+// (renamed in place, so never served half written).
+const RELAY_SPOOL = '${XDG_CACHE_HOME:-$HOME/.cache}/avatar7/relay'
 const playArgv = (wav: string): string[] => [
   'bash',
   '-c',
-  `"${POWERSHELL}" -NoProfile -Command "\\$v=New-Object -ComObject SAPI.SpVoice; \\$s=New-Object -ComObject SAPI.SpFileStream; \\$s.Open('$(wslpath -w "$1")'); [void]\\$v.SpeakStream(\\$s); \\$s.Close()"; rm -f "$1"`,
+  `d="${RELAY_SPOOL}"; if [ -d "$d" ]; then n="$d/$(date +%s%N)"; cp "$1" "$n.part" && mv "$n.part" "$n.wav"; ` +
+  `else "${POWERSHELL}" -NoProfile -Command "\\$v=New-Object -ComObject SAPI.SpVoice; \\$s=New-Object -ComObject SAPI.SpFileStream; \\$s.Open('$(wslpath -w "$1")'); [void]\\$v.SpeakStream(\\$s); \\$s.Close()"; fi; rm -f "$1"`,
   'avatar7-play',
   wav,
 ]
@@ -695,7 +700,7 @@ export const register: Register = (on, options) => {
 
     await $.command.register({
       name: 'avatar',
-      description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar duo [id], /avatar events on|off, /avatar visits on|off`,
+      description: `Open the avatar pane, or switch: /avatar ${AVATARS.join('|')}; /avatar event, /avatar duo [id], /avatar events on|off, /avatar visits on|off, /avatar remote on|off`,
     })
     await $.command.register({ name: 'avatar-mute', description: 'Toggle the avatar voice' })
     await $.command.register({ name: 'avatar-talk', description: 'Ask the avatar what it thinks of the conversation' })
@@ -979,6 +984,21 @@ export const register: Register = (on, options) => {
         ...[...saidHere].map(([plugin, a]) => `${plugin} (say): ${a.mood}, ${a.event}`),
       ]
       return { text: all.length === 0 ? 'No mod has asked for a voice in this session.' : all.join('\n') }
+    }
+    if (id === 'remote on' || id === 'remote off') {
+      const pid = `"${RELAY_SPOOL}/relay.pid"`
+      if (id === 'remote off') {
+        await $.process.run(['sh', '-c', `[ -f ${pid} ] && kill "$(cat ${pid})"; sleep 0.5; rm -rf "${RELAY_SPOOL}"`])
+        return { text: 'The voice comes back to this machine.' }
+      }
+      const alive = await $.process.run(['sh', '-c', `[ -f ${pid} ] && kill -0 "$(cat ${pid})" 2>/dev/null && echo up`])
+      if (alive.stdout.trim() !== 'up') {
+        await $.process.run(['sh', '-c', `rm -rf "${RELAY_SPOOL}"`])
+        await $.process.run(detachedArgv(['python3', `${$.plugin.root}/tools/relay.py`]))
+        await $.clock.sleep(1500)
+      }
+      const ip = await $.process.run(['sh', '-c', 'tailscale ip -4 | head -1'])
+      return { text: `The voice leaves this machine: open http://${ip.stdout.trim()}:8796/ on the other one and click listen.` }
     }
     if (!AVATARS.includes(id)) return { text: `Unknown avatar. Choose one of: ${AVATARS.join(', ')}.` }
 

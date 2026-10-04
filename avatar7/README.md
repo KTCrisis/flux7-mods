@@ -23,6 +23,7 @@ sessions.
 | `/avatar-ask <question>` | ask the avatar on duty its opinion on the session: it reads the last 12 messages (600 characters each) and answers in two or three sentences; an answer ending on a question opens the `answer` field. The `ask` button (hotkey `q`) opens a field for the same |
 | `avatars` button (hotkey `c`) | lists every avatar by name above the controls; click one and it takes over, as `/avatar <id>` does |
 | `/avatar-mute` | toggle the voice for this session; the `mute` / `unmute` button under the face (hotkey `m`) does the same |
+| `/avatar remote on\|off` | send the voice to another machine instead of this one (see [Remote voice](#remote-voice)) |
 | `vol - N +` | buttons under the face: SAPI volume by steps of 10, 0 to 100, kept across sessions (`$.store`) |
 
 The pane opens by itself at session start when the terminal is at least 144
@@ -33,6 +34,21 @@ saving a file reloads the mod in every session started with the alias.
 
 It is deliberately not in the global `CLAUDE_CODE_PLUGIN_DIRS`: a plain
 `claude` session has no avatar.
+
+### Remote voice
+
+A session driven from elsewhere (remote control, a phone, another PC) keeps
+its mods on the host: the pane and the voice stay there. `/avatar remote on`
+starts `tools/relay.py` detached; while it runs, each WAV goes to its spool
+instead of the speakers, and a browser tab on `http://<host>:8796/` plays it
+(click `listen` once: browsers play nothing before a gesture). `/avatar remote
+off` stops the relay and gives the voice back to the host. Piper voices only:
+a persona speaking through SAPI itself has no WAV to send.
+
+The relay binds to the machine's Tailscale address by default
+(`tailscale ip -4`); without Tailscale, run it by hand with
+`--host <address>`. The page has no authentication: keep it on a private
+network, never on a public interface.
 
 ### Your name
 
