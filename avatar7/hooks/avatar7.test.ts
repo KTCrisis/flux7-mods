@@ -6,7 +6,7 @@ import { commandEvent, heard, heardSay, landed, nextStreak, streakNote } from '.
 import { speakScript, synthArgv } from './voice'
 import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona } from './speech'
 import { ambientCells, ambientPixel, QUAD } from './ambient'
-import { hdFrame, hdKey, hdSize, PX, type Hd, type HdView } from './hd'
+import { hdFrame, hdKey, hdSize, isSettled, PX, SETTLE_FRAMES, type Hd, type HdView, type Settle } from './hd'
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
 import { answered, ask as askFace, calm, hold, react, release, stage, tick } from './mood'
 import { begin, end, HOLD_FRAMES, isHeard, restored, silent, start, typeOn, voiced } from './line'
@@ -685,4 +685,13 @@ test('the band under the text is drawn the same way, without a face, and loops i
   expect(at(img, width, Math.floor(width / 2), Math.floor(height / 2))[2]).toBeGreaterThan(0)
   expect(hdKey({ ...v, step: 1 })).not.toBe(hdKey(v))
   expect(hdKey(v)).not.toBe(hdKey({ ...v, band: 'face' }))
+})
+
+test('a resize makes no HD picture until the size has held SETTLE_FRAMES', () => {
+  const s: Settle = { size: '', since: 0 }
+  expect(isSettled(s, '101|20', 10)).toBe(false)
+  // A burst of widths, one a frame: never settled.
+  for (let f = 11; f < 30; f++) expect(isSettled(s, `${101 + f}|20`, f)).toBe(false)
+  expect(isSettled(s, '130|20', 29 + SETTLE_FRAMES - 1)).toBe(false)
+  expect(isSettled(s, '130|20', 29 + SETTLE_FRAMES)).toBe(true)
 })

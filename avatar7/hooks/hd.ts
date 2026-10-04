@@ -76,6 +76,19 @@ export const pickHdFace = (hd: Hd, mood: string, isSpeaking: boolean, flap: numb
 export const hdKey = (v: HdView): string =>
   [v.who, v.band, v.hd === null ? '-' : v.face, v.mood, v.glitchStep, v.grain, v.columns, v.rows, v.size, v.top, v.step, v.isStorm ? 's' : '', v.color, v.cutout, v.hd?.side ?? 0].join('|')
 
+// While the pane is being resized, each column brings a new size and the
+// pictures for it would be made at every render; the band keeps its last
+// picture, stretched by the terminal, until the size has held SETTLE_FRAMES.
+export const SETTLE_FRAMES = 6
+export type Settle = { size: string; since: number }
+export const isSettled = (s: Settle, size: string, frame: number): boolean => {
+  if (s.size !== size) {
+    s.size = size
+    s.since = frame
+  }
+  return frame - s.since >= SETTLE_FRAMES
+}
+
 export const hdSize = (columns: number, rows: number): { width: number; height: number } => ({ width: columns * PX, height: rows * 2 * PX })
 
 // One art pixel is `grain` output pixels a side: 6 is the half blocks' own

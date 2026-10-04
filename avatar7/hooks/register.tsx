@@ -51,7 +51,7 @@ import {
 import { ASKED_CHARS, commandEvent, heard, heardSay, landed, nextStreak, streakNote, type Streak } from './hearing'
 import { detachedArgv, PLAY_START_MS, SAPI_PLAY, synthArgv } from './voice'
 import { faceCells, H, noise, TINT, W, type Faces, type View } from './draw'
-import { DEFAULT_GRAIN, GLITCH_STEPS, GRAINS, hdFrame, hdKey, hdSize, pickHdFace, type Hd, type HdView } from './hd'
+import { DEFAULT_GRAIN, GLITCH_STEPS, GRAINS, hdFrame, hdKey, hdSize, isSettled, pickHdFace, type Hd, type HdView, type Settle } from './hd'
 import { begin, end, isHeard, restored, silent, start, typeOn, voiced, type Typing } from './line'
 import { answered, ask as askFace, calm, hold, isWaiting, react, release, stage as stageFace, tick, type Face, type Mood } from './mood'
 
@@ -267,12 +267,13 @@ async function writeHd($: Engine, key: string, rgba: Uint8Array): Promise<void> 
 }
 
 // Starts writing a picture's file unless it is there or on its way; `files`
-// marks it pending, then ready.
-function hdEnsure($: Engine, files: Map<string, 'pending' | 'ready'>, hv: HdView): void {
+// marks it pending, then ready. `rgba`, when the render just made the
+// picture, spares making it twice.
+function hdEnsure($: Engine, files: Map<string, 'pending' | 'ready'>, hv: HdView, rgba?: Uint8Array): void {
   const key = hdKey(hv)
   if (files.has(key)) return
   files.set(key, 'pending')
-  void writeHd($, key, hdFrame(hv)).then(
+  void writeHd($, key, rgba ?? hdFrame(hv)).then(
     () => files.set(key, 'ready'),
     err => {
       files.delete(key)
@@ -571,6 +572,9 @@ export const register: Register = (on, options) => {
   // sent; and its key.
   const hdShown: Record<HdBand, { source: HdSource; key: string } | null> = { face: null, under: null }
   const isHdShown = (): boolean => hdShown.face !== null
+  // The pane's size and the frame it last changed (hd.ts isSettled).
+  const hdResize: Settle = { size: '', since: 0 }
+  let isHdSettled = false
   // The scene layers with their HD bake in place of the 512 px one, made
   // once per layer list so the fitted scene's cache holds.
   const hdLayersOf = new WeakMap<AmbientLayer[], AmbientLayer[]>()
@@ -619,7 +623,11 @@ export const register: Register = (on, options) => {
   // The source a band shows at a render: its picture if written, else the
   // last one until the clock swaps the new one in, else (the first) bytes;
   // and the view whose file is still to write.
-  const hdRender = (band: HdBand): { source: HdSource | null; toWrite: HdView | null } => {
+  // The engine takes at most 2 MiB of Image source a tree: a band whose
+  // bytes would pass what is left waits for its file, and the clock renders
+  // again once it is written.
+  const HD_INLINE_MAX = 2_000_000
+  const hdRender = (band: HdBand, budget: { left: number }): { source: HdSource | null; toWrite: HdView | null; rgba?: Uint8Array } => {
     const hv = hdView(band)
     if (hv === null) {
       hdShown[band] = null
@@ -628,27 +636,40 @@ export const register: Register = (on, options) => {
     const key = hdKey(hv)
     const was = hdShown[band]
     const isReady = hdFiles.get(key) === 'ready'
+    let rgba: Uint8Array | undefined
     if (isReady) {
       if (was?.key !== key) hdShown[band] = { source: fileSource(hv), key }
     } else {
       const { width, height } = hdSize(hv.columns, hv.rows)
       if (was === null || was.source.width !== width || was.source.height !== height) {
-        hdShown[band] = { source: { rgba: hdFrame(hv).toBase64(), width, height }, key }
+        // Mid-resize: the last picture, stretched, and nothing made.
+        if (was !== null && !isHdSettled) return { source: was.source, toWrite: null }
+        const inline = Math.ceil((width * height * 4) / 3) * 4
+        if (inline > budget.left) return { source: was?.source ?? null, toWrite: hv }
+        budget.left -= inline
+        rgba = hdFrame(hv)
+        hdShown[band] = { source: { rgba: rgba.toBase64(), width, height }, key }
       }
     }
-    return { source: hdShown[band]?.source ?? null, toWrite: isReady ? null : hv }
+    return { source: hdShown[band]?.source ?? null, toWrite: isReady ? null : hv, rgba }
   }
   // At a frame: the band's new picture to swap in once written, or the view
   // whose file is still to write.
-  const hdTick = (band: HdBand): { swap: HdSource | null; toWrite: HdView | null } => {
+  const hdTick = (band: HdBand): { swap: HdSource | null; toWrite: HdView | null; isRefit: boolean } => {
     const hv = hdView(band)
-    if (hv === null || hdShown[band] === null) return { swap: null, toWrite: null }
+    const shown = hdShown[band]
+    if (hv === null) return { swap: null, toWrite: null, isRefit: false }
     const key = hdKey(hv)
-    if (key === hdShown[band]?.key) return { swap: null, toWrite: null }
-    if (hdFiles.get(key) !== 'ready') return { swap: null, toWrite: hv }
+    // Not shown yet: its file, once written, mounts it at a render.
+    if (shown === null) return { swap: null, toWrite: null, isRefit: hdFiles.get(key) === 'ready' }
+    if (key === shown.key) return { swap: null, toWrite: null, isRefit: false }
+    // A new size: once it holds, a render makes its picture.
+    const { width, height } = hdSize(hv.columns, hv.rows)
+    if (shown.source.width !== width || shown.source.height !== height) return { swap: null, toWrite: null, isRefit: isSettled(hdResize, hdResize.size, frame) }
+    if (hdFiles.get(key) !== 'ready') return { swap: null, toWrite: hv, isRefit: false }
     const source = fileSource(hv)
     hdShown[band] = { source, key }
-    return { swap: source, toWrite: null }
+    return { swap: source, toWrite: null, isRefit: false }
   }
 
   // The weather of whoever is shown: the guest's during a visit.
@@ -824,13 +845,15 @@ export const register: Register = (on, options) => {
           $.ui.invalidate('ui.render')
         },
       })
-      if (isHdShown()) {
-        for (const [band, key] of [['face', FACE], ['under', AMB_BAND]] as const) {
-          const { swap, toWrite } = hdTick(band)
-          if (toWrite !== null) hdEnsure($, hdFiles, toWrite)
-          if (swap !== null) void $.ui.blit({ requestId: PANE, key, source: swap })
-        }
-      } else void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
+      let isRefit = false
+      for (const [band, key] of [['face', FACE], ['under', AMB_BAND]] as const) {
+        const tick = hdTick(band)
+        if (tick.toWrite !== null) hdEnsure($, hdFiles, tick.toWrite)
+        if (tick.swap !== null) void $.ui.blit({ requestId: PANE, key, source: tick.swap })
+        isRefit ||= tick.isRefit
+      }
+      if (isRefit) $.ui.invalidate('ui.render')
+      if (!isHdShown()) void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (frame % AMBIENT_FRAMES === 0) {
         ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (face.mood === 'deny' || face.mood === 'error' ? 2 : face.mood === 'wait' ? 0.5 : 1)
         for (const each of ambientBlits()) void $.ui.blit(each)
@@ -1171,9 +1194,11 @@ export const register: Register = (on, options) => {
       <Raster key={key} columns={columns} rows={rows} cells={ambientCells(layers, ambField, x0, y0, columns, rows, ambT, face.mood === 'deny')} />
     )
     hdColumns = cols
-    const faceHd = hdRender('face')
-    const underHd = faceHd.source === null ? { source: null, toWrite: null } : hdRender('under')
-    for (const hv of [faceHd.toWrite, underHd.toWrite]) if (hv !== null) hdEnsure($, hdFiles, hv)
+    isHdSettled = isSettled(hdResize, `${cols}|${ambBand}`, frame)
+    const budget = { left: HD_INLINE_MAX }
+    const faceHd = hdRender('face', budget)
+    const underHd = faceHd.source === null ? { source: null, toWrite: null } : hdRender('under', budget)
+    for (const { toWrite, rgba } of [faceHd, underHd]) if (toWrite !== null) hdEnsure($, hdFiles, toWrite, rgba)
     const hdFace = faceHd.source
     const hdUnder = underHd.source
     const isBlink = Math.floor(frame / REFIT_FRAMES) % 2 === 0
