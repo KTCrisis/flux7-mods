@@ -190,7 +190,9 @@ const DRAIN_FRAMES = 8
 
 // The relay belongs to the session that ran /avatar remote on, named in its
 // spool's `owner`: every other session keeps its voice and face on this machine.
-const ownsRelay = `[ "$(cat "${RELAY_SPOOL}/owner" 2>/dev/null)" = "$2" ]`
+// A relay that died without cleaning up (killed, crashed at start) leaves its
+// spool behind: the owner holds it only while the process in relay.pid lives.
+const ownsRelay = `[ "$(cat "${RELAY_SPOOL}/owner" 2>/dev/null)" = "$2" ] && kill -0 "$(cat "${RELAY_SPOOL}/relay.pid" 2>/dev/null)" 2>/dev/null`
 // Take the relay (when it runs), or give it back (when this session has it).
 const takeArgv = (session: string): string[] => [
   'sh',

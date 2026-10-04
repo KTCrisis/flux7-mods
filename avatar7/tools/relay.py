@@ -206,6 +206,10 @@ def reload_on_edit():
             now = me.stat().st_mtime_ns
             if now == at:
                 continue
+            # A save still being written: wait until the file holds still.
+            time.sleep(1)
+            if me.stat().st_mtime_ns != now:
+                continue
             at = now
             compile(me.read_text(), str(me), "exec")
         except (OSError, SyntaxError, ValueError) as e:
@@ -220,16 +224,22 @@ def main():
     ap.add_argument("--host", default=None, help="address to bind (default: this machine's tailnet IPv4)")
     ap.add_argument("--port", type=int, default=8797)
     args = ap.parse_args()
-    host = args.host or tailnet_ip()
-
-    server = ThreadingHTTPServer((host, args.port), Handler)
-    server.daemon_threads = True
-    SPOOL.mkdir(parents=True, exist_ok=True)
-    (SPOOL / "relay.pid").write_text(str(os.getpid()))
-
     def stop(*_):
         shutil.rmtree(SPOOL, ignore_errors=True)
         sys.exit(0)
+
+    # A start that fails (no tailnet, port taken, a reload that breaks at run
+    # time) takes the spool with it, so the sessions speak on this machine
+    # again instead of into a spool nobody serves.
+    try:
+        host = args.host or tailnet_ip()
+        server = ThreadingHTTPServer((host, args.port), Handler)
+    except BaseException:
+        shutil.rmtree(SPOOL, ignore_errors=True)
+        raise
+    server.daemon_threads = True
+    SPOOL.mkdir(parents=True, exist_ok=True)
+    (SPOOL / "relay.pid").write_text(str(os.getpid()))
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
