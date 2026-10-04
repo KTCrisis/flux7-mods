@@ -186,13 +186,17 @@ const RELAY_CHECK_FRAMES = 30
 const MIRROR_FRAMES = 3
 const DRAIN_FRAMES = 8
 
-const playArgv = (wav: string): string[] => [
+// The relay belongs to the session that ran /avatar remote on, named in its
+// spool's `owner`: every other session keeps its voice and face on this machine.
+const ownsRelay = `[ "$(cat "${RELAY_SPOOL}/owner" 2>/dev/null)" = "$2" ]`
+const playArgv = (wav: string, session: string): string[] => [
   'bash',
   '-c',
-  `d="${RELAY_SPOOL}"; if [ -d "$d" ]; then n="$d/$(date +%s%N)"; cp "$1" "$n.part" && mv "$n.part" "$n.wav"; ` +
+  `d="${RELAY_SPOOL}"; if ${ownsRelay}; then n="$d/$(date +%s%N)"; cp "$1" "$n.part" && mv "$n.part" "$n.wav"; ` +
   `else "${POWERSHELL}" -NoProfile -Command "\\$v=New-Object -ComObject SAPI.SpVoice; \\$s=New-Object -ComObject SAPI.SpFileStream; \\$s.Open('$(wslpath -w "$1")'); [void]\\$v.SpeakStream(\\$s); \\$s.Close()"; fi; rm -f "$1"`,
   'avatar7-play',
   wav,
+  session,
 ]
 
 // The line waits for its voice: typed from when SAPI starts the WAV (PowerShell
@@ -529,6 +533,7 @@ export const register: Register = (on, options) => {
   let isRelayed = false
   let isMirroring = false
   let isDraining = false
+  let sessionId = ''
   let mirrored = ''
   // Characters typed per frame, from which frame, and which line they belong to.
   let typeRate = 2
@@ -758,6 +763,7 @@ export const register: Register = (on, options) => {
     // inherits the plugin dirs but nobody watches it: no face, no voice.
     const kind = await $.process.run(['sh', '-c', 'printf %s "$CLAUDE_CODE_SESSION_KIND"'])
     if (kind.stdout === 'bg') return next(e)
+    sessionId = await $.session.id()
 
     await $.command.register({
       name: 'avatar',
@@ -824,7 +830,7 @@ export const register: Register = (on, options) => {
       }
       if (frame > moodUntil && mood !== 'idle') mood = 'idle'
       if (frame % RELAY_CHECK_FRAMES === 0) {
-        void $.process.run(['sh', '-c', `[ -d "${RELAY_SPOOL}" ] && echo up`]).then(r => {
+        void $.process.run(['sh', '-c', `${ownsRelay} && echo up`, 'avatar7-relay', '', sessionId]).then(r => {
           isRelayed = r.stdout.trim() === 'up'
           if (!isRelayed) mirrored = ''
         })
@@ -1042,7 +1048,7 @@ export const register: Register = (on, options) => {
               // Detached, so a reload of this module no longer cuts the line;
               // the voice is held for the WAV's length plus PowerShell's start.
               await update($, isVoicing, () => true)
-              await $.process.run(detachedArgv(playArgv(wav)))
+              await $.process.run(detachedArgv(playArgv(wav, sessionId)))
               await $.clock.sleep(ms + PLAY_START_MS)
             }
           }
@@ -1128,6 +1134,8 @@ export const register: Register = (on, options) => {
         await $.process.run(detachedArgv(['python3', `${$.plugin.root}/tools/relay.py`]))
         await $.clock.sleep(1500)
       }
+      // This session takes the relay, from another one if it had it.
+      await $.process.run(['sh', '-c', `[ -d "${RELAY_SPOOL}" ] && printf %s "$1" > "${RELAY_SPOOL}/owner"`, 'avatar7-owner', sessionId])
       const ip = await $.process.run(['sh', '-c', 'tailscale ip -4 | head -1'])
       return { text: `The voice leaves this machine: open http://${ip.stdout.trim()}:8797/ on the other one and click listen.` }
     }

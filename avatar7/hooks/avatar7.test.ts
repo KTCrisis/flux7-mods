@@ -9,6 +9,7 @@ const engine = (on: On, kind: string): { commands: string[]; panes: string[] } =
   const commands: string[] = []
   const panes: string[] = []
   on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: 'test-session' }))
   on('command.register', ($, e) => {
     commands.push(e.name)
     return { value: { command: e.name } } as never
