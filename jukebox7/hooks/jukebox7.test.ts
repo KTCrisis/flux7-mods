@@ -50,8 +50,9 @@ test('asking for ambient plays the first song of five to twenty minutes through 
   const r = await $.prompt.submit(typed('joue moi un peu de musique ambient'))
   expect(r.drop).toContain('Tranquility')
   expect(argv[0]?.at(-1)).toBe('ytsearch8:ambient music')
-  expect(argv[1]).toEqual(startArgv('DRFHklnN-SM'))
-  expect(argv[1]?.[2]).toContain('vlc.exe')
+  expect(argv[1]).toEqual(killVlcArgv)
+  expect(argv[2]).toEqual(startArgv('DRFHklnN-SM'))
+  expect(argv[2]?.[2]).toContain('vlc.exe')
   expect(toasts).toEqual(['music now playing: Tranquility - Deep Healing Ambient'])
 })
 
@@ -73,6 +74,13 @@ test('pause asks VLC to pause, stop ends the group and its VLC', async ($, on) =
   say('{"action":"stop"}')
   await $.prompt.submit(typed('coupe la musique'))
   expect(argv.slice(-3)).toEqual([['kill', '-CONT', '--', '-4242'], ['kill', '-TERM', '--', '-4242'], killVlcArgv])
+})
+
+test('a first song, nothing playing from here, still ends any jukebox VLC left on the port', async ($, on) => {
+  const { argv } = engine(on, '{"action":"play","query":"ambient music","long":true}')
+  await $.prompt.submit(typed('joue moi un peu de musique ambient'))
+  expect(argv.slice(1, 3)).toEqual([killVlcArgv, startArgv('DRFHklnN-SM')])
+  expect(killVlcArgv[3]).toContain('-LocalPort 18797')
 })
 
 test('Haiku saying none lets the prompt through', async ($, on) => {
@@ -121,8 +129,8 @@ test('the progress bar fills with the elapsed time and holds still while paused'
 test('each start sets the kept volume again, once VLC listens', async ($, on) => {
   const { argv } = engine(on, '{"action":"play","query":"ambient music","long":true}')
   await $.prompt.submit(typed('joue moi un peu de musique ambient'))
-  expect(argv[1]?.[2]).toContain('--extraintf http')
-  expect(argv[2]?.slice(3)).toEqual(volumeArgv(70, true))
+  expect(argv[2]?.[2]).toContain('--extraintf http')
+  expect(argv[3]?.slice(3)).toEqual(volumeArgv(70, true))
 })
 
 test('louder and quieter move the volume by steps, kept within 0 and 125', async ($, on) => {

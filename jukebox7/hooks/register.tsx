@@ -258,13 +258,21 @@ export const startArgv = (id: string): string[] => [
   id,
 ]
 // Killing the WSL side leaves vlc.exe running: it goes by its tag, so a VLC
-// the user opened themselves is never touched.
+// the user opened themselves is never touched. A VLC whose WSL side died
+// with its window shows no command line any more, and still holds the port
+// beside the next one (Windows lets both listen, the controls reach one of
+// them). Windows refuses to end that one even to its own user, but it still
+// obeys its interface: pl_stop ends it (--play-and-exit), once per listener,
+// each request reaching one. The port's owner goes last, where allowed.
 const POWERSHELL = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
+const BASIC = btoa(`:${HTTP_PASSWORD}`)
 export const killVlcArgv = [
   POWERSHELL,
   '-NoProfile',
   '-Command',
-  `Get-CimInstance Win32_Process -Filter "Name='vlc.exe'" | Where-Object { $_.CommandLine -like '*${TAG}*' } | Invoke-CimMethod -MethodName Terminate | Out-Null`,
+  `1..3 | ForEach-Object { try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Headers @{ Authorization = 'Basic ${BASIC}' } 'http://127.0.0.1:${HTTP_PORT}/requests/status.xml?command=pl_stop' | Out-Null } catch {} }; ` +
+    `Get-CimInstance Win32_Process -Filter "Name='vlc.exe'" | Where-Object { $_.CommandLine -like '*${TAG}*' } | Invoke-CimMethod -MethodName Terminate | Out-Null; ` +
+    `Get-NetTCPConnection -LocalPort ${HTTP_PORT} -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue } | Where-Object Name -eq 'vlc' | Stop-Process -Force -ErrorAction SilentlyContinue`,
 ]
 // VLC counts 256 for 100 %. A fresh VLC starts at whatever Windows kept for
 // it (--mmdevice-volume is ignored), so each start sets the level again,
@@ -355,8 +363,9 @@ export const introEvent = (title: string): string =>
   `the jukebox starts "${title.replace(DISCOVERED, '')}"; introduce it in your own manner, the way a radio host would`
 
 async function playAt($: Engine, tracks: Track[], index: number, genre: string | null = null): Promise<Track | undefined> {
-  const before = await read($, player)
-  if (before.pgid !== null) await halt($, before.pgid)
+  // Halted even when nothing plays from here: an orphan VLC on the port
+  // would take the controls of the new one. One jukebox per machine.
+  await halt($, (await read($, player)).pgid)
   const track = tracks[index]
   if (track === undefined) {
     await update($, player, () => IDLE)
