@@ -150,6 +150,8 @@ export type Mirror = {
   eventsOn: boolean
   visitsOn: boolean
   volume: number
+  // Which session holds the relay: short id, folder, last prompt typed.
+  session: string
 }
 const mirrorArgv = (): string[] => ['sh', '-c', `d="${RELAY_SPOOL}"; [ -d "$d" ] && cat > "$d/state.part" && mv "$d/state.part" "$d/state.json"`]
 // The page's buttons, queued by the relay as one JSON file each under cmd/:
@@ -546,6 +548,8 @@ export const register: Register = (on, options) => {
   let sessionId = ''
   // /avatar remote on holds the relay; otherwise the voice follows the prompts.
   let isRemoteForced = false
+  let sessionDir = ''
+  let lastPrompt = ''
   let mirrored = ''
   // Characters typed per frame, from which frame, and which line they belong to.
   let typeRate = 2
@@ -776,6 +780,7 @@ export const register: Register = (on, options) => {
     const kind = await $.process.run(['sh', '-c', 'printf %s "$CLAUDE_CODE_SESSION_KIND"'])
     if (kind.stdout === 'bg') return next(e)
     sessionId = await $.session.id()
+    sessionDir = e.cwd.split('/').filter(Boolean).at(-1) ?? '/'
 
     await $.command.register({
       name: 'avatar',
@@ -863,6 +868,7 @@ export const register: Register = (on, options) => {
           avatars: AVATARS.map(id => ({ id, name: names[id] ?? id })),
           eventsOn,
           visitsOn,
+          session: [sessionId.slice(0, 8), sessionDir, lastPrompt === '' ? '' : `"${lastPrompt.slice(0, 40)}"`].filter(Boolean).join(' / '),
         }
         void (async () => {
           const state: Mirror = { ...base, isMuted: await read($, isMuted), volume: await read($, volume) }
@@ -1206,6 +1212,7 @@ export const register: Register = (on, options) => {
   on('prompt.submit', async ($, e, next) => {
     if (e.origin.kind === 'composer' || e.origin.kind === 'bridge') {
       asked = e.text.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
+      lastPrompt = asked
     }
     // The voice follows the user: away through the relay for a prompt sent by
     // Remote Control, back here for one typed at this terminal.
