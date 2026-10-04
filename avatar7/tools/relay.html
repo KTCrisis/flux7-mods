@@ -93,11 +93,27 @@ const $ = id => document.getElementById(id);
 const status = t => $('status').textContent = t;
 const faces = {}; let st = null, files = [], persona = '', flapAt = 0;
 
-// The voice: WAVs in arrival order, one at a time.
-const queue = []; let busy = false; const audio = new Audio();
-function next() {
+// The voice, in arrival order, one at a time. Through Web Audio when it can:
+// an <audio> element takes Android's audio focus and pauses the user's music
+// (Bandcamp stopped at each line); Web Audio plays over it, and knows each
+// line's length once decoded. The element stays as the fallback.
+const queue = []; let busy = false, speaking = false; const audio = new Audio();
+let ctx = null;
+async function next() {
   if (busy || !queue.length) return;
-  busy = true; audio.src = '/wav/' + queue.shift();
+  busy = true;
+  const url = '/wav/' + queue.shift();
+  if (ctx) {
+    try {
+      if (ctx.state !== 'running') await ctx.resume();
+      const buf = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+      const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination);
+      src.onended = () => { speaking = false; busy = false; next(); };
+      speaking = true; src.start(); started(buf.duration * 1000);
+      return;
+    } catch (e) { status('web audio: ' + e.message); }
+  }
+  audio.src = url;
   audio.play().catch(e => { status('blocked: ' + e.message); busy = false; });
 }
 audio.onended = audio.onerror = () => { busy = false; next(); };
@@ -125,11 +141,9 @@ function typeOver(ms) {
 }
 // An Ogg's duration needs a ranged read the relay does not serve: Infinity
 // then, and void's own measure of the voice stands in.
-audio.onplaying = () => {
-  clearTimeout(fallback);
-  typeOver(isFinite(audio.duration) && audio.duration > 0 ? audio.duration * 1000 : (st && st.speakMs) || text.length * 45);
-};
-const isHeard = () => !audio.paused && !audio.ended && audio.src.includes('/wav/');
+function started(ms) { clearTimeout(fallback); typeOver(ms); }
+audio.onplaying = () => started(isFinite(audio.duration) && audio.duration > 0 ? audio.duration * 1000 : (st && st.speakMs) || text.length * 45);
+const isHeard = () => speaking || (!audio.paused && !audio.ended && audio.src.includes('/wav/'));
 
 function draw() {
   if (!st) return;
@@ -239,6 +253,7 @@ if ('mediaSession' in navigator) {
 }
 pv.addEventListener('leavepictureinpicture', () => { clearInterval(pipTimer); status('docked'); });
 
+let lastMeta = null;
 async function onState(s) {
   if (!s.persona) { status('no session holds the relay: send a message from the session you want'); return; }
   if (s.persona !== persona) await loadPersona(s.persona);
@@ -257,7 +272,14 @@ async function onState(s) {
   $('mute').textContent = s.isMuted ? 'unmute' : 'mute';
   if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = s.isMuted ? 'paused' : 'playing';
-    navigator.mediaSession.metadata = new MediaMetadata({ title: s.name, artist: 'avatar7' });
+    // The lock screen and the shade show the last line under the persona's name.
+    if (s.line !== lastMeta) {
+      lastMeta = s.line;
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: s.line || s.name, artist: s.name, album: 'avatar7',
+        artwork: [{ src: `/persona/${s.persona}/portrait.png`, sizes: '1024x1024', type: 'image/png' }],
+      });
+    }
   }
   $('events').textContent = 'events: ' + (s.eventsOn ? 'on' : 'off'); $('events').classList.toggle('on', s.eventsOn);
   $('visits').textContent = 'visits: ' + (s.visitsOn ? 'on' : 'off'); $('visits').classList.toggle('on', s.visitsOn);
@@ -291,6 +313,7 @@ function keepAwake() {
 $('gate').onclick = () => {
   $('gate').remove();
   keepAwake();
+  try { ctx = new (window.AudioContext || window.webkitAudioContext)(); ctx.resume(); } catch { ctx = null; }
   audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
   audio.play().catch(() => {});
   const es = new EventSource('/events');

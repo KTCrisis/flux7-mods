@@ -51,7 +51,10 @@ for the faces the terminal draws (64x64, scaled up without smoothing) under a
 CRT: scanlines, a rolling band, a vignette; remembered by the browser. A locked
 phone puts a silent page to sleep mid-line: from `listen` on, the page loops
 a breath on the last bit (about -90 dBFS, inaudible; -60 was heard), so
-Android keeps it running as a player and the voice reaches a locked screen.
+Android keeps it running as a player and the voice reaches a locked screen. The
+lock screen's player card shows the last line under the persona's name. The
+voice plays through Web Audio, which takes no audio focus: it speaks over the
+user's music (Bandcamp, say) instead of pausing it.
 
 The voice follows the user: a prompt sent through Remote Control, or typed
 in a session reached over ssh, takes the relay for this session; a prompt
