@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import { test, expect } from 'claude-code/testing'
+import { test, expect, mock } from 'claude-code/testing'
 import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio, introEvent } from './register'
 
 const RESULTS = [
@@ -270,4 +270,83 @@ test('a pause VLC does not answer leaves the state playing', async ($, on) => {
   expect(r.text).toBe('VLC did not answer; nothing changed.')
   const again = await $.command.run(music(''))
   expect(again.text).toContain('Playing')
+})
+
+// The same world with a clock the test moves: yt-dlp answers `searchMs`
+// later, and a process group lives while `alive(pgid)` says so.
+const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) => boolean; found?: () => string }) => {
+  const clock = mock.clock(on)
+  const argv: string[][] = []
+  on('command.register', ($, e) => ({ value: { command: e.name } }) as never)
+  on('model.complete', () => ({ value: { isAnswered: true, text: '{"action":"none"}', usage: {} } }) as never)
+  on('process.run', async ($, e) => {
+    const a = [...(e as { argv: string[] }).argv]
+    argv.push(a)
+    const ok = (stdout = '', exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }) as never
+    if (a[0] === 'yt-dlp') {
+      await clock.sleep(opts.searchMs)
+      return ok(opts.found?.() ?? RESULTS)
+    }
+    if (a[0] === 'kill' && a[1] === '-0') return ok('', opts.alive(Number((a[3] ?? '').slice(1))) ? 0 : 1)
+    // Each start its own process group: 1001, 1002...
+    if (a[0] === 'bash' && /^[\w-]{11}$/.test(a.at(-1) ?? '')) return ok(`${1000 + argv.filter(x => x[0] === 'bash' && /^[\w-]{11}$/.test(x.at(-1) ?? '')).length}\n`)
+    return ok()
+  })
+  on('ui.status', () => ({ value: undefined }) as never)
+  on('ui.toast', () => ({ value: undefined }) as never)
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  on('ui.close', () => ({ value: undefined }) as never)
+  on('ui.invalidate', () => ({ value: undefined }) as never)
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  const starts = () => argv.filter(a => a[0] === 'bash' && /^[\w-]{11}$/.test(a.at(-1) ?? '')).length
+  const searches = () => argv.filter(a => a[0] === 'yt-dlp').length
+  const kills = () => argv.filter(a => a[0] === 'kill' && a[1] === '-0').length
+  return { clock, starts, searches, kills }
+}
+const pane = { plugin: 'jukebox7', surface: 'terminal', component: 'Pane', requestId: 'jukebox7', props: { bodyColumns: 100, scroll: { bodyRows: 20 } } } as never
+
+test('a request during a slow search is refused plainly, and one song starts', async ($, on) => {
+  const { clock, starts } = clockedEngine(on, { searchMs: 15_000, alive: () => true })
+  await $.session.start({ cwd: '/home/u' } as never)
+  const first = $.command.run(music('ambient'))
+  await clock.settle()
+  expect((await $.command.run(music('jazz'))).text).toBe('A song is already on its way.')
+  await clock.advance(16_000)
+  expect((await first).text).toContain('Tranquility')
+  expect(starts()).toBe(1)
+})
+
+test('a genre song that ends starts one next song, however many polls the slow search spans', async ($, on) => {
+  // The first song (group 1001) ends; any later one plays on.
+  let isOver = false
+  const { clock, starts, searches } = clockedEngine(on, { searchMs: 15_000, alive: pgid => !(isOver && pgid === 1001) })
+  await $.session.start({ cwd: '/home/u' } as never)
+  const ui = await $.ui.mount(pane)
+  void ui.press({ key: GENRES[0]?.label ?? '' })
+  await clock.advance(16_000)
+  expect(starts()).toBe(1)
+  const before = searches()
+  isOver = true
+  // Polls every 5 s; the search for the next song takes 15: three polls see
+  // the first song over while it runs.
+  await clock.advance(25_000)
+  expect(searches() - before).toBe(1)
+  expect(starts()).toBe(2)
+})
+
+test('the last song of a search ends the list: the jukebox goes idle and stops polling', async ($, on) => {
+  let isOver = false
+  const { clock, starts, kills } = clockedEngine(on, { searchMs: 1_000, alive: () => !isOver })
+  await $.session.start({ cwd: '/home/u' } as never)
+  const first = $.command.run(music('ambient'))
+  await clock.advance(1_500)
+  expect((await first).text).toContain('Tranquility')
+  // The mix after it is no song: nothing follows Tranquility.
+  isOver = true
+  await clock.advance(6_000)
+  const polled = kills()
+  await clock.advance(30_000)
+  expect(kills()).toBe(polled)
+  expect(starts()).toBe(1)
+  expect((await $.command.run(music(''))).text).toContain('Nothing played')
 })

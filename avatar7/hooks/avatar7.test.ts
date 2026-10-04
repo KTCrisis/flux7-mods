@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import { test, expect } from 'claude-code/testing'
+import { test, expect, mock } from 'claude-code/testing'
 import { commandEvent, withPrivate, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
 import { ambientCells, ambientPixel } from './ambient'
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
@@ -315,4 +315,62 @@ test('the voice follows the prompt: Remote Control or ssh takes the relay, the t
   expect(givesOnEnd({ ...r, isForced: true }, 'clear')).toBe(false)
   expect(givesOnEnd({ ...r, isForced: true }, 'prompt_input_exit')).toBe(true)
   expect(givesOnEnd({ ...r, session: '' }, 'prompt_input_exit')).toBe(false)
+})
+
+// A session with a persona on duty and a clock the test moves: the model's
+// prompts are kept, the voice is silent (no WAV), every other call answers.
+const onDutyEngine = (on: On, extra: { model?: () => string; ran?: (tool: string) => Record<string, unknown> | undefined } = {}) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  mock.store(on)
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: 'test-session' }))
+  on('session.model', () => ({ value: extra.model?.() ?? 'opus' }) as never)
+  on('session.messages', () => ({ value: [] }) as never)
+  on('command.register', ($, e) => ({ value: { command: e.name } }) as never)
+  on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }) as never)
+  on('fs.read', ($, e) => {
+    if ((e as { path: string }).path.endsWith('/persona.json')) {
+      return { value: JSON.stringify({ name: 'Test', persona: 'You are a test.', greeting: 'Hello.', fallback: ['...'] }) } as never
+    }
+    throw new Error('no file here')
+  })
+  on('model.complete', ($, e) => {
+    prompts.push((e as { prompt: string }).prompt)
+    return { value: { isAnswered: true, text: 'A line.', usage: {} } } as never
+  })
+  on('ui.log', () => ({ value: undefined }) as never)
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  on('ui.blit', () => ({ value: undefined }) as never)
+  on('ui.invalidate', () => ({ value: undefined }) as never)
+  on('tool.call', ($, e) => (extra.ran?.((e as { tool: string }).tool) ?? { result: 'ok' }) as never)
+  on('turn.complete', () => ({ text: '' }) as never)
+  return { clock, prompts }
+}
+const call = (tool: string) => ({ tool, input: {}, tool_use_id: 'u1' }) as never
+const turnEnd = { answer: '', durationMs: 1, isAborted: false, turnId: 't', reason: 'answered' } as never
+
+test('a refusal while another line waits takes its place in the queue instead of being dropped', async ($, on) => {
+  const { clock, prompts } = onDutyEngine(on, { ran: tool => (tool === 'Bash' ? { deny: 'not allowed' } : undefined) })
+  await $.session.start({ cwd: '/home/u' } as never)
+  // The success finds the queue empty and waits there; the refusal comes
+  // while it waits, and is spoken after it.
+  await $.tool.call(call('Read'))
+  await $.tool.call(call('Bash'))
+  await clock.advance(30_000)
+  const events = prompts.map(p => p.split('\n')[0])
+  expect(events).toEqual(['Event: call succeeded: Read', 'Event: call DENIED: Bash (not allowed)'])
+})
+
+test('a model switch is heard at the end of the turn that follows it', async ($, on) => {
+  let model = 'opus'
+  const { clock, prompts } = onDutyEngine(on, { model: () => model })
+  await $.session.start({ cwd: '/home/u' } as never)
+  await clock.advance(10_000)
+  await $.turn.complete(turnEnd)
+  expect(prompts.some(p => p.includes('now runs on'))).toBe(false)
+  model = 'sonnet'
+  await $.turn.complete(turnEnd)
+  await clock.advance(10_000)
+  expect(prompts.some(p => p.includes('now runs on sonnet, no longer on opus'))).toBe(true)
 })

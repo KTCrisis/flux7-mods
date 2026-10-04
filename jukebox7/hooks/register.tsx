@@ -637,6 +637,9 @@ export const register: Register = on => {
     const intent = r.isAnswered ? parseIntent(r.text) : ({ action: 'none' } as const)
 
     if (intent.action === 'none') return next(e)
+    // A song already on its way: no second search, and no false "nothing found".
+    const changes = intent.action === 'play' || intent.action === 'next' || intent.action === 'similar'
+    if (changes && isMoving) return { drop: 'jukebox7: a song is already on its way' }
 
     if (intent.action !== 'play') {
       // Nothing plays: a bare stop, pause or next was meant for the assistant.
@@ -675,6 +678,8 @@ export const register: Register = on => {
 
   on('command.run', { command: 'music' }, async ($, e) => {
     const args = e.args.trim()
+    const isControl = args === '' || args === 'pause' || args === 'stop' || /^vol(?:ume)?\b/.test(args)
+    if (!isControl && isMoving) return { text: 'A song is already on its way.' }
     const p = await read($, player)
     const now = p.tracks[p.index]
     if (args === '') {
