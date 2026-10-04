@@ -68,6 +68,8 @@ clock.every 66 ms ──► pixel() over face.rgb ──► Raster cells ──�
 | `command.run` `avatar` | opens the pane, or loads another persona, stores it, queues its greeting (first in line, never over another voice) |
 | `command.run` `avatar-talk`, the `talk` Button | raise a flag; the frame clock, which holds the session's `$`, reads the last 6 messages (`$.session.messages()`, 300 characters each) and asks Haiku for one line, outside the tool-call rate limits |
 | `command.run` `avatar-ask`, the `ask` field | queue a consult, ranked with the poke and never stale; the clock reads the last 12 messages (600 characters each), asks Haiku for an opinion in two or three sentences (160 tokens), keeps every sentence, and opens the `answer` field when the opinion ends on a question; no stock line when the model gives none |
+| `command.run` (any other) | a command listed in `COMMANDS` (clear, compact, model, fast, rewind, resume, brief, veille, document, galerie, mesh-approve, code-review, security-review, code7) queues a line with what it means; the rest pass in silence; adding one is one line |
+| `session.compact` | an automatic compaction of the main conversation queues an amber line; a manual one was heard as `/compact` |
 | `command.run` `avatar-mute` | flips the `isMuted` state |
 | `state.set` | another mod's write to its own `announce` key is recorded in `announcers`, by plugin name; a write to its own `say` key queues a line at once (see below) |
 | `ui.toast` | a toast from a recorded mod (`next.origin.plugin`) queues a line announcing it in that mod's mood, past the rate limits |

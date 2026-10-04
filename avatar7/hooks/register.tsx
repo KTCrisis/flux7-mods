@@ -140,6 +140,35 @@ const STYLE = ' The user may write in French; you always answer in English. Neve
 // against what was asked rather than the bare gesture.
 const ASKED_CHARS = 200
 
+// The slash commands the avatar reacts to, each with what it means: those
+// that change the session or mark a moment. Any other (a look at /context,
+// /mcp, a mod's own pane) passes in silence. A manual /compact is heard here;
+// an automatic one through session.compact.
+export const COMMANDS: Record<string, { mood: Exclude<Mood, 'idle'>; means: string }> = {
+  clear: { mood: 'watch', means: 'wipes the whole conversation and starts over; say farewell to what is gone' },
+  compact: { mood: 'watch', means: 'compacts the conversation: the assistant keeps a summary and forgets the rest' },
+  model: { mood: 'watch', means: 'switches the model the assistant runs on' },
+  fast: { mood: 'watch', means: 'toggles fast mode for the assistant' },
+  rewind: { mood: 'error', means: 'rewinds the conversation to undo what went wrong' },
+  resume: { mood: 'watch', means: 'resumes an older session' },
+  brief: { mood: 'watch', means: 'asks for the morning brief: weather, mail, news; the day starts' },
+  veille: { mood: 'watch', means: 'publishes the AI and streaming watch to the team Discord' },
+  document: { mood: 'watch', means: 'publishes a working document as a page' },
+  galerie: { mood: 'watch', means: 'publishes the latest image renders as a gallery' },
+  'mesh-approve': { mood: 'wait', means: 'decides the approvals mesh7 holds for a human' },
+  'code-review': { mood: 'watch', means: 'puts the code under review' },
+  'security-review': { mood: 'watch', means: 'puts the code under a security review' },
+  code7: { mood: 'watch', means: 'takes the keyboard back: the user writes the code, the assistant only teaches' },
+}
+
+// The line a command earns, or undefined when it passes in silence.
+export const commandEvent = (command: string, args: string): { mood: Exclude<Mood, 'idle'>; event: string } | undefined => {
+  const known = COMMANDS[command]
+  if (known === undefined) return undefined
+  const typed = args.replace(/\s+/g, ' ').trim().slice(0, ASKED_CHARS)
+  return { mood: known.mood, event: `the user runs /${command}${typed === '' ? '' : ` ${typed}`}, which ${known.means}` }
+}
+
 // When poked, the avatar reads the last messages of the conversation, each cut
 // to this many characters.
 const TALK_MESSAGES = 6
@@ -868,6 +897,23 @@ export const register: Register = (on, options) => {
     if (question === '') return { text: 'Usage: /avatar-ask <question>' }
     speakLater({ consult: question })
     return { text: `${who?.name ?? 'avatar7'} reads the session and thinks it over.` }
+  })
+
+  // Every other slash command, native or custom: the listed ones earn a line,
+  // the rest run untouched.
+  on('command.run', async ($, e, next) => {
+    const heard = commandEvent(e.command, e.args)
+    if (heard !== undefined) speakLater(heard)
+    return next(e)
+  })
+
+  // An automatic compaction, the main conversation's only: the manual one
+  // came through /compact.
+  on('session.compact', async ($, e, next) => {
+    if (e.trigger === 'auto' && e.agentId === undefined) {
+      speakLater({ mood: 'error', event: 'the context window filled up and the conversation was compacted on its own' })
+    }
+    return next(e)
   })
 
   on('command.run', { command: 'avatar-mute' }, async $ => {

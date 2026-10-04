@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect } from 'claude-code/testing'
-import { fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
+import { commandEvent, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -228,4 +228,11 @@ test('/avatar-ask is registered with the other commands', async ($, on) => {
   const { commands } = engine(on, '')
   await $.session.start({ cwd: '/home/u' } as never)
   expect(commands).toContain('avatar-ask')
+})
+
+test('a listed command earns a line with what it means; any other passes in silence', () => {
+  expect(commandEvent('rewind', '')).toEqual({ mood: 'error', event: 'the user runs /rewind, which rewinds the conversation to undo what went wrong' })
+  expect(commandEvent('compact', ' focus  on mesh7 ')?.event).toContain('/compact focus on mesh7, which')
+  expect(commandEvent('context', '')).toBeUndefined()
+  expect(commandEvent('avatar-ask', 'x')).toBeUndefined()
 })
