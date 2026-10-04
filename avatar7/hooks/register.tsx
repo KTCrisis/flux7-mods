@@ -60,6 +60,9 @@ const FACE = 'face'
 const FRAME_MS = 66
 // The weather around the face moves at a third of the face's pace.
 const AMBIENT_FRAMES = 3
+// The HD weather: a loop of HD_LOOP pictures, one per ambient step.
+const HD_LOOP = 12
+const HD_STEP_S = (AMBIENT_FRAMES * FRAME_MS) / 1000
 const AMB_LEFT = 'amb-left'
 const AMB_RIGHT = 'amb-right'
 const AMB_BAND = 'amb-band'
@@ -559,35 +562,94 @@ export const register: Register = (on, options) => {
   let hdColumns = 0
   // The art pixel's side (hd.ts GRAINS): /avatar pixel <n>, kept in $.store.
   let grain: number = DEFAULT_GRAIN
-  let isHdShown = false
-  let hdShownKey = ''
   type HdSource = { file: string; format: 'rgba'; width: number; height: number } | { rgba: string; width: number; height: number }
+  type HdBand = HdView['band']
   // The picture keys whose file is written, or being written.
   const hdFiles = new Map<string, 'pending' | 'ready'>()
-  // The source the face shows: kept as one object, so a redraw that changes
-  // nothing hands the engine the very same source and nothing is sent.
-  let hdShown: HdSource | null = null
-  const hdView = (): HdView | null => {
+  // Each band's source as shown, kept as one object, so a redraw that
+  // changes nothing hands the engine the very same source and nothing is
+  // sent; and its key.
+  const hdShown: Record<HdBand, { source: HdSource; key: string } | null> = { face: null, under: null }
+  const isHdShown = (): boolean => hdShown.face !== null
+  // The scene layers with their HD bake in place of the 512 px one, made
+  // once per layer list so the fitted scene's cache holds.
+  const hdLayersOf = new WeakMap<AmbientLayer[], AmbientLayer[]>()
+  const hdLayers = (layers: AmbientLayer[], hd: Hd | null | undefined): AmbientLayer[] => {
+    const scene = hd?.scene
+    if (scene === null || scene === undefined) return layers
+    let swapped = hdLayersOf.get(layers)
+    if (swapped === undefined) {
+      swapped = layers.map(l => (l.kind === 'scene' ? { ...l, pixels: scene.pixels, width: scene.width, height: scene.height } : l))
+      hdLayersOf.set(layers, swapped)
+    }
+    return swapped
+  }
+  const hdView = (band: HdBand): HdView | null => {
     const v = view()
     const hd = v.faces?.hd
     if (!isHdTerminal || hd === undefined || hd === null || v.persona === null || hdColumns === 0) return null
+    if (band === 'under' && ambBand === 0) return null
     const isGuest = stage.isGuestShown && stage.guest !== null
+    // The weather loops over HD_LOOP pictures, each made once.
+    const step = Math.floor(ambT / HD_STEP_S) % HD_LOOP
+    const isFace = band === 'face'
     return {
       who: isGuest && stage.guest !== null ? stage.guest.id : whoId,
-      hd,
-      mood: v.mood,
+      band,
+      hd: isFace ? hd : null,
+      mood: isFace ? v.mood : v.mood === 'deny' ? 'deny' : 'idle',
       face: pickHdFace(hd, v.mood, v.isHeard, noise(v.frame >> 2, 7)),
-      glitchStep: v.mood === 'deny' ? 1 + ((v.frame >> 2) % GLITCH_STEPS) : 0,
+      glitchStep: isFace && v.mood === 'deny' ? 1 + ((v.frame >> 2) % GLITCH_STEPS) : 0,
       glitch: v.glitch,
       grain,
       color: v.persona.color ?? '#00ff9c',
       cutout: v.persona.cutout ?? 12,
       columns: hdColumns,
-      rows: size / 2,
-      size,
+      rows: isFace ? size / 2 : ambBand,
+      size: isFace ? size : 0,
+      layers: hdLayers(v.layers, hd),
+      field: v.field,
+      top: isFace ? 0 : size + TEXT_ROWS * 2,
+      t: step * HD_STEP_S,
+      step,
+      isStorm: v.mood === 'deny',
     }
   }
   const fileSource = (hv: HdView): HdSource => ({ file: hdPath(hdKey(hv)), format: 'rgba', ...hdSize(hv.columns, hv.rows) })
+  // The source a band shows at a render: its picture if written, else the
+  // last one until the clock swaps the new one in, else (the first) bytes;
+  // and the view whose file is still to write.
+  const hdRender = (band: HdBand): { source: HdSource | null; toWrite: HdView | null } => {
+    const hv = hdView(band)
+    if (hv === null) {
+      hdShown[band] = null
+      return { source: null, toWrite: null }
+    }
+    const key = hdKey(hv)
+    const was = hdShown[band]
+    const isReady = hdFiles.get(key) === 'ready'
+    if (isReady) {
+      if (was?.key !== key) hdShown[band] = { source: fileSource(hv), key }
+    } else {
+      const { width, height } = hdSize(hv.columns, hv.rows)
+      if (was === null || was.source.width !== width || was.source.height !== height) {
+        hdShown[band] = { source: { rgba: hdFrame(hv).toBase64(), width, height }, key }
+      }
+    }
+    return { source: hdShown[band]?.source ?? null, toWrite: isReady ? null : hv }
+  }
+  // At a frame: the band's new picture to swap in once written, or the view
+  // whose file is still to write.
+  const hdTick = (band: HdBand): { swap: HdSource | null; toWrite: HdView | null } => {
+    const hv = hdView(band)
+    if (hv === null || hdShown[band] === null) return { swap: null, toWrite: null }
+    const key = hdKey(hv)
+    if (key === hdShown[band]?.key) return { swap: null, toWrite: null }
+    if (hdFiles.get(key) !== 'ready') return { swap: null, toWrite: hv }
+    const source = fileSource(hv)
+    hdShown[band] = { source, key }
+    return { swap: source, toWrite: null }
+  }
 
   // The weather of whoever is shown: the guest's during a visit.
   const ambientLayers = (): AmbientLayer[] =>
@@ -608,9 +670,9 @@ export const register: Register = (on, options) => {
     })
     return [
       // Beside the face only in half blocks: the HD picture holds its own scene.
-      ...(ambLeft > 0 && !isHdShown ? [paint(AMB_LEFT, 0, 0, ambLeft, rows)] : []),
-      ...(ambRight > 0 && !isHdShown ? [paint(AMB_RIGHT, ambLeft + size, 0, ambRight, rows)] : []),
-      ...(ambBand > 0 ? [paint(AMB_BAND, 0, size + TEXT_ROWS * 2, ambField.width / QUAD, ambBand)] : []),
+      ...(ambLeft > 0 && !isHdShown() ? [paint(AMB_LEFT, 0, 0, ambLeft, rows)] : []),
+      ...(ambRight > 0 && !isHdShown() ? [paint(AMB_RIGHT, ambLeft + size, 0, ambRight, rows)] : []),
+      ...(ambBand > 0 && hdShown.under === null ? [paint(AMB_BAND, 0, size + TEXT_ROWS * 2, ambField.width / QUAD, ambBand)] : []),
     ]
   }
 
@@ -762,14 +824,11 @@ export const register: Register = (on, options) => {
           $.ui.invalidate('ui.render')
         },
       })
-      if (isHdShown) {
-        const hv = hdView()
-        if (hv !== null && hdKey(hv) !== hdShownKey) {
-          if (hdFiles.get(hdKey(hv)) === 'ready') {
-            hdShown = fileSource(hv)
-            hdShownKey = hdKey(hv)
-            void $.ui.blit({ requestId: PANE, key: FACE, source: hdShown })
-          } else hdEnsure($, hdFiles, hv)
+      if (isHdShown()) {
+        for (const [band, key] of [['face', FACE], ['under', AMB_BAND]] as const) {
+          const { swap, toWrite } = hdTick(band)
+          if (toWrite !== null) hdEnsure($, hdFiles, toWrite)
+          if (swap !== null) void $.ui.blit({ requestId: PANE, key, source: swap })
         }
       } else void $.ui.blit({ requestId: PANE, key: FACE, columns: size, rows: size / 2, cells: cells() })
       if (frame % AMBIENT_FRAMES === 0) {
@@ -1112,25 +1171,11 @@ export const register: Register = (on, options) => {
       <Raster key={key} columns={columns} rows={rows} cells={ambientCells(layers, ambField, x0, y0, columns, rows, ambT, face.mood === 'deny')} />
     )
     hdColumns = cols
-    const hv = hdView()
-    if (hv === null) {
-      hdShown = null
-      hdShownKey = ''
-    } else if (hdFiles.get(hdKey(hv)) === 'ready') {
-      if (hdShownKey !== hdKey(hv)) {
-        hdShown = fileSource(hv)
-        hdShownKey = hdKey(hv)
-      }
-    } else {
-      // Not on disk yet: the last picture stays until the clock swaps it in,
-      // and a first one goes as bytes, once.
-      hdEnsure($, hdFiles, hv)
-      if (hdShown === null || hdShown.width !== hdSize(hv.columns, hv.rows).width || hdShown.height !== hdSize(hv.columns, hv.rows).height) {
-        hdShown = { rgba: hdFrame(hv).toBase64(), ...hdSize(hv.columns, hv.rows) }
-        hdShownKey = hdKey(hv)
-      }
-    }
-    isHdShown = hdShown !== null
+    const faceHd = hdRender('face')
+    const underHd = faceHd.source === null ? { source: null, toWrite: null } : hdRender('under')
+    for (const hv of [faceHd.toWrite, underHd.toWrite]) if (hv !== null) hdEnsure($, hdFiles, hv)
+    const hdFace = faceHd.source
+    const hdUnder = underHd.source
     const isBlink = Math.floor(frame / REFIT_FRAMES) % 2 === 0
     const moodColor = face.mood === 'idle' ? color : `#${TINT[face.mood].toString(16).padStart(6, '0')}`
     const seconds = Math.floor((frame * FRAME_MS) / 1000)
@@ -1156,10 +1201,10 @@ export const register: Register = (on, options) => {
       // The body's own height, so the controls can sit on its last row.
       <Box flexDirection="column" flexGrow={1} width="100%" height={e.props.scroll.bodyRows} backgroundColor="#000000">
         <Box flexDirection="row" justifyContent="center" width="100%" flexShrink={0} backgroundColor="#000000">
-          {hdShown !== null && <Image key={FACE} source={hdShown} columns={cols} rows={size / 2} alt=" " />}
-          {hdShown === null && ambLeft > 0 && ambient(AMB_LEFT, 0, 0, ambLeft, size / 2)}
-          {hdShown === null && <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />}
-          {hdShown === null && ambRight > 0 && ambient(AMB_RIGHT, ambLeft + size, 0, ambRight, size / 2)}
+          {hdFace !== null && <Image key={FACE} source={hdFace} columns={cols} rows={size / 2} alt=" " />}
+          {hdFace === null && ambLeft > 0 && ambient(AMB_LEFT, 0, 0, ambLeft, size / 2)}
+          {hdFace === null && <Raster key={FACE} columns={size} rows={size / 2} cells={cells()} />}
+          {hdFace === null && ambRight > 0 && ambient(AMB_RIGHT, ambLeft + size, 0, ambRight, size / 2)}
         </Box>
         {rule('rule-face', (who?.name ?? 'avatar7').toUpperCase(), `[${face.mood.toUpperCase()}]`, moodColor, 0)}
         <Text color={color} backgroundColor="#000000">
@@ -1220,7 +1265,8 @@ export const register: Register = (on, options) => {
           />
         )}
         <Box flexGrow={1} height={0} overflow="hidden" flexDirection="column" justifyContent="flex-end" backgroundColor="#000000">
-          {ambBand > 0 && ambient(AMB_BAND, 0, size + TEXT_ROWS * 2, cols, ambBand)}
+          {ambBand > 0 && hdUnder !== null && <Image key={AMB_BAND} source={hdUnder} columns={cols} rows={ambBand} alt=" " />}
+          {ambBand > 0 && hdUnder === null && ambient(AMB_BAND, 0, size + TEXT_ROWS * 2, cols, ambBand)}
         </Box>
         {rule('rule-controls', 'CTRL', `UP ${clock}`, color, 7)}
         {isPicking && (

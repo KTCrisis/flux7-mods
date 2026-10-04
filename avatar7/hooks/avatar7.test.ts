@@ -5,7 +5,7 @@ import { facePixel, faceSample, faceCells, pickFace, TINT, type View } from './d
 import { commandEvent, heard, heardSay, landed, nextStreak, streakNote } from './hearing'
 import { speakScript, synthArgv } from './voice'
 import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona } from './speech'
-import { ambientCells, ambientPixel } from './ambient'
+import { ambientCells, ambientPixel, QUAD } from './ambient'
 import { hdFrame, hdKey, hdSize, PX, type Hd, type HdView } from './hd'
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
 import { answered, ask as askFace, calm, hold, react, release, stage, tick } from './mood'
@@ -617,9 +617,16 @@ const hdView = (mood: HdView['mood']): HdView => {
   const side = 8
   const base = new Uint8Array(side * side * 3)
   for (let y = 2; y < 6; y++) for (let x = 2; x < 6; x++) base.fill(200, (y * side + x) * 3, (y * side + x) * 3 + 3)
-  const scene = { width: 16, height: 4, pixels: new Uint8Array(16 * 4 * 3).map((_, i) => (i % 3 === 2 ? 255 : 0)) }
-  const hd: Hd = { side, base, talk: null, deny: null, scene }
-  return { who: 't', hd, mood, face: 'base', glitchStep: 0, glitch: 1, grain: 1, color: '#00ff9c', cutout: 12, columns: 20, rows: 4, size: 8 }
+  const pixels = new Uint8Array(16 * 4 * 3).map((_, i) => (i % 3 === 2 ? 255 : 0))
+  const hd: Hd = { side, base, talk: null, deny: null, scene: null }
+  const columns = 20
+  const rows = 4
+  return {
+    who: 't', band: 'face', hd, mood, face: 'base', glitchStep: 0, glitch: 1, grain: 1, color: '#00ff9c', cutout: 12, columns, rows, size: 8,
+    layers: [{ kind: 'scene', color: '#0000ff', file: 'scene.rgb', width: 16, height: 4, pixels }],
+    field: { width: columns * QUAD, height: rows * 2, sceneTop: 0, sceneBottom: rows * 2 },
+    top: 0, t: 0, step: 0, isStorm: false,
+  }
 }
 const at = (img: Uint8Array, width: number, x: number, y: number): number[] => Array.from(img.slice((y * width + x) * 4, (y * width + x) * 4 + 3))
 
@@ -637,7 +644,7 @@ test('the scene shows beside the face and through its dark ground, the portrait 
   const left = Math.floor((v.columns - v.size) / 2) * PX
   const side = v.size * PX
   // Beside the face, low in the band: the scene's blue.
-  const beside = at(img, width, 2, height - 2)
+  const beside = at(img, width, 2, Math.floor(height / 2))
   expect(beside[2]).toBeGreaterThan(0)
   expect(beside[0]).toBe(0)
   // In the face's black ground, away from the frame: the scene again.
@@ -668,4 +675,14 @@ test('a coarser grain draws square art pixels, each one flat', () => {
     expect(at(img, width, x - (x % 3) + 2, y - (y % 3) + 2)).toEqual(corner)
   }
   expect(hdKey(v)).not.toBe(hdKey(hdView('idle')))
+})
+
+test('the band under the text is drawn the same way, without a face, and loops its weather', () => {
+  const v: HdView = { ...hdView('idle'), band: 'under', hd: null, size: 0, grain: 3 }
+  const { width, height } = hdSize(v.columns, v.rows)
+  const img = hdFrame(v)
+  expect(img.length).toBe(width * height * 4)
+  expect(at(img, width, Math.floor(width / 2), Math.floor(height / 2))[2]).toBeGreaterThan(0)
+  expect(hdKey({ ...v, step: 1 })).not.toBe(hdKey(v))
+  expect(hdKey(v)).not.toBe(hdKey({ ...v, band: 'face' }))
 })
