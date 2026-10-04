@@ -36,6 +36,7 @@ STATE = SPOOL / "state.json"
 COMMANDS_DIR = SPOOL / "cmd"
 COMMANDS = {"talk", "ask", "answer", "chat", "avatar", "mute", "events", "visits", "volume"}
 MAX_COMMAND = 2048
+MAX_PENDING = 16  # presses waiting for the session, at most
 KEEP_S = 120  # a WAV no tab fetched within this is dropped
 
 # The page, read at each request: edit it without restarting the relay.
@@ -55,6 +56,10 @@ def tailnet_ip() -> str:
 
 
 class Handler(BaseHTTPRequestHandler):
+    # A request that stalls, or a phone gone from the network mid-stream,
+    # frees its thread after this many seconds instead of TCP's ~15 minutes.
+    timeout = 30
+
     def log_message(self, *args):
         pass
 
@@ -74,7 +79,11 @@ class Handler(BaseHTTPRequestHandler):
             if not name.endswith((".wav", ".ogg")) or not f.is_file():
                 self.send_error(404)
                 return
-            body = f.read_bytes()
+            try:
+                body = f.read_bytes()
+            except FileNotFoundError:  # swept meanwhile
+                self.send_error(404)
+                return
             self.send_response(200)
             self.send_header("Content-Type", "audio/ogg" if name.endswith(".ogg") else "audio/wav")
             self.send_header("Content-Length", str(len(body)))
@@ -92,7 +101,18 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/command":
             self.send_error(404)
             return
-        size = int(self.headers.get("Content-Length") or 0)
+        # Nobody holds the relay: a press would wait in cmd/ and fire, with
+        # all the others, when a session next takes it.
+        if not (SPOOL / "owner").is_file():
+            self.send_error(409, "no session holds the relay")
+            return
+        if len(list(COMMANDS_DIR.glob("*.json"))) >= MAX_PENDING:
+            self.send_error(429)
+            return
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            size = 0
         if not 0 < size <= MAX_COMMAND:
             self.send_error(413)
             return
@@ -146,7 +166,7 @@ class Handler(BaseHTTPRequestHandler):
             last = int(self.headers.get("Last-Event-ID", ""))
         except ValueError:
             last = None
-        seen = {p.name for p in voices() if last is None or p.stat().st_mtime_ns <= last}
+        seen = {p.name for p in voices() if last is None or mtime_ns(p) <= last}
         last_ping = time.monotonic()
         state_at = 0.0
         try:
@@ -161,20 +181,30 @@ class Handler(BaseHTTPRequestHandler):
                 except FileNotFoundError:
                     pass
                 fresh = sorted(
-                    (p for p in voices() if p.name not in seen),
-                    key=lambda p: p.stat().st_mtime,
+                    ((mtime_ns(p), p) for p in voices() if p.name not in seen),
+                    key=lambda tp: tp[0],
                 )
-                for p in fresh:
+                for at_ns, p in fresh:
                     seen.add(p.name)
-                    self.wfile.write(f"id: {p.stat().st_mtime_ns}\ndata: {p.name}\n\n".encode())
+                    if at_ns < 0:  # swept between the glob and now
+                        continue
+                    self.wfile.write(f"id: {at_ns}\ndata: {p.name}\n\n".encode())
                 if fresh or time.monotonic() - last_ping > 15:
                     if not fresh:
                         self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
                     last_ping = time.monotonic()
                 time.sleep(0.2)
-        except (BrokenPipeError, ConnectionResetError):
+        except OSError:  # the page went: closed, reset, or timed out
             pass
+
+
+def mtime_ns(p: Path) -> int:
+    """A voice's time, or -1 once sweep() took it."""
+    try:
+        return p.stat().st_mtime_ns
+    except FileNotFoundError:
+        return -1
 
 
 def voices():
@@ -239,6 +269,8 @@ def main():
         raise
     server.daemon_threads = True
     SPOOL.mkdir(parents=True, exist_ok=True)
+    for part in COMMANDS_DIR.glob("*.part"):
+        part.unlink(missing_ok=True)
     (SPOOL / "relay.pid").write_text(str(os.getpid()))
 
     signal.signal(signal.SIGTERM, stop)

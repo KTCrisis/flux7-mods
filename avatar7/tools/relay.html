@@ -101,14 +101,21 @@ const faces = {}; let st = null, files = [], persona = '', flapAt = 0;
 // line's length once decoded. The element stays as the fallback.
 const queue = []; let busy = false, speaking = false; const audio = new Audio();
 let ctx = null;
+// A step that hangs (a download stalled by the network, a context the phone
+// keeps suspended during a call) gives up after this, so the lines behind it
+// still play.
+const STALL_MS = 15000;
+const within = (p, what) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(what + ' stalled')), STALL_MS))]);
 async function next() {
   if (busy || !queue.length) return;
   busy = true;
   const url = '/wav/' + queue.shift();
   if (ctx) {
     try {
-      if (ctx.state !== 'running') await ctx.resume();
-      const buf = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+      if (ctx.state !== 'running') await within(ctx.resume(), 'audio');
+      const got = new AbortController(); const stop = setTimeout(() => got.abort(), STALL_MS);
+      const bytes = await fetch(url, { signal: got.signal }).then(r => r.arrayBuffer()).finally(() => clearTimeout(stop));
+      const buf = await ctx.decodeAudioData(bytes);
       const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination);
       src.onended = () => { speaking = false; busy = false; next(); };
       speaking = true; src.start(); started(buf.duration * 1000);
@@ -116,7 +123,7 @@ async function next() {
     } catch (e) { status('web audio: ' + e.message); }
   }
   audio.src = url;
-  audio.play().catch(e => { status('blocked: ' + e.message); busy = false; });
+  audio.play().catch(e => { status('blocked: ' + e.message); busy = false; next(); });
 }
 audio.onended = audio.onerror = () => { busy = false; next(); };
 
@@ -161,7 +168,10 @@ function draw() {
 // The mouth flaps at an uneven pace while the voice is heard.
 setInterval(() => { if (isHeard() && Math.random() < .55) flapAt = performance.now() + 140; draw(); }, 160);
 
-const send = body => fetch('/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+// The relay refuses a press while no session holds it (409), or too many wait (429).
+const send = body => fetch('/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  .then(r => { if (r.status === 409) status('no session holds the relay'); else if (r.status === 429) status('too many presses waiting'); })
+  .catch(() => status('lost, retrying'));
 document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => send({ cmd: b.dataset.c }));
 document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => send({ cmd: 'volume', step: +b.dataset.v }));
 $('askBtn').onclick = () => { $('ask').classList.toggle('open'); $('ask').t.focus(); };
