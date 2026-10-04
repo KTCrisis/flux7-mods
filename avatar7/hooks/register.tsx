@@ -23,6 +23,31 @@ import {
   type Relay,
   type RelayHost,
 } from './relay'
+import {
+  CHAT_LINES,
+  CONSULT_CHARS_ASKED,
+  DUO_TURNS,
+  EVENT_MIN_FRAMES,
+  EVENT_QUIET_FRAMES,
+  EVENT_SPAN_FRAMES,
+  enqueue,
+  fresh,
+  isOpinion,
+  lineFrom,
+  personalize,
+  pickEvent,
+  pickGuest,
+  promptFor,
+  QUESTION_FRAMES,
+  reads,
+  RECENT_LINES,
+  STYLE,
+  type Ask,
+  type Duo,
+  type Persona,
+  type Queued,
+  type Story,
+} from './speech'
 import { begin, end, isHeard, restored, silent, start, typeOn, voiced, type Typing } from './line'
 import { answered, ask as askFace, calm, hold, isWaiting, react, release, tick, type Face, type Mood } from './mood'
 
@@ -260,8 +285,6 @@ async function relayEnd($: Engine, r: Relay, reason: string): Promise<void> {
   if (givesOnEnd(r, reason)) await relayGive($, r)
 }
 
-// Rules every persona keeps, whatever its character: added to each prompt.
-const STYLE = ' The user may write in French; you always answer in English. Never flattering. No quotes, no emoji, no em dash.'
 
 // How much of the user's last prompt the avatar reads, so it judges a call
 // against what was asked rather than the bare gesture.
@@ -295,16 +318,6 @@ export const commandEvent = (command: string, args: string): { mood: Exclude<Moo
   return { mood: known.mood, event: `the user runs /${command}${typed === '' ? '' : ` ${typed}`}, which ${known.means}` }
 }
 
-// When poked, the avatar reads the last messages of the conversation, each cut
-// to this many characters.
-const TALK_MESSAGES = 6
-const TALK_CHARS = 300
-// Asked for an opinion, it reads further back and may say more.
-const CONSULT_MESSAGES = 12
-const CONSULT_CHARS = 600
-const CONSULT_CHARS_ASKED = 400
-// A chat remembers its last six exchanges, per persona.
-const CHAT_LINES = 12
 
 
 // Whether a write landed. The host answers a plain write without `isSet`
@@ -359,138 +372,8 @@ export const streakNote = (before: Streak, after: Streak): string => {
   return ''
 }
 
-// The avatar's last lines, given back to the model so it does not repeat
-// its own wording over a long session.
-const RECENT_LINES = 3
-
-export const recentNote = (lines: string[]): string =>
-  lines.length === 0 ? '' : `\nYour last lines, do not reuse their wording or openings:\n${lines.map(l => `- ${l}`).join('\n')}`
-
-// A line to speak: an event in a mood, or the user's poke, which reads the
-// conversation first; or, now and then, a moment of the persona's own story,
-// a question it puts to the user, and its reaction to the user's answer.
-type Ask =
-  | { mood: Mood; event: string; tool?: string; after?: number }
-  | 'talk'
-  | { story: string; mood: Mood }
-  | 'question'
-  | { question: string; answer: string }
-  | { consult: string }
-  | { chat: string }
-  | Duo
-  | { greet: string }
-
-// One turn of a dialogue with a visiting persona: even turns are the host's,
-// odd ones the guest's; `history` holds the lines said so far, by name.
-export type Duo = { duo: string; turn: number; topic: 'session' | 'stories'; history: string[] }
-export const DUO_TURNS = 6
-
-// A guest for the persona on duty: any other avatar, its `friends` three
-// times as likely as the rest, picked by `roll` in [0, 1).
-const FRIEND_WEIGHT = 3
-
-export const pickGuest = (avatars: string[], current: string, roll: number, friends: string[] = []): string | undefined => {
-  const others = avatars.filter(a => a !== current)
-  const weights = others.map(a => (friends.includes(a) ? FRIEND_WEIGHT : 1))
-  let left = roll * weights.reduce((sum, w) => sum + w, 0)
-  for (const [i, a] of others.entries()) {
-    left -= weights[i] ?? 1
-    if (left < 0) return a
-  }
-  return others.at(-1)
-}
-
-export type Story = { story: string; mood: Exclude<Mood, 'idle'> }
-
-// The persona's own lines for when the model gives none. A question or a
-// dialogue turn has none: it is simply not said. The string asks are tested
-// first, since `in` on a string throws (it once silenced every poke).
-export const fallbackPool = (ask: Ask, fallback: Persona['fallback']): string[] => {
-  if (ask === 'talk') return fallback.idle
-  if (ask === 'question') return []
-  if ('duo' in ask) return []
-  if ('story' in ask || 'answer' in ask || 'greet' in ask) return fallback.idle
-  // A stock line is no answer to a question: better silent.
-  if ('consult' in ask || 'chat' in ask) return []
-  return ask.mood === 'wait' ? (fallback.wait ?? fallback.watch) : fallback[ask.mood as Exclude<Mood, 'idle' | 'wait'>]
-}
-
-// One of the persona's own events, or undefined when it has none: a story
-// or a question, even odds when it has both. `roll` and `pick` are in [0, 1).
-export const pickEvent = (stories: Story[], canAsk: boolean, roll: number, pick: number): Ask | undefined => {
-  const story = stories[Math.floor(pick * stories.length)]
-  if (story !== undefined && (!canAsk || roll < 0.5)) return { story: story.story, mood: story.mood }
-  return canAsk ? 'question' : undefined
-}
-
-// Rare: one event every 20 to 40 minutes, and only after a minute of quiet.
-const EVENT_MIN_FRAMES = (20 * 60_000) / 66
-const EVENT_SPAN_FRAMES = (20 * 60_000) / 66
-const EVENT_QUIET_FRAMES = 60_000 / 66
-// A question unanswered for five minutes goes away.
-const QUESTION_FRAMES = (5 * 60_000) / 66
-
-// The lines waiting for the voice, most urgent first: the user's poke, a
-// refusal, a failure or a wait, then calm news; among equals the oldest. Full,
-// the least urgent goes; a line that waited too long is dropped unspoken.
-type Queued = { ask: Ask; rank: number; at: number }
-const QUEUE_MAX = 4
-// ~20 s of frames: past that, a line speaks of something already gone.
-const STALE_FRAMES = 300
-
-// The persona's own events come last; the user's poke and answer first.
-export const rankOf = (ask: Ask): number => {
-  if (ask === 'talk') return 4
-  if (ask === 'question') return 0
-  if ('duo' in ask) return 0
-  if ('answer' in ask || 'greet' in ask || 'consult' in ask || 'chat' in ask) return 4
-  if ('story' in ask) return 0
-  return ask.mood === 'deny' ? 3 : ask.mood === 'error' || ask.mood === 'wait' ? 2 : 1
-}
-
-export const enqueue = (queue: Queued[], ask: Ask, at: number): Queued[] =>
-  [...queue, { ask, rank: rankOf(ask), at }].sort((a, b) => b.rank - a.rank || a.at - b.at).slice(0, QUEUE_MAX)
-
-export const fresh = (queue: Queued[], now: number): Queued[] =>
-  queue.filter(
-    q =>
-      q.ask === 'talk' ||
-      (typeof q.ask === 'object' && ('answer' in q.ask || 'greet' in q.ask || 'consult' in q.ask || 'chat' in q.ask)) ||
-      now - q.at <= STALE_FRAMES,
-  )
 
 
-type Persona = {
-  name: string
-  voice: string
-  rate: number
-  pitch?: number
-  // Piper voice name and pace (length-scale, under 1 is faster).
-  // fx: an ffmpeg audio filter run on the WAV, from aresample=22050 so pitch
-  // shifts by asetrate hold whatever the voice's own rate.
-  // speaker: for a multi-speaker model, the speaker's id (speaker_id_map).
-  piper?: { voice: string; lengthScale?: number; fx?: string; speaker?: number }
-  color: string
-  eyes: { x: number; y: number; rx: number; ry: number }[]
-  mouth: { x: number; y: number; half: number } | null
-  greeting: string
-  persona: string
-  fallback: Record<Exclude<Mood, 'wait'>, string[]> & { wait?: string[] }
-  nobody?: string
-  // The artists this persona would put on; jukebox7 plays them.
-  station?: string[]
-  // Moments of its own story it lives now and then, and the bent of the
-  // questions it asks the user; either may be absent.
-  events?: Story[]
-  asks?: string
-  // The avatars it gets on with, or against: they visit it more often.
-  friends?: string[]
-  // Pixel weather in the black around the face (hooks/ambient.ts).
-  ambient?: AmbientLayer[]
-  // The portrait's luminance (0-255) under which the scene shows through it;
-  // lower for a face with dark hair, which would otherwise turn see-through.
-  cutout?: number
-}
 
 // A visiting persona: its text and its face, read from its folder.
 // A persona's faces: the portrait, and the optional frames baked beside it
@@ -576,13 +459,6 @@ async function loadGuest($: Engine, id: string): Promise<Guest | null> {
   }
 }
 
-// `{, user}` in a persona's text becomes ", <name>": the user_name option,
-// else the persona's `nobody`, else nothing (the braces and their text drop).
-const personalize = (text: string, name: string, nobody: string | undefined): string =>
-  text.replace(/\{([^{}]*)user([^{}]*)\}/g, (_, before: string, after: string) => {
-    const who = name !== '' ? name : (nobody ?? '')
-    return who === '' ? '' : `${before}${who}${after}`
-  })
 
 const TINT: Record<Mood, number> = {
   idle: 0x000000,
@@ -1000,78 +876,29 @@ export const register: Register = (on, options) => {
         try {
           // The line: a greeting as written, anything else from the model.
           // A consultation and a chat keep all their sentences.
-          const isConsult = typeof ask === 'object' && ('consult' in ask || 'chat' in ask)
+          const isConsult = isOpinion(ask)
           const isChat = typeof ask === 'object' && 'chat' in ask
           const write = async (): Promise<string> => {
-            let prompt: string
-            const conversation = async (count = TALK_MESSAGES, chars = TALK_CHARS): Promise<string> =>
-              (await $.session.messages())
-                .filter(m => m.text.trim() !== '')
-                .slice(-count)
-                .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, chars)}`)
-                .join('\n')
-            if (ask === 'talk') {
-              prompt =
-                `The user pokes you and wants your take on where the conversation stands.\n` +
-                `Last messages, oldest first:\n${await conversation()}`
-            } else if (ask === 'question') {
-              prompt =
-                `Ask the user ONE short question, then stop: philosophical, from your own story, or technical, ` +
-                `about the work in the conversation below. Your bent: ${voice.asks ?? 'what your character would wonder'}.\n` +
-                `Last messages, oldest first:\n${await conversation()}`
-            } else if ('story' in ask) {
-              prompt = `A moment of your own story happens now, unrelated to the tool calls: ${ask.story}. Say what you live or feel in it.`
-            } else if ('duo' in ask) {
-              const other = isGuestTurn ? (who?.name ?? 'the host') : (guest?.persona.name ?? 'a visitor')
-              const about =
-                ask.topic === 'session'
-                  ? `the work going on in this terminal session. Last messages, oldest first:\n${await conversation()}`
-                  : 'where your two stories cross'
-              prompt =
-                ask.turn === 0
-                  ? `${other} visits your terminal. Open a short exchange with them, speaking to them directly, about ${about}`
-                  : `You are talking with ${other}. The exchange so far:\n${ask.history.join('\n')}\n` +
-                    (ask.turn === DUO_TURNS - 1 ? 'Close the exchange in one sentence, to them.' : 'Answer them in one sentence.')
-            } else if ('consult' in ask) {
-              prompt =
-                `The user is working with an AI assistant in this terminal session and asks your opinion on it.\n` +
-                `Last messages, oldest first:\n${await conversation(CONSULT_MESSAGES, CONSULT_CHARS)}\n` +
-                `The user asks you: ${ask.consult}\n` +
-                `Answer in character, in two or three sentences: take a position, name what you would change or keep. ` +
-                `You may end on one question back.`
-            } else if ('chat' in ask) {
-              const past = chats.get(voiceId) ?? []
-              prompt =
-                `The user talks to you personally, about whatever they like, not about the terminal session. ` +
-                `This time you may use two or three sentences instead of one.\n` +
-                (past.length > 0 ? `Your conversation so far, oldest first:\n${past.join('\n')}\n` : '') +
-                `The user says: ${ask.chat}\n` +
-                `Answer in character, from your own world and what you know of the user; you may ask one question back.`
-            } else if ('answer' in ask) {
-              prompt =
-                `You asked the user: ${ask.question}\nThe user answered: ${ask.answer}\n` +
-                `React in character: challenge it, approve it your way, or ask one follow-up.`
-            } else if ('greet' in ask) {
-              // Spoken as written, before any call here.
-              return ask.greet
-            } else {
-              prompt = asked === '' ? `Event: ${ask.event}` : `The user asked: ${asked}\nEvent: ${ask.event}`
-            }
-            prompt += recentNote(recentLines)
+            const need = reads(ask)
+            const conversation =
+              need === null
+                ? ''
+                : (await $.session.messages())
+                    .filter(m => m.text.trim() !== '')
+                    .slice(-need.count)
+                    .map(m => `${m.role}: ${m.text.replace(/\s+/g, ' ').trim().slice(0, need.chars)}`)
+                    .join('\n')
+            const other = isGuestTurn ? (who?.name ?? 'the host') : (guest?.persona.name ?? 'a visitor')
+            const prompt = promptFor(ask, { voice, other, conversation, chatPast: chats.get(voiceId) ?? [], asked, recent: recentLines })
+            if (prompt === null) return typeof ask === 'object' && 'greet' in ask ? ask.greet : ''
             const r = await $.model.complete({
               model: 'haiku',
               system: personalize(voice.persona, userName, voice.nobody) + STYLE,
               prompt,
-              maxTokens: isConsult ? 160 : 80,
+              maxTokens: isOpinion(ask) ? 160 : 80,
               timeoutMs: 15_000,
             })
-            const pool = fallbackPool(ask, voice.fallback)
-            // An opinion keeps all its sentences; any other line, its first.
-            return r.isAnswered
-              ? isConsult
-                ? r.text.replace(/\s+/g, ' ').trim()
-                : (r.text.trim().split('\n')[0] ?? '')
-              : personalize(pool[frame % pool.length] ?? '', userName, voice.nobody)
+            return lineFrom(r, ask, voice, frame, userName)
           }
           const text = typeof ask === 'object' && 'greet' in ask ? ask.greet : await write()
           if (text === '') return

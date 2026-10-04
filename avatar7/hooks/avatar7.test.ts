@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
-import { commandEvent, withPrivate, fallbackPool, pickFace, synthArgv, enqueue, fresh, heard, heardSay, landed, nextStreak, pickEvent, pickGuest, rankOf, recentNote, streakNote } from './register'
+import { commandEvent, withPrivate, pickFace, synthArgv, heard, heardSay, landed, nextStreak, streakNote } from './register'
+import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona } from './speech'
 import { ambientCells, ambientPixel } from './ambient'
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
 import { answered, ask as askFace, calm, hold, react, release, tick } from './mood'
@@ -431,4 +432,38 @@ test('a muted line types at once; a line kept across a reload shows whole; the s
   const busy = begin(silent, 40)
   expect([busy.isSpeaking, busy.lastSpoke]).toEqual([true, 40])
   expect(end(busy).isSpeaking).toBe(false)
+})
+
+const persona = { name: 'Test', persona: 'You are a test.', fallback: { idle: ['Hm.'], watch: ['Seen.'], deny: ['No.'], error: ['Oops.'] }, asks: 'machines' } as unknown as Persona
+const asking = { voice: persona, other: 'Lain', conversation: 'user: hi', chatPast: [], asked: '', recent: [] }
+
+test('each line reads what it needs from the session, and no more', () => {
+  expect(reads('talk')).toEqual({ count: 6, chars: 300 })
+  expect(reads({ consult: 'is this right?' })).toEqual({ count: 12, chars: 600 })
+  expect(reads({ duo: 'lain', turn: 0, topic: 'session', history: [] })).toEqual({ count: 6, chars: 300 })
+  // A later turn of a dialogue, or a dialogue about their stories, reads nothing.
+  expect(reads({ duo: 'lain', turn: 2, topic: 'session', history: [] })).toBeNull()
+  expect(reads({ duo: 'lain', turn: 0, topic: 'stories', history: [] })).toBeNull()
+  expect(reads({ mood: 'deny', event: 'x' })).toBeNull()
+  expect(reads({ greet: 'Hello.' })).toBeNull()
+})
+
+test('the prompt fits the line: an event against what was asked, a dialogue to the other, a greeting none', () => {
+  expect(promptFor({ mood: 'deny', event: 'call DENIED: Bash' }, { ...asking, asked: 'clean the build' })).toBe(
+    'The user asked: clean the build\nEvent: call DENIED: Bash',
+  )
+  expect(promptFor({ duo: 'lain', turn: 0, topic: 'stories', history: [] }, asking)).toContain('Lain visits your terminal')
+  expect(promptFor({ duo: 'lain', turn: 5, topic: 'stories', history: ['Lain: hi'] }, asking)).toContain('Close the exchange')
+  expect(promptFor('question', asking)).toContain('Your bent: machines')
+  expect(promptFor({ chat: 'how are you' }, { ...asking, chatPast: ['User: hi', 'Test: hello'] })).toContain('User: hi\nTest: hello')
+  expect(promptFor({ greet: 'Hello.' }, asking)).toBeNull()
+  expect(promptFor('talk', { ...asking, recent: ['Seen it.'] })).toContain('- Seen it.')
+})
+
+test('an opinion keeps all its sentences, a line its first; no answer falls back to a stock line, or silence', () => {
+  expect(isOpinion({ consult: 'x' })).toBe(true)
+  expect(lineFrom({ isAnswered: true, text: 'One.\nTwo.' }, { mood: 'watch', event: 'x' }, persona, 0, '')).toBe('One.')
+  expect(lineFrom({ isAnswered: true, text: 'One.\n  Two.' }, { consult: 'x' }, persona, 0, '')).toBe('One. Two.')
+  expect(lineFrom({ isAnswered: false }, { mood: 'deny', event: 'x' }, persona, 0, '')).toBe('No.')
+  expect(lineFrom({ isAnswered: false }, { consult: 'x' }, persona, 0, '')).toBe('')
 })
