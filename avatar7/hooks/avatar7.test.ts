@@ -10,7 +10,7 @@ import { hdFrame, hdKey, hdSize, isSettled, PX, SETTLE_FRAMES, type Hd, type HdV
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
 import { answered, ask as askFace, calm, hold, react, release, stage, tick } from './mood'
 import { begin, end, HOLD_FRAMES, isHeard, restored, silent, start, typeOn, voiced } from './line'
-import { episodeOf, journalFrom, memoryAt, memoryNote, parseContext, parseRecall, queryFor, recalls, rpcArgv, storeBody, unsummed } from './memory'
+import { episodeOf, journalFrom, journalsFor, memoryAt, memoryNote, parseContext, parseRecall, queryFor, recalls, rpcArgv, storeBody, unsummed } from './memory'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -752,4 +752,13 @@ test('a journal sums up only what came after the last one, oldest first; NOTHING
   expect(journalFrom({ isAnswered: true, text: ' He codes at night.\n' })).toBe('He codes at night.')
   expect(memoryNote([], [])).toBe('')
   expect(memoryNote([e('2026-10-04T00:00:00Z')], [])).toContain('2026-10-04')
+})
+
+test('an old journal that matches is read beside the last ones, once, and whole', () => {
+  const j = (key: string, updated: string, value = key) => ({ key, value, updated })
+  const latest = [j('j5', '2026-10-05'), j('j4', '2026-10-04')]
+  const matched = [j('j4', '2026-10-04'), j('j1', '2026-09-01'), j('j2', '2026-09-10'), j('j3', '2026-09-20')]
+  expect(journalsFor(latest, matched).map(m => m.key)).toEqual(['j5', 'j4', 'j2', 'j1'])
+  const long = 'x'.repeat(600)
+  expect(memoryNote([j('j', '2026-10-05', long)], [])).toContain(long)
 })

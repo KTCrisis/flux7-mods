@@ -40,6 +40,8 @@ import {
   recalls,
   RECALL_EPISODES,
   RECALL_JOURNALS,
+  RECALL_OLD_JOURNALS,
+  journalsFor,
   rpcArgv,
   storeBody,
   unsummed,
@@ -415,9 +417,11 @@ async function mem7($: Engine, at: MemoryAt, body: string): Promise<string> {
 // What the persona remembers for a line: its last journals, and the
 // exchanges that match what was said.
 async function remembered($: Engine, at: MemoryAt, agent: string, query: string): Promise<string> {
-  const journals = parseRecall(await mem7($, at, recallBody(agent, ['journal'], RECALL_JOURNALS)))
-  const episodes = query.trim() === '' ? [] : parseContext(await mem7($, at, contextBody(agent, query, ['episode'], RECALL_EPISODES)))
-  return memoryNote(journals, episodes)
+  const latest = parseRecall(await mem7($, at, recallBody(agent, ['journal'], RECALL_JOURNALS)))
+  if (query.trim() === '') return memoryNote(latest, [])
+  const matched = parseContext(await mem7($, at, contextBody(agent, query, ['journal'], RECALL_JOURNALS + RECALL_OLD_JOURNALS)))
+  const episodes = parseContext(await mem7($, at, contextBody(agent, query, ['episode'], RECALL_EPISODES)))
+  return memoryNote(journalsFor(latest, matched), episodes)
 }
 
 async function keep($: Engine, at: MemoryAt, agent: string, value: string, tags: string[]): Promise<void> {

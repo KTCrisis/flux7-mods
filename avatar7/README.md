@@ -177,7 +177,8 @@ remember:
   money, family or health.
 
 A line that answers you, speaks of the session or opens a visit recalls the
-last two journals and the three exchanges closest to what was said; a verdict
+last two journals, up to two older journals and the three exchanges closest
+to what was said (an exchange goes in 30 days, its journal stays); a verdict
 on a tool recalls nothing and keeps nothing, so it stays immediate.
 
 Each persona is a mem7 agent, named by its id. With mem7's token and read

@@ -16,8 +16,13 @@ export const EPISODE_TTL_S = 30 * 24 * 3600
 // journals whatever was said.
 export const RECALL_EPISODES = 3
 export const RECALL_JOURNALS = 2
-// An exchange recalled is cut to this many characters.
+// And older journals that match what was said: past two sessions, an
+// exchange is gone in 30 days, and only its journal still holds it.
+export const RECALL_OLD_JOURNALS = 2
+// An exchange recalled is cut to this many characters, a journal to more:
+// it is already the short form.
 export const RECALL_CHARS = 300
+export const JOURNAL_CHARS = 700
 // At most this many exchanges summed up in one journal.
 export const CONSOLIDATE_MAX = 40
 
@@ -126,15 +131,22 @@ export const queryFor = (ask: Ask, asked: string, other: string): string => {
 }
 
 // What the model reads of the past, after the prompt; '' when nothing came back.
+// The journals a line reads: the last ones and the older ones that matched,
+// each once, most recent first.
+export const journalsFor = (latest: Memory[], matched: Memory[]): Memory[] => {
+  const seen = new Set(latest.map(j => j.key))
+  return [...latest, ...matched.filter(j => !seen.has(j.key)).slice(0, RECALL_OLD_JOURNALS)].sort((a, b) => (a.updated < b.updated ? 1 : -1))
+}
+
 export const memoryNote = (journals: Memory[], episodes: Memory[]): string => {
   if (journals.length === 0 && episodes.length === 0) return ''
-  const cut = (s: string): string => {
+  const cut = (s: string, max: number): string => {
     const one = s.replace(/\s+/g, ' ').trim()
-    return one.length > RECALL_CHARS ? `${one.slice(0, RECALL_CHARS)}...` : one
+    return one.length > max ? `${one.slice(0, max)}...` : one
   }
   const parts = ['\nWhat you remember from earlier sessions (use it only if it fits; never invent more):']
-  for (const j of [...journals].reverse()) parts.push(`- ${cut(j.value)}`)
-  for (const e of episodes) parts.push(`- (${e.updated.slice(0, 10)}) ${cut(e.value)}`)
+  for (const j of [...journals].reverse()) parts.push(`- (${j.updated.slice(0, 10)}, your journal) ${cut(j.value, JOURNAL_CHARS)}`)
+  for (const e of episodes) parts.push(`- (${e.updated.slice(0, 10)}) ${cut(e.value, RECALL_CHARS)}`)
   return parts.join('\n')
 }
 
