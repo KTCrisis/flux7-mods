@@ -10,6 +10,7 @@ import { hdFrame, hdKey, hdSize, isSettled, PX, SETTLE_FRAMES, type Hd, type HdV
 import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
 import { answered, ask as askFace, calm, hold, react, release, stage, tick } from './mood'
 import { begin, end, HOLD_FRAMES, isHeard, restored, silent, start, typeOn, voiced } from './line'
+import { episodeOf, journalFrom, memoryAt, memoryNote, parseContext, parseRecall, queryFor, recalls, rpcArgv, storeBody, unsummed } from './memory'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -694,4 +695,61 @@ test('a resize makes no HD picture until the size has held SETTLE_FRAMES', () =>
   for (let f = 11; f < 30; f++) expect(isSettled(s, `${101 + f}|20`, f)).toBe(false)
   expect(isSettled(s, '130|20', 29 + SETTLE_FRAMES - 1)).toBe(false)
   expect(isSettled(s, '130|20', 29 + SETTLE_FRAMES)).toBe(true)
+})
+
+// The personas' memory (memory.ts): what is kept, read back and summed up.
+const rpc = (text: string): string => JSON.stringify({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text }] } })
+
+test('without memory_url the personas forget; the token file stays out of the script', () => {
+  expect(memoryAt({})).toBe(null)
+  expect(memoryAt({ memory_url: '  ' })).toBe(null)
+  const at = memoryAt({ memory_url: 'http://127.0.0.1:9071/', memory_env: '~/.config/m.env' })
+  expect(at).toEqual({ url: 'http://127.0.0.1:9071', envFile: '~/.config/m.env' })
+  const argv = rpcArgv(at!)
+  // Positional: neither the path nor the URL is ever read as shell.
+  expect(argv[2]).not.toContain('m.env')
+  expect(argv.slice(-2)).toEqual(['~/.config/m.env', 'http://127.0.0.1:9071'])
+})
+
+test('a store speaks as the persona, and only an episode carries a TTL', () => {
+  const body = JSON.parse(storeBody('nova', 'nova.ep.1', 'v', ['episode'], 60))
+  expect(body.params._meta['art.flux7/agent']).toBe('nova')
+  expect(body.params.arguments.ttl).toBe(60)
+  expect('ttl' in JSON.parse(storeBody('nova', 'nova.journal.1', 'v', ['journal'])).params.arguments).toBe(false)
+})
+
+test('recall reads values over several lines, and nothing from an empty answer or an error', () => {
+  const text = '## nova.ep.2\nUser: multi\nline\nNova: ok\nTags: episode\nAgent: nova\nUpdated: 2026-10-05T18:46:31Z\n\n## nova.ep.1\nUser: night?\nNova: always.\nTags: episode\nAgent: nova\nUpdated: 2026-10-05T18:44:40Z\n\n'
+  expect(parseRecall(rpc(text))).toEqual([
+    { key: 'nova.ep.2', value: 'User: multi\nline\nNova: ok', updated: '2026-10-05T18:46:31Z' },
+    { key: 'nova.ep.1', value: 'User: night?\nNova: always.', updated: '2026-10-05T18:44:40Z' },
+  ])
+  expect(parseRecall(rpc('No memories found.'))).toEqual([])
+  expect(parseRecall('')).toEqual([])
+  expect(parseContext(rpc('[{"key":"k","value":"v","updated":"2026-10-05T00:00:00Z"}]'))).toEqual([{ key: 'k', value: 'v', updated: '2026-10-05T00:00:00Z' }])
+  expect(parseContext(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'x' } }))).toEqual([])
+})
+
+test('a verdict on a tool recalls nothing and keeps nothing; what the user says is both', () => {
+  expect(recalls({ mood: 'deny', event: 'Bash rm' })).toBe(false)
+  expect(episodeOf({ mood: 'deny', event: 'Bash rm' }, 'Nova', 'No.')).toBe(null)
+  expect(recalls({ chat: 'night or dawn?' })).toBe(true)
+  expect(queryFor({ chat: 'night or dawn?' }, 'last prompt', '')).toBe('night or dawn?')
+  expect(episodeOf({ chat: 'night or dawn?' }, 'Nova', 'Night.')).toEqual({ value: 'User: night or dawn?\nNova: Night.', kind: 'chat' })
+  expect(episodeOf({ chat: 'x' }, 'Nova', '')).toBe(null)
+  // A visit recalls at its opening only.
+  expect(recalls({ duo: 'glados', turn: 0, topic: 'stories', history: [] })).toBe(true)
+  expect(recalls({ duo: 'glados', turn: 3, topic: 'stories', history: [] })).toBe(false)
+})
+
+test('a journal sums up only what came after the last one, oldest first; NOTHING keeps none', () => {
+  const e = (updated: string) => ({ key: updated, value: updated, updated })
+  const eps = [e('2026-10-05T10:00:00Z'), e('2026-10-03T10:00:00Z'), e('2026-10-04T10:00:00Z')]
+  expect(unsummed(eps, [e('2026-10-03T12:00:00Z')]).map(m => m.updated)).toEqual(['2026-10-04T10:00:00Z', '2026-10-05T10:00:00Z'])
+  expect(unsummed(eps, []).length).toBe(3)
+  expect(journalFrom({ isAnswered: true, text: 'NOTHING' })).toBe(null)
+  expect(journalFrom({ isAnswered: false })).toBe(null)
+  expect(journalFrom({ isAnswered: true, text: ' He codes at night.\n' })).toBe('He codes at night.')
+  expect(memoryNote([], [])).toBe('')
+  expect(memoryNote([e('2026-10-04T00:00:00Z')], [])).toContain('2026-10-04')
 })

@@ -10,6 +10,18 @@
       "title": "Your name",
       "description": "How the avatars address you; empty keeps them impersonal (HAL falls back to Dave)",
       "default": ""
+    },
+    "memory_url": {
+      "type": "string",
+      "title": "Personas' mem7",
+      "description": "URL of a mem7 kept for the personas (e.g. http://127.0.0.1:9071); empty, they forget between sessions",
+      "default": ""
+    },
+    "memory_env": {
+      "type": "string",
+      "title": "mem7 token file",
+      "description": "File holding MEM7_TOKEN=... for that mem7 (e.g. ~/.config/flux7/mem7-play.env); empty sends no token",
+      "default": ""
     }
   }
 }

@@ -162,6 +162,46 @@ visits, so a switch (`/avatar <id>`) picks up an edit. Invalid JSON is
 ignored, with a line in the session log. Keep the file out of any repository:
 it is the place for what you would not publish.
 
+### Memory across sessions (optional)
+
+Without it, a persona forgets everything when the session ends. Given a
+[mem7](https://github.com/KTCrisis/flux7-memory) of their own, the personas
+remember:
+
+- **what you say to them**: a chat, your answer to their question, an opinion
+  you asked; kept word for word for 30 days (mem7's TTL);
+- **their visits**: each of the two keeps the dialogue in its own memory;
+- **a journal**: at the start of a session, or when it comes on duty, the
+  persona sums up in two or three sentences what happened since its last
+  journal, in its own voice. Journals stay. It is told never to write about
+  money, family or health.
+
+A line that answers you, speaks of the session or opens a visit recalls the
+last two journals and the three exchanges closest to what was said; a verdict
+on a tool recalls nothing and keeps nothing, so it stays immediate.
+
+Each persona is a mem7 agent, named by its id. With mem7's token and read
+scopes, a persona reads its own memories and the shared `world`, never
+another's. Keep this mem7 apart from the one your agents use: the personas
+write a lot, and none of it belongs among their decisions.
+`tools/mem7-play.service` runs one on 127.0.0.1:9071; its token, chain key
+and data dir live in a mode 600 file, and the scopes in a JSON file:
+
+```json
+{ "read": { "nova": ["world"], "glados": ["world"] }, "admin": ["claude"] }
+```
+
+Then set two options, as for `user_name`:
+
+| Option | Example |
+| --- | --- |
+| `memory_url` | `http://127.0.0.1:9071` (empty: no memory) |
+| `memory_env` | `~/.config/flux7/mem7-play.env`, the file holding `MEM7_TOKEN=` |
+
+The token reaches curl through a file descriptor, never on its command line.
+mem7 v0.8.0 hid every memory with a TTL the moment it was written; use a
+build after that fix.
+
 ### Requirements
 
 - Claude Code with function hooks (plugins loaded by `--plugin-dir`).

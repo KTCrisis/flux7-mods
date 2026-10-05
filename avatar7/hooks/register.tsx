@@ -24,6 +24,30 @@ import {
   type RelayHost,
 } from './relay'
 import {
+  contextBody,
+  EPISODE_TTL_S,
+  episodeKey,
+  episodeOf,
+  journalFrom,
+  journalKey,
+  journalPrompt,
+  memoryAt,
+  memoryNote,
+  parseContext,
+  parseRecall,
+  queryFor,
+  recallBody,
+  recalls,
+  RECALL_EPISODES,
+  RECALL_JOURNALS,
+  rpcArgv,
+  storeBody,
+  unsummed,
+  visitOf,
+  CONSOLIDATE_MAX,
+  type MemoryAt,
+} from './memory'
+import {
   CHAT_LINES,
   CONSULT_CHARS_ASKED,
   DUO_TURNS,
@@ -379,11 +403,52 @@ async function loadGuest($: Engine, id: string): Promise<Guest | null> {
 
 
 
+// One JSON-RPC call to the personas' mem7; '' when it does not answer.
+async function mem7($: Engine, at: MemoryAt, body: string): Promise<string> {
+  try {
+    return (await $.process.run(rpcArgv(at), { stdin: body, timeoutMs: 6_000 })).stdout
+  } catch {
+    return ''
+  }
+}
+
+// What the persona remembers for a line: its last journals, and the
+// exchanges that match what was said.
+async function remembered($: Engine, at: MemoryAt, agent: string, query: string): Promise<string> {
+  const journals = parseRecall(await mem7($, at, recallBody(agent, ['journal'], RECALL_JOURNALS)))
+  const episodes = query.trim() === '' ? [] : parseContext(await mem7($, at, contextBody(agent, query, ['episode'], RECALL_EPISODES)))
+  return memoryNote(journals, episodes)
+}
+
+async function keep($: Engine, at: MemoryAt, agent: string, value: string, tags: string[]): Promise<void> {
+  await mem7($, at, storeBody(agent, episodeKey(agent, new Date()), value, ['episode', ...tags], EPISODE_TTL_S))
+}
+
+// The persona sums up, in its own voice, the exchanges since its last journal.
+async function summarize($: Engine, at: MemoryAt, agent: string, voice: Persona, userName: string): Promise<void> {
+  const journals = parseRecall(await mem7($, at, recallBody(agent, ['journal'], 1)))
+  const episodes = unsummed(parseRecall(await mem7($, at, recallBody(agent, ['episode'], CONSOLIDATE_MAX))), journals)
+  if (episodes.length === 0) return
+  const r = await $.model.complete({
+    model: 'haiku',
+    system: personalize(voice.persona, userName, voice.nobody) + STYLE,
+    prompt: journalPrompt(episodes, userName !== '' ? userName : 'the user'),
+    maxTokens: 200,
+    timeoutMs: 30_000,
+  })
+  const journal = journalFrom(r)
+  // Nothing worth keeping is a journal too: the same exchanges are not read again.
+  await mem7($, at, storeBody(agent, journalKey(agent, new Date()), journal ?? 'Nothing worth keeping.', ['journal']))
+}
+
 // What a line needs from the session around it, read when the line is picked.
 type Speaking = {
   voice: Persona
   voiceId: string
   isGuestTurn: boolean
+  // The other in a dialogue, by id: the visit goes to both memories.
+  otherId: string
+  memory: MemoryAt | null
   // The persona on duty, by name: whom a guest's turn speaks to.
   host: string
   asked: string
@@ -415,10 +480,11 @@ async function speak($: Engine, stage: Stage, ask: Ask, c: Speaking): Promise<vo
       const other = c.isGuestTurn ? c.host : (stage.guest?.persona.name ?? 'a visitor')
       const prompt = promptFor(ask, { voice: c.voice, other, conversation, chatPast: stage.chats.get(c.voiceId) ?? [], asked: c.asked, recent: stage.recent })
       if (prompt === null) return typeof ask === 'object' && 'greet' in ask ? ask.greet : ''
+      const past = c.memory !== null && recalls(ask) ? await remembered($, c.memory, c.voiceId, queryFor(ask, c.asked, other)) : ''
       const r = await $.model.complete({
         model: 'haiku',
         system: personalize(c.voice.persona, c.userName, c.voice.nobody) + STYLE,
-        prompt,
+        prompt: prompt + past,
         maxTokens: isOpinion(ask) ? 160 : 80,
         timeoutMs: 15_000,
       })
@@ -438,6 +504,17 @@ async function speak($: Engine, stage: Stage, ask: Ask, c: Speaking): Promise<vo
     }
     stage.recent.push(text)
     if (stage.recent.length > RECENT_LINES) stage.recent.shift()
+    if (c.memory !== null) {
+      const at = c.memory
+      const episode = episodeOf(ask, c.voice.name, text)
+      if (episode !== null) void keep($, at, c.voiceId, episode.value, [episode.kind])
+      if (typeof ask === 'object' && 'duo' in ask && ask.turn === DUO_TURNS - 1 && c.otherId !== '') {
+        const last = `${c.voice.name}: ${text}`
+        const otherName = c.isGuestTurn ? c.host : (stage.guest?.persona.name ?? c.otherId)
+        void keep($, at, c.voiceId, visitOf(ask.history, last, otherName), ['visit'])
+        void keep($, at, c.otherId, visitOf(ask.history, last, c.voice.name), ['visit'])
+      }
+    }
     const isDuo = typeof ask === 'object' && 'duo' in ask
     const shown = isDuo ? `${c.voice.name}: ${text}` : text
     const isQuiet = await read($, isMuted)
@@ -480,6 +557,8 @@ async function speak($: Engine, stage: Stage, ask: Ask, c: Speaking): Promise<vo
 
 export const register: Register = (on, options) => {
   const userName = typeof options.user_name === 'string' ? options.user_name.trim() : ''
+  // The personas' own mem7, or null: then they forget between sessions.
+  const memory = memoryAt(options)
   let frame = 0
   // The face: its mood and the waits that hold it (mood.ts).
   let face: Face = calm
@@ -762,6 +841,10 @@ export const register: Register = (on, options) => {
       $.ui.log(`avatar7: personas/${id} unreadable, run tools/bake.py ${id}`)
     }
     if (isHdTerminal) await hdOnDisk($, hdFiles)
+    if (memory !== null && who !== null) {
+      const voice = who
+      void summarize($, memory, id, voice, userName).catch(err => $.ui.log(`avatar7: no journal for ${id}: ${String(err)}`, { to: 'debug' }))
+    }
     for (const each of AVATARS) {
       try {
         names[each] = (JSON.parse(String(await $.fs.read(`${$.plugin.root}/personas/${each}/persona.json`))) as Persona).name
@@ -803,6 +886,7 @@ export const register: Register = (on, options) => {
           // Through the queue like any line: never over another voice, and
           // jukebox7 hears isVoicing for it too.
           speakLater({ greet: personalize(who.greeting, userName, who.nobody) })
+          if (memory !== null) await summarize($, memory, id, chosen, userName)
         })().catch(err => $.ui.log(`avatar7: personas/${id} could not take over: ${String(err)}`))
       }
       face = tick(face, frame, WAIT_CAP_FRAMES)
@@ -934,10 +1018,11 @@ export const register: Register = (on, options) => {
       const isGuestTurn = typeof ask === 'object' && 'duo' in ask && ask.turn % 2 === 1 && stage.guest !== null
       const voice = isGuestTurn && stage.guest !== null ? stage.guest.persona : who
       const voiceId = isGuestTurn && stage.guest !== null ? stage.guest.id : whoId
+      const otherId = isGuestTurn ? whoId : (stage.guest?.id ?? '')
       stage.isGuestShown = isGuestTurn
       const host = who.name
       $.clock.after(1, () =>
-        speak($, stage, ask, { voice, voiceId, isGuestTurn, host, asked, userName, relay, now: () => frame, say: speakLater }),
+        speak($, stage, ask, { voice, voiceId, isGuestTurn, otherId, memory, host, asked, userName, relay, now: () => frame, say: speakLater }),
       )
     })
 

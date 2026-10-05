@@ -1,0 +1,22 @@
+# A second mem7 for the personas, apart from the agents' own (:9070): their
+# memories (exchanges with the user, visits, journals) never mix with the
+# mesh's decisions. Each persona is a mem7 agent, reading its own memories and
+# the shared `world`. Token, chain key and data dir live in mem7-play.env
+# (mode 600), never in the unit. A system unit, like avatar7-relay.
+#   sudo cp avatar7/tools/mem7-play.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now mem7-play
+# Set User and the paths to yours first.
+[Unit]
+Description=mem7-play: the avatar7 personas' memory
+After=network.target
+
+[Service]
+User=fluxart
+EnvironmentFile=/home/fluxart/.config/flux7/mem7-play.env
+Environment=MEM7_SCOPES=/home/fluxart/.config/flux7/mem7-play-scopes.json
+ExecStart=/home/fluxart/go/bin/mem7 serve --listen 127.0.0.1:9071
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
