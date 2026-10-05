@@ -199,6 +199,11 @@ Then set two options, as for `user_name`:
 | `memory_env` | `~/.config/flux7/mem7-play.env`, the file holding `MEM7_TOKEN=` |
 
 The token reaches curl through a file descriptor, never on its command line.
+With `MEM7_EMBED_URL` set (the unit points it at Ollama, model
+`embeddinggemma`), the recall searches by meaning as well as by words, which
+the mix of a French user and English personas needs: on a small test,
+`nomic-embed-text` found the right exchange for 2 French questions out of 10,
+`embeddinggemma` for 7. Only memories written after it is on get a vector.
 mem7 v0.8.0 hid every memory with a TTL the moment it was written; use a
 build after that fix.
 

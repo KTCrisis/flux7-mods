@@ -14,6 +14,12 @@ After=network.target
 User=fluxart
 EnvironmentFile=/home/fluxart/.config/flux7/mem7-play.env
 Environment=MEM7_SCOPES=/home/fluxart/.config/flux7/mem7-play-scopes.json
+# Search by meaning beside the words (BM25 + cosine, fused by RRF): the user
+# writes French, the personas answer in English. embeddinggemma beat
+# nomic-embed-text 7/10 to 2/10 on French questions over mixed episodes.
+# Ollama down, mem7 falls back to words alone.
+Environment=MEM7_EMBED_URL=http://localhost:11434
+Environment=MEM7_EMBED_MODEL=embeddinggemma
 ExecStart=/home/fluxart/go/bin/mem7 serve --listen 127.0.0.1:9071
 Restart=on-failure
 RestartSec=2
