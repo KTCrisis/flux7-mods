@@ -43,7 +43,7 @@ MUSIC = SPOOL / "music.json"
 # What the jukebox shows the phone, and the phone's presses for it (one file each).
 JUKEBOX = SPOOL / "jukebox.json"
 JUKEBOX_DIR = SPOOL / "jukebox"
-JUKEBOX_DO = {"pause", "next", "similar", "stop", "genre"}
+JUKEBOX_DO = {"pause", "next", "similar", "stop", "genre", "find", "pick"}
 TRACK_ID = re.compile(r"^[\w-]{11}$")
 # The system service runs without the user's PATH, where yt-dlp lives.
 YTDLP = shutil.which("yt-dlp") or str(Path.home() / "py_env" / "bin" / "yt-dlp")
@@ -164,7 +164,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
             JUKEBOX_DIR.mkdir(exist_ok=True)
             part = JUKEBOX_DIR / f"{time.time_ns()}.part"
-            part.write_text(json.dumps({"do": cmd["do"], "genre": str(cmd.get("genre", ""))[:64]}))
+            press = {"do": cmd["do"], "genre": str(cmd.get("genre", ""))[:64]}
+            # A search from the phone, and which of its results to play.
+            if cmd["do"] == "find":
+                press["query"] = str(cmd.get("query", ""))[:120]
+            if cmd["do"] == "pick":
+                index = cmd.get("index")
+                if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < 50:
+                    self.send_error(400)
+                    return
+                press["index"] = index
+            part.write_text(json.dumps(press))
             part.rename(part.with_suffix(".json"))
             self.send_bytes(b"{}", "application/json")
             return

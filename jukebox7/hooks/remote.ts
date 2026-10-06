@@ -41,7 +41,14 @@ export const statusArgv = (): string[] => [
   `R=${RELAY}; [ -f "$R/owner" ] && cat > "$R/jukebox.part" && mv "$R/jukebox.part" "$R/jukebox.json"; true`,
 ]
 
-export type JukeboxPress = { do: 'pause' | 'next' | 'similar' | 'stop' } | { do: 'genre'; genre: string }
+export type JukeboxPress =
+  | { do: 'pause' | 'next' | 'similar' | 'stop' }
+  | { do: 'genre'; genre: string }
+  | { do: 'find'; query: string }
+  | { do: 'pick'; index: number }
+
+// A search asked from the phone, cut as the relay cuts it.
+export const QUERY_MAX = 120
 
 // A press as the relay queued it, or undefined for anything else: a genre
 // must be one of the given labels.
@@ -56,5 +63,8 @@ export const parseJukebox = (line: string, genres: string[]): JukeboxPress | und
   const o = r as Record<string, unknown>
   if (o.do === 'pause' || o.do === 'next' || o.do === 'similar' || o.do === 'stop') return { do: o.do }
   if (o.do === 'genre' && typeof o.genre === 'string' && genres.includes(o.genre)) return { do: 'genre', genre: o.genre }
+  if (o.do === 'find' && typeof o.query === 'string' && o.query.trim() !== '') return { do: 'find', query: o.query.trim().slice(0, QUERY_MAX) }
+  // Which result of the last search, from 0; checked against the list when it plays.
+  if (o.do === 'pick' && typeof o.index === 'number' && Number.isInteger(o.index) && o.index >= 0) return { do: 'pick', index: o.index }
   return undefined
 }

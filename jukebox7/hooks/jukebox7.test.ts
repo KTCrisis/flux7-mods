@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
-import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio, introEvent } from './register'
+import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio, introEvent, listing } from './register'
+import { parseJukebox } from './remote'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -383,4 +384,34 @@ test('a relay already held when the session starts restarts nothing', async ($, 
   expect((await first).text).toContain('Tranquility')
   await clock.advance(5_000)
   expect(starts()).toBe(1)
+})
+
+test('/music find lists what YouTube found, numbered, and plays nothing; /music pick plays one', async ($, on) => {
+  const { argv } = engine(on, '{"action":"none"}')
+  const r = await $.command.run(music('find deep ambient'))
+  expect(r.text).toContain('1. Tranquility - Deep Healing Ambient (07:00)')
+  expect(r.text).toContain('2. The Aero Skyway - Aero Ambient')
+  expect(argv.at(-1)?.at(-1)).toBe('ytsearch8:deep ambient')
+  expect(argv.some(a => a[0] === 'bash')).toBe(false)
+  const p = await $.command.run(music('pick 2'))
+  expect(p.text).toContain('The Aero Skyway')
+  expect(argv).toContainEqual(startArgv('A8ChCZExAsw'))
+})
+
+test('a pick before any search, or past the list, plays nothing and says why', async ($, on) => {
+  const { argv } = engine(on, '{"action":"none"}')
+  expect((await $.command.run(music('pick 1'))).text).toContain('/music find')
+  await $.command.run(music('find deep ambient'))
+  expect((await $.command.run(music('pick 9'))).text).toBe('Pick 1 to 2.')
+  expect(argv.some(a => a[0] === 'bash')).toBe(false)
+})
+
+test('the phone may ask a search and a pick: a query cut to its length, an index from 0', () => {
+  expect(parseJukebox('{"do":"find","query":"  darksynth  "}', [])).toEqual({ do: 'find', query: 'darksynth' })
+  expect(parseJukebox(`{"do":"find","query":"${'x'.repeat(300)}"}`, [])).toEqual({ do: 'find', query: 'x'.repeat(120) })
+  expect(parseJukebox('{"do":"find","query":"  "}', [])).toBeUndefined()
+  expect(parseJukebox('{"do":"pick","index":3}', [])).toEqual({ do: 'pick', index: 3 })
+  expect(parseJukebox('{"do":"pick","index":-1}', [])).toBeUndefined()
+  expect(parseJukebox('{"do":"pick","index":1.5}', [])).toBeUndefined()
+  expect(listing([{ id: 'a', title: 'Live', seconds: null }])).toBe('1. Live')
 })

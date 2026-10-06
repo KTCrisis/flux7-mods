@@ -128,6 +128,10 @@ export const isSong = (t: Track): boolean => t.seconds !== null && t.seconds >= 
 
 const IDLE: Player = { tracks: [], index: 0, pgid: null, isPlaying: false, genre: null, startedAt: null, pausedAt: null }
 const player = atom({ plugin: 'jukebox7', key: 'player' } as const, IDLE)
+// The last search asked for a pick (/music find, or the phone): what was
+// asked and what YouTube found, in its order. Nothing plays until a pick.
+const found = atom({ plugin: 'jukebox7', key: 'found' } as const, { query: '', tracks: [] as Track[] })
+let isFinding = false
 // Percent of VLC's 100 %, kept apart from the player so a stop keeps it.
 const volume = atom({ plugin: 'jukebox7', key: 'volume' } as const, 70)
 const VOLUME_STEP = 10
@@ -477,6 +481,34 @@ async function play($: Engine, query: string, long: boolean): Promise<Track | un
   return playAt($, [first, ...rest], 0)
 }
 
+// Lists what YouTube finds for a search, and keeps it for a pick; undefined
+// when yt-dlp failed. One search at a time.
+async function find($: Engine, query: string): Promise<Track[] | undefined> {
+  isFinding = true
+  try {
+    const r = await $.process.run(search(query), { timeoutMs: 20_000 })
+    if (r.exitCode !== 0) return undefined
+    const tracks = parseTracks(r.stdout)
+    await update($, found, () => ({ query, tracks }))
+    return tracks
+  } finally {
+    isFinding = false
+  }
+}
+
+// The result at `index` (from 0) plays whatever its length; next walks on
+// through the rest of the search, as after /music <search>.
+async function pick($: Engine, index: number): Promise<Track | undefined> {
+  const f = await read($, found)
+  if (f.tracks[index] === undefined) return undefined
+  return playAt($, f.tracks, index)
+}
+
+// The results as /music find prints them: numbered from 1, with a length
+// when YouTube gave one.
+export const listing = (tracks: Track[]): string =>
+  tracks.map((t, i) => `${i + 1}. ${t.title}${t.seconds === null ? '' : ` (${clock(t.seconds)})`}`).join('\n')
+
 async function playGenre($: Engine, label: string): Promise<Track | undefined> {
   const fresh = discoveries(label)
   const isNew = fresh.length > 0 && Math.random() < DISCOVER_ODDS
@@ -586,7 +618,7 @@ export const register: Register = on => {
 
     await $.command.register({
       name: 'music',
-      description: 'Play music from YouTube: /music <search>, /music pause, /music next, /music similar, /music stop, /music vol [+|-]<n>, /music alone for what plays',
+      description: 'Play music from YouTube: /music <search>, /music find <search> then /music pick <n>, /music pause, /music next, /music similar, /music stop, /music vol [+|-]<n>, /music alone for what plays',
     })
 
     // A pipeline that ended by itself (the track is over) moves on to the
@@ -635,14 +667,20 @@ export const register: Register = on => {
           else if (press.do === 'stop') await stop($)
           else if (press.do === 'next') await once($, () => skip($, 1))
           else if (press.do === 'similar') await once($, () => playSimilar($))
+          else if (press.do === 'find') {
+            if (!isFinding) await find($, press.query)
+          } else if (press.do === 'pick') await once($, () => pick($, press.index))
           else await once($, () => playGenre($, press.genre))
           $.ui.invalidate('ui.render')
         }
         const p = await read($, player)
         const now = p.pgid === null ? undefined : p.tracks[p.index]
+        const f = await read($, found)
         const status = JSON.stringify({
           title: now?.title ?? '', isPlaying: now !== undefined && p.isPlaying, genre: p.genre ?? '',
           genres: GENRES.map(g => g.label), isMoving,
+          // The last search, for the phone to list and pick from.
+          query: f.query, found: f.tracks.map(t => ({ title: t.title, seconds: t.seconds })), isFinding,
         })
         if (status !== shown) {
           await $.process.run(statusArgv(), { stdin: status })
@@ -737,7 +775,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'music' }, async ($, e) => {
     const args = e.args.trim()
-    const isControl = args === '' || args === 'pause' || args === 'stop' || /^vol(?:ume)?\b/.test(args)
+    const isControl = args === '' || args === 'pause' || args === 'stop' || /^vol(?:ume)?\b/.test(args) || /^find\b/.test(args)
     if (!isControl && isMoving) return { text: 'A song is already on its way.' }
     const p = await read($, player)
     const now = p.tracks[p.index]
@@ -773,6 +811,27 @@ export const register: Register = on => {
       const q = await toggle($)
       if (q === undefined) return { text: 'VLC did not answer; nothing changed.' }
       return { text: q.isPlaying ? 'Resumed.' : 'Paused.' }
+    }
+
+    // /music find <search>: the results, numbered, nothing played; /music
+    // pick <n> plays one of them.
+    const asked = /^find\s+(.+)$/.exec(args)
+    if (asked !== null) {
+      if (isFinding) return { text: 'A search is already running.' }
+      const query = (asked[1] ?? '').trim()
+      const tracks = await find($, query)
+      if (tracks === undefined) return { text: `The search for "${query}" failed.` }
+      if (tracks.length === 0) return { text: `Nothing found on YouTube for "${query}".` }
+      return { text: `${listing(tracks)}\n\n/music pick <n> plays one.` }
+    }
+    const picked = /^pick\s+(\d+)$/.exec(args)
+    if (picked !== null) {
+      const f = await read($, found)
+      const n = Number(picked[1]) - 1
+      if (f.tracks.length === 0) return { text: 'Nothing found yet: /music find <search> first.' }
+      if (f.tracks[n] === undefined) return { text: `Pick 1 to ${f.tracks.length}.` }
+      const t = await once($, () => pick($, n))
+      return { text: t === undefined ? 'That one did not start.' : `Playing "${t.title}" (https://youtu.be/${t.id})` }
     }
 
     const track = await once($, () => play($, args, false))
