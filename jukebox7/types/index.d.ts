@@ -20,9 +20,13 @@ export type Player = {
 // nothing. avatar7 hears the write; nothing here depends on it.
 export type Say = { mood: 'watch' | 'error'; event: string; at: number }
 
+// The last search asked for a pick (/music find, the pane's f, the phone):
+// what was asked and the results, in YouTube's order.
+export type Found = { query: string; tracks: Track[] }
+
 declare module 'claude-code' {
   interface PluginState {
-    jukebox7: { player: Player; volume: number; say: Say }
+    jukebox7: { player: Player; volume: number; say: Say; found: Found; searching: boolean }
     // Read only: avatar7 owns it and says which face is on duty.
     avatar7: { avatar: string; color: string; isVoicing: boolean; station: { name: string; artists: string[] } }
   }

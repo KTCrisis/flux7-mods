@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
-import type { Player, Say, Track } from '../types'
+import type { Found, Player, Say, Track } from '../types'
 import { drainArgv, heldArgv, parseJukebox, pauseScript, REMOTE, statusArgv } from './remote'
 
 // Cheap sieve before any model call: a prompt that fails it reaches the
@@ -130,8 +130,17 @@ const IDLE: Player = { tracks: [], index: 0, pgid: null, isPlaying: false, genre
 const player = atom({ plugin: 'jukebox7', key: 'player' } as const, IDLE)
 // The last search asked for a pick (/music find, or the phone): what was
 // asked and what YouTube found, in its order. Nothing plays until a pick.
-const found = atom({ plugin: 'jukebox7', key: 'found' } as const, { query: '', tracks: [] as Track[] })
+const found = atom({ plugin: 'jukebox7', key: 'found' } as const, { query: '', tracks: [] } as Found)
 let isFinding = false
+// The pane's search: its field and the results, shown after `f` until `f`
+// again. Each result answers a letter the pane leaves free (digits are the
+// stations', the rest its controls').
+const searching = atom({ plugin: 'jukebox7', key: 'searching' } as const, false)
+export const PICK_KEYS = ['q', 'w', 'e', 't', 'y', 'i', 'o', 'l']
+const PANE_ROWS = 6
+// The pane grows by the search's rows (the field, a result each, or one
+// line while it searches), so the rain is not all that gives way.
+const paneRows = (isSearching: boolean, results: number): number => PANE_ROWS + (isSearching ? 1 + Math.max(1, results) : 0)
 // Percent of VLC's 100 %, kept apart from the player so a stop keeps it.
 const volume = atom({ plugin: 'jukebox7', key: 'volume' } as const, 70)
 const VOLUME_STEP = 10
@@ -840,7 +849,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const { Box, Text, Button, Input } = $.ui.resolve(e)
     const p = await read($, player)
     const level = await read($, volume)
     const now = p.tracks[p.index]
@@ -863,6 +872,64 @@ export const register: Register = on => {
       <Button key="quieter" label="vol−" hotkey="d" plain dimColor onPress={() => void louder($, -VOLUME_STEP)} />,
       <Button key="louder" label="vol+" hotkey="u" plain dimColor onPress={() => void louder($, VOLUME_STEP)} />,
     ]
+    const f = await read($, found)
+    const isSearching = await read($, searching)
+    const fit = (t: string, room: number): string => (t.length > room ? `${t.slice(0, room - 1)}…` : t)
+    const reopen = (open: boolean, results: number) => void $.ui.open({ id: PANE, title: 'jukebox7', rows: paneRows(open, results) })
+    const finder = (
+      <Button
+        key="find"
+        label={isSearching ? 'close search' : 'find'}
+        hotkey="f"
+        plain
+        dimColor={!isSearching}
+        onPress={() => {
+          void (async () => {
+            await update($, searching, () => !isSearching)
+            reopen(!isSearching, f.tracks.length)
+          })()
+        }}
+      />
+    )
+    const search = isSearching ? (
+      <Box flexDirection="column" backgroundColor={isTerminal ? BLACK : undefined}>
+        <Input
+          key="query"
+          label="find: "
+          placeholder={f.query === '' ? 'ctrl+x tab, a search, Enter' : f.query}
+          submitLabel="find"
+          autoFocus
+          onSubmit={value => {
+            const query = value.replace(/\s+/g, ' ').trim()
+            if (query === '' || isFinding) return
+            void (async () => {
+              const pending = find($, query)
+              $.ui.invalidate('ui.render')
+              const tracks = await pending
+              reopen(true, tracks?.length ?? 1)
+              $.ui.invalidate('ui.render')
+            })()
+          }}
+        />
+        {isFinding ? (
+          <Text dimColor>searching…</Text>
+        ) : f.query !== '' && f.tracks.length === 0 ? (
+          <Text dimColor>{`nothing found for "${f.query}"`}</Text>
+        ) : (
+          f.tracks.slice(0, PICK_KEYS.length).map((t, i) => (
+            <Button
+              key={`pick-${t.id}`}
+              label={fit(`${t.title}${t.seconds === null ? '' : ` (${clock(t.seconds)})`}`, width - 3)}
+              hotkey={PICK_KEYS[i]}
+              plain
+              dimColor={now?.id !== t.id}
+              onPress={() => void once($, () => pick($, i))}
+            />
+          ))
+        )}
+      </Box>
+    ) : null
+
     const stations = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor={isTerminal ? BLACK : undefined}>
         {GENRES.map(g => (
@@ -871,6 +938,7 @@ export const register: Register = on => {
         {station !== undefined && avatar !== undefined && (
           <Button key="avatar" label={`${station.name}'s pick`} hotkey="a" plain onPress={() => void once($, () => playGenre($, avatar))} />
         )}
+        {isTerminal && finder}
       </Box>
     )
 
@@ -887,6 +955,8 @@ export const register: Register = on => {
             </Box>
           )}
           {stations}
+          {finder}
+          {search}
         </Box>
       )
     }
@@ -903,11 +973,13 @@ export const register: Register = on => {
     const inner = Math.max(10, (e.props.bodyColumns ?? 40) - 4)
     const controlRows = now === undefined ? 0 : buttonRows([p.isPlaying ? 'pause' : 'play', 'next', 'similar', 'stop', 'vol−', 'vol+'], inner)
     const stationRows = buttonRows(
-      [...GENRES.map(g => g.label), ...(station !== undefined ? [`${station.name}'s pick`] : [])],
+      [...GENRES.map(g => g.label), ...(station !== undefined ? [`${station.name}'s pick`] : []), isSearching ? 'close search' : 'find'],
       inner,
     )
+    // The field, then a result a row (or the one line saying why there are none).
+    const searchRows = isSearching ? 1 + (isFinding || f.tracks.length === 0 ? (f.query === '' && !isFinding ? 0 : 1) : Math.min(f.tracks.length, PICK_KEYS.length)) : 0
     // The frame's two borders, the title, the bar when something plays.
-    const rainRows = Math.max(0, rows - 3 - (now === undefined ? 0 : 1) - controlRows - stationRows)
+    const rainRows = Math.max(0, rows - 3 - (now === undefined ? 0 : 1) - controlRows - stationRows - searchRows)
     const rainColumns = Math.max(0, (e.props.bodyColumns ?? 40) - 2)
     return (
       <Box flexDirection="column" width="100%" height={rows > 0 ? rows : undefined} backgroundColor={BLACK}>
@@ -929,6 +1001,7 @@ export const register: Register = on => {
             </Box>
           )}
           {stations}
+          {search}
         </Box>
         <Box flexDirection="column" flexGrow={1} paddingX={1} backgroundColor={BLACK}>
           {rain(rainColumns, rainRows, frame).map((runs, r) => (

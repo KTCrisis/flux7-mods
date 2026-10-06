@@ -415,3 +415,23 @@ test('the phone may ask a search and a pick: a query cut to its length, an index
   expect(parseJukebox('{"do":"pick","index":1.5}', [])).toBeUndefined()
   expect(listing([{ id: 'a', title: 'Live', seconds: null }])).toBe('1. Live')
 })
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`the pane's search on ${surface}: f opens a field, Enter lists the results, a result plays`, async ($, on) => {
+    const { clock, starts } = clockedEngine(on, { searchMs: 500, alive: () => true })
+    await $.session.start({ cwd: '/home/u' } as never)
+    const ui = await $.ui.mount({ ...(pane as object), surface } as never)
+    expect(await ui.find({ key: 'query' })).toBeUndefined()
+    await ui.press({ key: 'find' })
+    expect(await ui.find({ key: 'query' })).toBeDefined()
+    const asked = ui.input({ key: 'query', text: 'darksynth' })
+    await clock.advance(1_000)
+    await asked
+    expect(await ui.find({ key: 'pick-A8ChCZExAsw' })).toBeDefined()
+    expect(starts()).toBe(0)
+    await ui.press({ key: 'pick-A8ChCZExAsw' })
+    expect(starts()).toBe(1)
+    await ui.press({ key: 'find' })
+    expect(await ui.find({ key: 'query' })).toBeUndefined()
+  })
+}
