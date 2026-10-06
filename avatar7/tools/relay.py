@@ -9,7 +9,8 @@ tailnet address only, never the LAN. The spool is created on start and
 removed on exit; while it exists, void stays silent and the voice goes there.
 Runs as a system service (avatar7-relay.service), or started by /avatar
 remote on when none runs; /avatar remote off gives the relay back without
-stopping it. Reloads itself when this file changes.
+stopping it. A page listening asks for it too: see WANTED. Reloads itself
+when this file changes.
 
     python3 avatar7/tools/relay.py [--port 8797] [--host <ip>]
 """
@@ -47,6 +48,15 @@ TRACK_ID = re.compile(r"^[\w-]{11}$")
 # The system service runs without the user's PATH, where yt-dlp lives.
 YTDLP = shutil.which("yt-dlp") or str(Path.home() / "py_env" / "bin" / "yt-dlp")
 # The page's buttons, one JSON file each, which avatar7 reads and removes.
+# While a page listens to /events, the sessions take the relay at their next
+# prompt (or claim it when nobody holds it): listening is the phone's request.
+# Kept GRACE_S after the last page goes, so a dead zone or a reload does not
+# bounce the voice back and forth.
+WANTED = SPOOL / "wanted"
+GRACE_S = 20
+listening = 0
+left_at = time.monotonic()
+listening_lock = threading.Lock()
 COMMANDS_DIR = SPOOL / "cmd"
 COMMANDS = {"talk", "ask", "answer", "chat", "avatar", "mute", "events", "visits", "volume", "duo"}
 MAX_COMMAND = 2048
@@ -232,6 +242,10 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             last = None
         seen = {p.name for p in voices() if last is None or mtime_ns(p) <= last}
+        global listening, left_at
+        with listening_lock:
+            listening += 1
+        WANTED.touch()
         last_ping = time.monotonic()
         state_at = 0.0
         music_at = 0.0
@@ -274,7 +288,9 @@ class Handler(BaseHTTPRequestHandler):
                     if at_ns < 0:  # swept between the glob and now
                         continue
                     self.wfile.write(f"id: {at_ns}\ndata: {p.name}\n\n".encode())
-                if fresh or time.monotonic() - last_ping > 15:
+                # Every 5 s: a page that went is seen at the second failed write,
+                # and WANTED's grace starts only then.
+                if fresh or time.monotonic() - last_ping > 5:
                     if not fresh:
                         self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
@@ -282,6 +298,10 @@ class Handler(BaseHTTPRequestHandler):
                 time.sleep(0.2)
         except OSError:  # the page went: closed, reset, or timed out
             pass
+        finally:
+            with listening_lock:
+                listening -= 1
+                left_at = time.monotonic()
 
 
 def mtime_ns(p: Path) -> int:
@@ -307,6 +327,17 @@ def sweep():
             except FileNotFoundError:
                 pass
         time.sleep(10)
+
+
+def keep_wanted():
+    """Drop `wanted` once no page has listened for GRACE_S. A reload starts
+    the count over: the pages reconnect within the grace."""
+    while True:
+        time.sleep(2)
+        with listening_lock:
+            idle = listening == 0 and time.monotonic() - left_at > GRACE_S
+        if idle:
+            WANTED.unlink(missing_ok=True)
 
 
 def reload_on_edit():
@@ -361,6 +392,7 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     threading.Thread(target=sweep, daemon=True).start()
+    threading.Thread(target=keep_wanted, daemon=True).start()
     threading.Thread(target=reload_on_edit, daemon=True).start()
     print(f"avatar7 relay on http://{host}:{args.port}/ (spool {SPOOL})", flush=True)
     try:

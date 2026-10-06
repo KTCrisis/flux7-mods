@@ -80,6 +80,18 @@ export const startArgv = (root: string): string[] => [
   `rm -rf "${RELAY_SPOOL}"; setsid python3 "$0/tools/relay.py" </dev/null >/dev/null 2>&1 &`,
   root,
 ]
+// Prints `up` while a page listens to the live relay: relay.py keeps `wanted`
+// in the spool while one is connected, and a grace after the last one goes.
+export const wantedArgv = (): string[] => [
+  'sh',
+  '-c',
+  `[ -f "${RELAY_SPOOL}/wanted" ] && kill -0 "$(cat "${RELAY_SPOOL}/relay.pid" 2>/dev/null)" 2>/dev/null && echo up`,
+  'avatar7-wanted',
+]
+// Take the relay only when nobody holds it: noclobber makes the owner file
+// the lock, so two sessions claiming at once leave one owner.
+export const claimArgv = (session: string): string[] =>
+  owned('avatar7-claim', `[ -d "${RELAY_SPOOL}" ] && (set -C; printf %s "$2" > "${RELAY_SPOOL}/owner") 2>/dev/null; true`, session)
 // Take the relay (when it runs), or give it back (when this session has it).
 export const takeArgv = (session: string): string[] =>
   owned('avatar7-take', `[ -d "${RELAY_SPOOL}" ] && printf %s "$2" > "${RELAY_SPOOL}/owner"`, session)
@@ -127,11 +139,13 @@ export type Relay = {
   isForced: boolean
   // A session typed into over ssh: its user is elsewhere, like Remote Control's.
   isSsh: boolean
+  // Taken because a page listens, not asked: given back when none does.
+  isByWanted: boolean
   isMirroring: boolean
   isDraining: boolean
   mirrored: string
 }
-export const newRelay = (): Relay => ({ session: '', isHeld: false, isForced: false, isSsh: false, isMirroring: false, isDraining: false, mirrored: '' })
+export const newRelay = (): Relay => ({ session: '', isHeld: false, isForced: false, isSsh: false, isByWanted: false, isMirroring: false, isDraining: false, mirrored: '' })
 
 // What the relay asks of avatar7: the face to show (undefined while there is
 // none), and what to do with a press from the page.
@@ -141,10 +155,24 @@ export type RelayHost = {
 }
 
 // Where a prompt sends the voice: away through the relay for one sent by
-// Remote Control or typed over ssh, back here for one typed at this terminal
-// (unless held by force).
-export const follows = (r: Relay, origin: string): 'take' | 'give' | 'stay' =>
-  r.session === '' ? 'stay' : origin === 'bridge' || (origin === 'composer' && r.isSsh) ? 'take' : origin === 'composer' && !r.isForced ? 'give' : 'stay'
+// Remote Control or typed over ssh, or typed here while a page listens (the
+// phone asks for it by listening); back here for one typed at this terminal
+// otherwise (unless held by force).
+export const follows = (r: Relay, origin: string, isWanted = false): 'take' | 'give' | 'stay' =>
+  r.session === ''
+    ? 'stay'
+    : origin === 'bridge' || (origin === 'composer' && (r.isSsh || isWanted))
+      ? 'take'
+      : origin === 'composer' && !r.isForced
+        ? 'give'
+        : 'stay'
+
+// Between prompts, at each check: a page listening and nobody holding the
+// relay, this session claims it; the last page gone (its grace over), a relay
+// this session took for it goes back. Forced, or taken by Remote Control or
+// ssh, it stays.
+export const wantedMove = (r: Relay, isWanted: boolean): 'claim' | 'give' | 'none' =>
+  r.session === '' ? 'none' : isWanted && !r.isHeld ? 'claim' : !isWanted && r.isHeld && r.isByWanted && !r.isForced ? 'give' : 'none'
 
 // A session that ends gives the relay back: an owner gone for good would hold
 // the page on its last face, and keep the others' voices off it. A /clear goes

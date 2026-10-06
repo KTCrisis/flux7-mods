@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { aliveArgv, drainArgv, heldArgv, mirrorArgv, playArgv, releaseArgv, startArgv, takeArgv } from '../hooks/relay.ts'
+import { aliveArgv, claimArgv, drainArgv, heldArgv, mirrorArgv, playArgv, releaseArgv, startArgv, takeArgv, wantedArgv } from '../hooks/relay.ts'
 
 let home = ''
 let spool = ''
@@ -109,4 +109,25 @@ test('starting the relay clears a stale spool and runs tools/relay.py from the p
   assert.equal(existsSync(join(spool, 'owner')), false)
   for (let i = 0; i < 50 && !existsSync(started); i++) await new Promise(r => setTimeout(r, 50))
   assert.equal(readFileSync(started, 'utf8'), 'yes')
+})
+
+test('wanted reads up only while the marker is there and the relay lives', () => {
+  relayRunning('a', live?.pid ?? 0)
+  assert.equal(run(wantedArgv()).trim(), '')
+  writeFileSync(join(spool, 'wanted'), '')
+  assert.equal(run(wantedArgv()).trim(), 'up')
+  writeFileSync(join(spool, 'relay.pid'), '999999')
+  assert.equal(run(wantedArgv()).trim(), '')
+})
+
+test('a claim takes a free relay and leaves a held one to its owner', () => {
+  mkdirSync(spool, { recursive: true })
+  writeFileSync(join(spool, 'relay.pid'), String(live?.pid ?? 0))
+  run(claimArgv('a'))
+  assert.equal(readFileSync(join(spool, 'owner'), 'utf8'), 'a')
+  run(claimArgv('b'))
+  assert.equal(readFileSync(join(spool, 'owner'), 'utf8'), 'a')
+  rmSync(spool, { recursive: true, force: true })
+  run(claimArgv('c'))
+  assert.equal(existsSync(join(spool, 'owner')), false)
 })

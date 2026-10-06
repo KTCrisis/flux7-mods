@@ -6,6 +6,7 @@ import { ambientCells, ambientPixel, QUAD, type AmbientLayer, type Field } from 
 import {
   aliveArgv,
   CHECK_FRAMES,
+  claimArgv,
   DRAIN_FRAMES,
   drainArgv,
   follows,
@@ -22,6 +23,8 @@ import {
   type Mirror,
   type Relay,
   type RelayHost,
+  wantedArgv,
+  wantedMove,
 } from './relay'
 import {
   contextBody,
@@ -156,6 +159,7 @@ async function relayOpen($: Engine, r: Relay): Promise<void> {
 async function relayGive($: Engine, r: Relay): Promise<void> {
   await $.process.run(releaseArgv(r.session))
   r.isHeld = false
+  r.isByWanted = false
 }
 
 // Each frame: who holds the relay, now and then; the face, when held and
@@ -172,6 +176,15 @@ function relayTick($: Engine, r: Relay, frame: number, host: RelayHost): void {
         if (r.isForced) await $.process.run(takeArgv(r.session))
       }
       r.isHeld = (await $.process.run(heldArgv(r.session))).stdout.trim() === 'up'
+      const isWanted = (await $.process.run(wantedArgv())).stdout.trim() === 'up'
+      const move = wantedMove(r, isWanted)
+      if (move === 'claim') {
+        await $.process.run(claimArgv(r.session))
+        r.isHeld = (await $.process.run(heldArgv(r.session))).stdout.trim() === 'up'
+        if (r.isHeld) r.isByWanted = true
+      } else if (move === 'give') {
+        await relayGive($, r)
+      }
       if (!r.isHeld) r.mirrored = ''
     })().catch(err => $.ui.log(`avatar7: the relay check failed: ${String(err)}`, { to: 'debug' }))
   }
@@ -213,6 +226,7 @@ async function relayOn($: Engine, r: Relay): Promise<string> {
     await $.clock.sleep(1500)
   }
   r.isForced = true
+  r.isByWanted = false
   await $.process.run(takeArgv(r.session))
   const ip = await $.process.run(['sh', '-c', 'tailscale ip -4 | head -1'])
   return `The voice leaves this machine: open http://${ip.stdout.trim()}:8797/ on the other one and click listen.`
@@ -226,9 +240,14 @@ async function relayOff($: Engine, r: Relay): Promise<string> {
 }
 
 async function relayFollow($: Engine, r: Relay, origin: string): Promise<void> {
-  const move = follows(r, origin)
-  if (move === 'take') await $.process.run(takeArgv(r.session))
-  else if (move === 'give') await relayGive($, r)
+  const isWanted = r.session !== '' && (await $.process.run(wantedArgv())).stdout.trim() === 'up'
+  const move = follows(r, origin, isWanted)
+  if (move === 'take') {
+    await $.process.run(takeArgv(r.session))
+    // Typed here and taken only because the phone listens: it goes back when
+    // the phone stops. Remote Control or ssh keep it as before.
+    r.isByWanted = origin === 'composer' && !r.isSsh
+  } else if (move === 'give') await relayGive($, r)
   // Written whole again at the next mirror: a release left `{}` behind.
   if (r.session !== '') r.mirrored = ''
 }

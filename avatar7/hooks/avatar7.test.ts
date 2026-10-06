@@ -7,7 +7,7 @@ import { speakScript, synthArgv } from './voice'
 import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona } from './speech'
 import { ambientCells, ambientPixel, QUAD } from './ambient'
 import { hdFrame, hdKey, hdSize, isSettled, PX, SETTLE_FRAMES, type Hd, type HdView, type Settle } from './hd'
-import { follows, givesOnEnd, newRelay, parseRemote } from './relay'
+import { follows, givesOnEnd, newRelay, parseRemote, wantedMove } from './relay'
 import { answered, ask as askFace, calm, hold, react, release, stage, tick } from './mood'
 import { begin, end, HOLD_FRAMES, isHeard, restored, silent, start, typeOn, voiced } from './line'
 import { episodeOf, journalFrom, journalsFor, memoryAt, memoryNote, parseContext, parseRecall, queryFor, recalls, rpcArgv, storeBody, unsummed } from './memory'
@@ -762,4 +762,18 @@ test('an old journal that matches is read beside the last ones, once, and whole'
   expect(journalsFor(latest, matched).map(m => m.key)).toEqual(['j5', 'j4', 'j2', 'j1'])
   const long = 'x'.repeat(600)
   expect(memoryNote([j('j', '2026-10-05', long)], [])).toContain(long)
+})
+
+test('a page listening asks for the voice: typed here takes it, and a free relay is claimed between prompts', () => {
+  const r = { ...newRelay(), session: 's' }
+  expect(follows(r, 'composer', true)).toBe('take')
+  expect(follows(r, 'composer', false)).toBe('give')
+  expect(follows({ ...r, session: '' }, 'composer', true)).toBe('stay')
+  expect(wantedMove(r, true)).toBe('claim')
+  expect(wantedMove({ ...r, isHeld: true }, true)).toBe('none')
+  // The phone stopped: what it asked for goes back, nothing else does.
+  expect(wantedMove({ ...r, isHeld: true, isByWanted: true }, false)).toBe('give')
+  expect(wantedMove({ ...r, isHeld: true }, false)).toBe('none')
+  expect(wantedMove({ ...r, isHeld: true, isByWanted: true, isForced: true }, false)).toBe('none')
+  expect(wantedMove({ ...r, session: '' }, true)).toBe('none')
 })
