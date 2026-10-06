@@ -28,9 +28,23 @@ With avatar7 loaded, the avatar announces each toast in its own voice, in
 amber. Neither mod depends on the other. `/usage7 test` rings a sample toast,
 to hear that voice without waiting for a threshold.
 
+## Spend
+
+Two kinds, never added up:
+
+- **mods**: every model call another mod makes (`$.model.complete`: avatar7's
+  Haiku, jukebox7's intents) goes through the subscription. The bell counts
+  their tokens per model and prices them as the API would, `mods 41k tok
+  ≈$0.06`: what they take from the plan, not dollars billed.
+- **api**: the real dollars of the API keys (projects run outside Claude Code),
+  from flux7-ops's `GET /spend` on 127.0.0.1:8710, asked every five minutes.
+  ops7 alone holds the organization's Admin key; the bell sees amounts only:
+  `api $6.20 today`, and in `/usage7` yesterday, the month and each workspace.
+  A day rings at $5, $10 and $20. Without ops7 the bell says so and stays quiet.
+
 ## Limits
 
 - It signals and never acts: no compaction, no memory pruning.
 - The memory limits are the engine's constants in 2.1.288; a later build may
   move them.
-- Cost is left out: on a subscription it means nothing.
+- The session's own cost is left out: on a subscription it means nothing.
