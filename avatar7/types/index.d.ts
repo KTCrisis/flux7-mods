@@ -23,6 +23,10 @@ export type Say = {
   release?: boolean
 }
 
+// One model call of this mod, as it was billed to the plan: usage-bell counts
+// them (a hook on model.complete does not see another mod's calls).
+export type ModelUse = { model: string; input: number; output: number; cacheRead: number; at: number }
+
 declare module 'claude-code' {
   interface PluginState {
     avatar7: {
@@ -37,6 +41,8 @@ declare module 'claude-code' {
       isVoicing: boolean
       // The on-duty persona's music, from its persona.json: jukebox7 plays it.
       station: Station
+      // The last model call, for usage-bell's tally.
+      modelUse: ModelUse
     }
   }
 }

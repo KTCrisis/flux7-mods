@@ -179,17 +179,21 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Every mod's call to the model, this one's aside: counted, and priced as
-  // the API would, though the subscription bills none of it.
-  on('model.complete', async ($, e, next) => {
-    const r = await next(e)
-    const u = r.usage
-    if (u !== undefined) {
-      mods.set(e.model, addUsage(mods.get(e.model), e.model, u))
+  // Each model call a mod publishes (avatar7's lines and journals, jukebox7's
+  // intents): counted, and priced as the API would, though the subscription
+  // bills none of it. A hook on model.complete does not see another mod's call.
+  for (const plugin of ['avatar7', 'jukebox7'] as const) {
+    on('state.set', { plugin, key: 'modelUse' }, async ($, e, next) => {
+      const done = await next(e)
+      const u = e.value
+      mods.set(u.model, addUsage(mods.get(u.model), u.model, {
+        input_tokens: u.input, output_tokens: u.output, cache_read_input_tokens: u.cacheRead,
+      }))
       tail = statusLine() ?? ''
-    }
-    return r
-  })
+      $.ui.invalidate('ui.render')
+      return done
+    })
+  }
 
   on('session.measure', async ($, e, next) => {
     if (e.context.percent !== undefined) {

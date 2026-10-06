@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
-import type { Found, Player, Say, Track } from '../types'
+import type { Found, ModelUse, Player, Say, Track } from '../types'
 import { drainArgv, heldArgv, parseJukebox, pauseScript, REMOTE, statusArgv } from './remote'
 
 // Cheap sieve before any model call: a prompt that fails it reaches the
@@ -740,6 +740,11 @@ export const register: Register = on => {
       effort: 'low',
       timeoutMs: 8_000,
     })
+    if (r.usage !== undefined) {
+      await $.state.set({ plugin: 'jukebox7', key: 'modelUse' }, {
+        model: 'haiku', input: r.usage.input_tokens, output: r.usage.output_tokens, cacheRead: r.usage.cache_read_input_tokens ?? 0, at: Date.now(),
+      } satisfies ModelUse)
+    }
     const intent = r.isAnswered ? parseIntent(r.text) : ({ action: 'none' } as const)
 
     if (intent.action === 'none') return next(e)

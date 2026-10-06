@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
-import type { Announce, Line, Say, Station } from '../types'
+import type { Announce, Line, ModelUse, Say, Station } from '../types'
 import { ambientCells, ambientPixel, QUAD, type AmbientLayer, type Field } from './ambient'
 import {
   aliveArgv,
@@ -453,6 +453,15 @@ async function keep($: Engine, at: MemoryAt, agent: string, value: string, tags:
   await mem7($, at, storeBody(agent, episodeKey(agent, new Date()), value, ['episode', ...tags], EPISODE_TTL_S))
 }
 
+// Each model call's usage, published for usage-bell, which tallies the mods'
+// share of the plan.
+async function used($: Engine, model: string, r: { usage?: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number } }): Promise<void> {
+  if (r.usage === undefined) return
+  await $.state.set({ plugin: 'avatar7', key: 'modelUse' }, {
+    model, input: r.usage.input_tokens, output: r.usage.output_tokens, cacheRead: r.usage.cache_read_input_tokens ?? 0, at: Date.now(),
+  } satisfies ModelUse)
+}
+
 // The persona sums up, in its own voice, the exchanges since its last journal.
 async function summarize($: Engine, at: MemoryAt, agent: string, voice: Persona, userName: string): Promise<void> {
   const journals = parseRecall(await mem7($, at, recallBody(agent, ['journal'], 1)))
@@ -465,6 +474,7 @@ async function summarize($: Engine, at: MemoryAt, agent: string, voice: Persona,
     maxTokens: 200,
     timeoutMs: 30_000,
   })
+  await used($, 'haiku', r)
   const journal = journalFrom(r)
   // Nothing worth keeping is a journal too: the same exchanges are not read again.
   await mem7($, at, storeBody(agent, journalKey(agent, new Date()), journal ?? 'Nothing worth keeping.', ['journal']))
@@ -517,6 +527,7 @@ async function speak($: Engine, stage: Stage, ask: Ask, c: Speaking): Promise<vo
         maxTokens: isOpinion(ask) ? 160 : 80,
         timeoutMs: 15_000,
       })
+      await used($, 'haiku', r)
       return lineFrom(r, ask, c.voice, c.now(), c.userName)
     }
     const text = typeof ask === 'object' && 'greet' in ask ? ask.greet : await write()

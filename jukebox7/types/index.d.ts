@@ -24,9 +24,12 @@ export type Say = { mood: 'watch' | 'error'; event: string; at: number }
 // what was asked and the results, in YouTube's order.
 export type Found = { query: string; tracks: Track[] }
 
+// One model call of this mod (the intent of a prompt), for usage-bell's tally.
+export type ModelUse = { model: string; input: number; output: number; cacheRead: number; at: number }
+
 declare module 'claude-code' {
   interface PluginState {
-    jukebox7: { player: Player; volume: number; say: Say; found: Found; searching: boolean }
+    jukebox7: { player: Player; volume: number; say: Say; found: Found; searching: boolean; modelUse: ModelUse }
     // Read only: avatar7 owns it and says which face is on duty.
     avatar7: { avatar: string; color: string; isVoicing: boolean; station: { name: string; artists: string[] } }
   }
