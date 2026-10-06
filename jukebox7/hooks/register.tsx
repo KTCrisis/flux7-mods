@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import type { Player, Say, Track } from '../types'
-import { pauseScript, REMOTE } from './remote'
+import { drainArgv, parseJukebox, pauseScript, REMOTE, statusArgv } from './remote'
 
 // Cheap sieve before any model call: a prompt that fails it reaches the
 // session untouched, with no added latency. A command to the jukebox is
@@ -50,6 +50,8 @@ const MAX_SECONDS = 1200
 const SEARCH_SIZE = 8
 const PANE = 'jukebox7'
 const POLL_MS = 5_000
+// The phone's presses are read this often.
+const REMOTE_MS = 1_000
 
 // One click, a radio: a random artist of the genre, a random song of theirs;
 // next and the end of the song roll again. Seeded from the author's own listening.
@@ -603,6 +605,35 @@ export const register: Register = on => {
         if ((await once($, () => skip($, 1))) === undefined) {
           await update($, player, () => IDLE)
           $.ui.status(undefined)
+        }
+      })()
+    })
+
+    // The phone, through avatar7's relay: its presses for the jukebox, and
+    // what the jukebox shows it, written again only when it changed.
+    let shown = ''
+    $.clock.every(REMOTE_MS, () => {
+      void (async () => {
+        const out = (await $.process.run(drainArgv())).stdout
+        for (const line of out.split('\n')) {
+          const press = parseJukebox(line, GENRES.map(g => g.label))
+          if (press === undefined) continue
+          if (press.do === 'pause') await toggle($)
+          else if (press.do === 'stop') await stop($)
+          else if (press.do === 'next') await once($, () => skip($, 1))
+          else if (press.do === 'similar') await once($, () => playSimilar($))
+          else await once($, () => playGenre($, press.genre))
+          $.ui.invalidate('ui.render')
+        }
+        const p = await read($, player)
+        const now = p.pgid === null ? undefined : p.tracks[p.index]
+        const status = JSON.stringify({
+          title: now?.title ?? '', isPlaying: now !== undefined && p.isPlaying, genre: p.genre ?? '',
+          genres: GENRES.map(g => g.label), isMoving,
+        })
+        if (status !== shown) {
+          await $.process.run(statusArgv(), { stdin: status })
+          shown = status
         }
       })()
     })

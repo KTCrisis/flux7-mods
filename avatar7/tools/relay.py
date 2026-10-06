@@ -39,6 +39,10 @@ STATE = SPOOL / "state.json"
 # jukebox7, while the relay is held, plays on the phone: it writes the song here
 # ({"id", "title", "paused"} or {} when nothing plays) and waits for ended-<id>.
 MUSIC = SPOOL / "music.json"
+# What the jukebox shows the phone, and the phone's presses for it (one file each).
+JUKEBOX = SPOOL / "jukebox.json"
+JUKEBOX_DIR = SPOOL / "jukebox"
+JUKEBOX_DO = {"pause", "next", "similar", "stop", "genre"}
 TRACK_ID = re.compile(r"^[\w-]{11}$")
 # The system service runs without the user's PATH, where yt-dlp lives.
 YTDLP = shutil.which("yt-dlp") or str(Path.home() / "py_env" / "bin" / "yt-dlp")
@@ -143,6 +147,17 @@ class Handler(BaseHTTPRequestHandler):
             (SPOOL / f"ended-{tid}").touch()
             self.send_bytes(b"{}", "application/json")
             return
+        # A press for jukebox7, which checks it again (a genre must be one of its own).
+        if isinstance(cmd, dict) and cmd.get("cmd") == "jukebox":
+            if cmd.get("do") not in JUKEBOX_DO:
+                self.send_error(400)
+                return
+            JUKEBOX_DIR.mkdir(exist_ok=True)
+            part = JUKEBOX_DIR / f"{time.time_ns()}.part"
+            part.write_text(json.dumps({"do": cmd["do"], "genre": str(cmd.get("genre", ""))[:64]}))
+            part.rename(part.with_suffix(".json"))
+            self.send_bytes(b"{}", "application/json")
+            return
         # avatar7 checks each command again; this only keeps junk out of the spool.
         if not isinstance(cmd, dict) or cmd.get("cmd") not in COMMANDS:
             self.send_error(400)
@@ -220,8 +235,18 @@ class Handler(BaseHTTPRequestHandler):
         last_ping = time.monotonic()
         state_at = 0.0
         music_at = 0.0
+        jukebox_at = 0.0
         try:
             while True:
+                # The jukebox's face for the phone: title, playing, genres.
+                try:
+                    at = JUKEBOX.stat().st_mtime
+                    if at != jukebox_at:
+                        jukebox_at = at
+                        self.wfile.write(b"event: jukebox\ndata: " + JUKEBOX.read_bytes().replace(b"\n", b" ") + b"\n\n")
+                        self.wfile.flush()
+                except FileNotFoundError:
+                    pass
                 # What jukebox7 plays on the phone, at connect and on each change.
                 try:
                     at = MUSIC.stat().st_mtime

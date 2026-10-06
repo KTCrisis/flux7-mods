@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { pauseScript, REMOTE } from '../hooks/remote.ts'
+import { drainArgv, parseJukebox, pauseScript, REMOTE, statusArgv } from '../hooks/remote.ts'
 
 const ID = 'DRFHklnN-SM'
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -54,6 +54,36 @@ test('without the relay, the pipeline plays here, and pause goes to VLC', () => 
     assert.equal(out.trim(), 'local')
     const p = spawnSync('sh', ['-c', pauseScript(true), '_', 'echo', 'curl'], { env, encoding: 'utf8' }).stdout
     assert.equal(p.trim(), 'curl')
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('the phone may only press the jukebox controls and its own genres', () => {
+  const genres = ['ambient', 'lofi']
+  assert.deepEqual(parseJukebox('{"do":"next"}', genres), { do: 'next' })
+  assert.deepEqual(parseJukebox('{"do":"genre","genre":"lofi"}', genres), { do: 'genre', genre: 'lofi' })
+  assert.equal(parseJukebox('{"do":"genre","genre":"rm -rf"}', genres), undefined)
+  assert.equal(parseJukebox('{"do":"vlc"}', genres), undefined)
+  assert.equal(parseJukebox('not json', genres), undefined)
+})
+
+test('presses queued by the relay are read once, and the status is written only while the relay is held', () => {
+  const home = mkdtempSync(join(tmpdir(), 'jukebox7-drain-'))
+  const R = join(home, 'avatar7', 'relay')
+  mkdirSync(join(R, 'jukebox'), { recursive: true })
+  const env = { ...process.env, XDG_CACHE_HOME: home }
+  const run = (argv: string[], input = '') => spawnSync(argv[0] ?? '', argv.slice(1), { env, input, encoding: 'utf8' }).stdout
+  try {
+    writeFileSync(join(R, 'jukebox', '1.json'), '{"do":"next"}')
+    writeFileSync(join(R, 'jukebox', '2.json'), '{"do":"pause"}')
+    assert.deepEqual(run(drainArgv()).trim().split('\n'), ['{"do":"next"}', '{"do":"pause"}'])
+    assert.equal(run(drainArgv()).trim(), '')
+    run(statusArgv(), '{"title":"x"}')
+    assert.equal(existsSync(join(R, 'jukebox.json')), false)
+    writeFileSync(join(R, 'owner'), 'session')
+    run(statusArgv(), '{"title":"x"}')
+    assert.equal(readFileSync(join(R, 'jukebox.json'), 'utf8'), '{"title":"x"}')
   } finally {
     rmSync(home, { recursive: true, force: true })
   }

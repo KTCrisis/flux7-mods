@@ -20,3 +20,37 @@ export const REMOTE =
 export const pauseScript = (isPaused: boolean): string =>
   `R=${RELAY}; if [ -f "$R/owner" ] && grep -q '"id"' "$R/music.json" 2>/dev/null; then ` +
   `sed 's/"paused": [a-z]*/"paused": ${isPaused}/' "$R/music.json" > "$R/music.part" && mv "$R/music.part" "$R/music.json"; else exec "$@"; fi`
+
+// The phone's presses for the jukebox, queued by the relay one JSON file each
+// under jukebox/: read and removed in one go, a line each.
+export const drainArgv = (): string[] => [
+  'sh',
+  '-c',
+  `R=${RELAY}; for f in "$R"/jukebox/*.json; do [ -f "$f" ] && cat "$f" && echo && rm -f "$f"; done; true`,
+]
+
+// What the jukebox shows the phone (title, playing, genre, the genres), from
+// stdin, while a session holds the relay.
+export const statusArgv = (): string[] => [
+  'sh',
+  '-c',
+  `R=${RELAY}; [ -f "$R/owner" ] && cat > "$R/jukebox.part" && mv "$R/jukebox.part" "$R/jukebox.json"; true`,
+]
+
+export type JukeboxPress = { do: 'pause' | 'next' | 'similar' | 'stop' } | { do: 'genre'; genre: string }
+
+// A press as the relay queued it, or undefined for anything else: a genre
+// must be one of the given labels.
+export const parseJukebox = (line: string, genres: string[]): JukeboxPress | undefined => {
+  let r: unknown
+  try {
+    r = JSON.parse(line)
+  } catch {
+    return undefined
+  }
+  if (typeof r !== 'object' || r === null) return undefined
+  const o = r as Record<string, unknown>
+  if (o.do === 'pause' || o.do === 'next' || o.do === 'similar' || o.do === 'stop') return { do: o.do }
+  if (o.do === 'genre' && typeof o.genre === 'string' && genres.includes(o.genre)) return { do: 'genre', genre: o.genre }
+  return undefined
+}
