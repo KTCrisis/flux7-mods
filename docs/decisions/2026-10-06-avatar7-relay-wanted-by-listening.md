@@ -1,0 +1,6 @@
+# avatar7: a page listening to the relay asks for the voice
+
+- **Problem**: the relay belongs to one session, and a prompt typed at the terminal gave it back; the phone app had to have `/avatar remote on` typed again in each new session, and could not name the session itself.
+- **Decision**: relay.py keeps `wanted` in the spool while a page listens to `/events` (pings every 5 s to see one go, 20 s of grace after the last); meanwhile a prompt typed here takes the relay, a session claims a free one between prompts (noclobber on `owner`), and a relay taken that way goes back by itself when `wanted` goes. jukebox7 restarts a song playing on VLC when the relay is taken, so the music follows the voice.
+- **Why**: listening is the only gesture the phone makes that says where the user is; forced (`remote on`) and Remote Control keep their rules. Measured: 27 s from stop to the voice back on void; the app had to stop its SSE reader on `alive()`, as `readLine()` ignores cancellation and kept `wanted` up for good.
+- **Where**: `avatar7/tools/relay.py` (`WANTED`, `keep_wanted`), `avatar7/hooks/relay.ts` (`wantedArgv`, `claimArgv`, `follows`, `wantedMove`), `jukebox7/hooks/register.tsx` (remote poll); commits 9344557, 7377a2a; flux7-pocket 12841ec.
