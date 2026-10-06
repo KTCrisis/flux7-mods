@@ -15,6 +15,10 @@ export const REMOTE =
   `trap "grep -q $1 $R/music.json 2>/dev/null && printf {} > $R/music.part && mv $R/music.part $R/music.json" EXIT; trap exit TERM; ` +
   `while [ ! -f "$R/ended-$1" ] && [ -f "$R/owner" ]; do sleep 1; done; rm -f "$R/ended-$1"; exit; fi; `
 
+// Prints `up` while a session holds the relay: the poll watches it change,
+// so a song already playing here moves to the phone when the voice does.
+export const heldArgv = (): string[] => ['sh', '-c', `R=${RELAY}; [ -f "$R/owner" ] && echo up; true`, 'jukebox7-held']
+
 // Pause on the phone flips the flag of the song music.json holds; otherwise
 // the arguments after the script (VLC's curl) run as they are.
 export const pauseScript = (isPaused: boolean): string =>

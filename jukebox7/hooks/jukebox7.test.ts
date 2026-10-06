@@ -282,7 +282,7 @@ test('a pause VLC does not answer leaves the state playing', async ($, on) => {
 
 // The same world with a clock the test moves: yt-dlp answers `searchMs`
 // later, and a process group lives while `alive(pgid)` says so.
-const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) => boolean; found?: () => string }) => {
+const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) => boolean; found?: () => string; held?: () => boolean }) => {
   const clock = mock.clock(on)
   const argv: string[][] = []
   on('command.register', ($, e) => ({ value: { command: e.name } }) as never)
@@ -296,6 +296,7 @@ const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) =
       return ok(opts.found?.() ?? RESULTS)
     }
     if (a[0] === 'kill' && a[1] === '-0') return ok('', opts.alive(Number((a[3] ?? '').slice(1))) ? 0 : 1)
+    if (a[0] === 'sh' && a[3] === 'jukebox7-held') return ok(opts.held?.() ? 'up\n' : '')
     // Each start its own process group: 1001, 1002...
     if (a[0] === 'bash' && /^[\w-]{11}$/.test(a.at(-1) ?? '')) return ok(`${1000 + argv.filter(x => x[0] === 'bash' && /^[\w-]{11}$/.test(x.at(-1) ?? '')).length}\n`)
     return ok()
@@ -357,4 +358,29 @@ test('the last song of a search ends the list: the jukebox goes idle and stops p
   expect(kills()).toBe(polled)
   expect(starts()).toBe(1)
   expect((await $.command.run(music(''))).text).toContain('Nothing played')
+})
+
+test('a song playing here starts again when the relay is taken, so it goes to the phone; once', async ($, on) => {
+  let isHeld = false
+  const { clock, starts } = clockedEngine(on, { searchMs: 1_000, alive: () => true, held: () => isHeld })
+  await $.session.start({ cwd: '/home/u' } as never)
+  const first = $.command.run(music('ambient'))
+  await clock.advance(2_500)
+  expect((await first).text).toContain('Tranquility')
+  expect(starts()).toBe(1)
+  isHeld = true
+  await clock.advance(1_500)
+  expect(starts()).toBe(2)
+  await clock.advance(5_000)
+  expect(starts()).toBe(2)
+})
+
+test('a relay already held when the session starts restarts nothing', async ($, on) => {
+  const { clock, starts } = clockedEngine(on, { searchMs: 1_000, alive: () => true, held: () => true })
+  await $.session.start({ cwd: '/home/u' } as never)
+  const first = $.command.run(music('ambient'))
+  await clock.advance(2_500)
+  expect((await first).text).toContain('Tranquility')
+  await clock.advance(5_000)
+  expect(starts()).toBe(1)
 })

@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import type { Player, Say, Track } from '../types'
-import { drainArgv, parseJukebox, pauseScript, REMOTE, statusArgv } from './remote'
+import { drainArgv, heldArgv, parseJukebox, pauseScript, REMOTE, statusArgv } from './remote'
 
 // Cheap sieve before any model call: a prompt that fails it reaches the
 // session untouched, with no added latency. A command to the jukebox is
@@ -612,8 +612,21 @@ export const register: Register = on => {
     // The phone, through avatar7's relay: its presses for the jukebox, and
     // what the jukebox shows it, written again only when it changed.
     let shown = ''
+    // Where the voice was at the last tick: undefined until first seen.
+    let wasHeld: boolean | undefined
     $.clock.every(REMOTE_MS, () => {
       void (async () => {
+        // The relay just taken: a song playing here starts again from its
+        // beginning, and its start takes the remote branch (no seek through
+        // the relay yet). Given back, the phone's song ends by itself and the
+        // next one plays here.
+        const isHeld = (await $.process.run(heldArgv())).stdout.trim() === 'up'
+        const was = wasHeld
+        wasHeld = isHeld
+        if (isHeld && was === false && !isMoving) {
+          const p = await read($, player)
+          if (p.pgid !== null && p.isPlaying) await once($, () => playAt($, p.tracks, p.index, p.genre))
+        }
         const out = (await $.process.run(drainArgv())).stdout
         for (const line of out.split('\n')) {
           const press = parseJukebox(line, GENRES.map(g => g.label))
