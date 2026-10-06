@@ -40,6 +40,8 @@ STATE = SPOOL / "state.json"
 # ({"id", "title", "paused"} or {} when nothing plays) and waits for ended-<id>.
 MUSIC = SPOOL / "music.json"
 TRACK_ID = re.compile(r"^[\w-]{11}$")
+# The system service runs without the user's PATH, where yt-dlp lives.
+YTDLP = shutil.which("yt-dlp") or str(Path.home() / "py_env" / "bin" / "yt-dlp")
 # The page's buttons, one JSON file each, which avatar7 reads and removes.
 COMMANDS_DIR = SPOOL / "cmd"
 COMMANDS = {"talk", "ask", "answer", "chat", "avatar", "mute", "events", "visits", "volume"}
@@ -180,7 +182,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         p = subprocess.Popen(
-            ["yt-dlp", "-q", "--no-warnings", "-f", "bestaudio", "-o", "-", f"https://www.youtube.com/watch?v={tid}"],
+            [YTDLP, "-q", "--no-warnings", "-f", "bestaudio", "-o", "-", f"https://www.youtube.com/watch?v={tid}"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         )
         try:
