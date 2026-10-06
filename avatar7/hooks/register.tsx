@@ -562,7 +562,7 @@ async function speak($: Engine, stage: Stage, ask: Ask, c: Speaking): Promise<vo
         // Detached, so a reload of this module no longer cuts the line;
         // the voice is held for the WAV's length plus PowerShell's start.
         await update($, isVoicing, () => true)
-        await $.process.run(detachedArgv(playArgv(wav, c.relay.session, SAPI_PLAY)))
+        await $.process.run(detachedArgv(playArgv(wav, c.relay.session, SAPI_PLAY, seq)))
         await $.clock.sleep(ms + PLAY_START_MS)
       }
     }

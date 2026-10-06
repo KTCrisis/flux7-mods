@@ -126,11 +126,12 @@ export const drainArgv = (): string[] => [
 // A line's WAV: to the spool when this session holds the relay (Opus for the
 // trip, renamed in place so never served half written), otherwise played on
 // the host by `local`, a shell command reading the WAV as $1. The WAV goes
-// either way.
-export const playArgv = (wav: string, session: string, local: string): string[] => [
+// either way. Its name ends with the line's seq (`<ns>-<seq>.ogg`): the page
+// pairs each voice with its line exactly, whatever reaches it first.
+export const playArgv = (wav: string, session: string, local: string, seq = 0): string[] => [
   'bash',
   '-c',
-  `d="${RELAY_SPOOL}"; if ${ownsRelay}; then n="$d/$(date +%s%N)"; ` +
+  `d="${RELAY_SPOOL}"; if ${ownsRelay}; then n="$d/$(date +%s%N)-$3"; ` +
     // A 16 s line: 732 KB of WAV, 67 KB of Opus, 0.3 s to encode.
     `if ffmpeg -loglevel error -nostdin -i "$1" -c:a libopus -b:a 32k -f ogg "$n.part"; then mv "$n.part" "$n.ogg"; ` +
     `else cp "$1" "$n.part" && mv "$n.part" "$n.wav"; fi; ` +
@@ -138,6 +139,7 @@ export const playArgv = (wav: string, session: string, local: string): string[] 
   'avatar7-play',
   wav,
   session,
+  String(Math.max(0, Math.floor(seq))),
 ]
 
 // The relay as one session sees it. `session` is this session's id, '' for a

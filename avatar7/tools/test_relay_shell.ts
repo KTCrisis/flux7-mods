@@ -82,16 +82,16 @@ test('the page\'s presses come out one per line, in order, and are gone once rea
   assert.equal(run(drainArgv()), '')
 })
 
-test('a line goes to the spool when held, to the host otherwise; its WAV is removed either way', () => {
+test('a line goes to the spool when held, named after its seq, to the host otherwise; its WAV is removed either way', () => {
   const wav = join(home, 'line.wav')
   const marker = join(home, 'played-here')
   const local = `printf %s "$1" > "${marker}"`
   relayRunning('me', live?.pid ?? 0)
   writeFileSync(wav, 'RIFF')
-  run(playArgv(wav, 'me', local))
+  run(playArgv(wav, 'me', local, 7))
   assert.equal(existsSync(wav), false)
   assert.equal(existsSync(marker), false)
-  const sent = readdirSync(spool).filter(f => /^\d+\.(ogg|wav)$/.test(f))
+  const sent = readdirSync(spool).filter(f => /^\d+-7\.(ogg|wav)$/.test(f))
   assert.equal(sent.length, 1)
   writeFileSync(wav, 'RIFF')
   run(playArgv(wav, 'other', local))
