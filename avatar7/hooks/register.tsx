@@ -10,13 +10,16 @@ import {
   DRAIN_FRAMES,
   drainArgv,
   follows,
+  forgetArgv,
   givesOnEnd,
   heldArgv,
+  latestArgv,
   MIRROR_FRAMES,
   mirrorArgv,
   newRelay,
   parseRemote,
   playArgv,
+  promptedArgv,
   releaseArgv,
   startArgv,
   takeArgv,
@@ -177,7 +180,8 @@ function relayTick($: Engine, r: Relay, frame: number, host: RelayHost): void {
       }
       r.isHeld = (await $.process.run(heldArgv(r.session))).stdout.trim() === 'up'
       const isWanted = (await $.process.run(wantedArgv())).stdout.trim() === 'up'
-      const move = wantedMove(r, isWanted)
+      const latest = isWanted && !r.isHeld ? (await $.process.run(latestArgv())).stdout.trim() : ''
+      const move = wantedMove(r, isWanted, latest)
       if (move === 'claim') {
         await $.process.run(claimArgv(r.session))
         r.isHeld = (await $.process.run(heldArgv(r.session))).stdout.trim() === 'up'
@@ -240,6 +244,7 @@ async function relayOff($: Engine, r: Relay): Promise<string> {
 }
 
 async function relayFollow($: Engine, r: Relay, origin: string): Promise<void> {
+  if (r.session !== '') await $.process.run(promptedArgv(r.session))
   const isWanted = r.session !== '' && (await $.process.run(wantedArgv())).stdout.trim() === 'up'
   const move = follows(r, origin, isWanted)
   if (move === 'take') {
@@ -253,6 +258,7 @@ async function relayFollow($: Engine, r: Relay, origin: string): Promise<void> {
 }
 
 async function relayEnd($: Engine, r: Relay, reason: string): Promise<void> {
+  if (r.session !== '') await $.process.run(forgetArgv(r.session))
   if (givesOnEnd(r, reason)) await relayGive($, r)
 }
 

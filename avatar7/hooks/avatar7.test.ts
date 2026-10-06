@@ -777,3 +777,12 @@ test('a page listening asks for the voice: typed here takes it, and a free relay
   expect(wantedMove({ ...r, isHeld: true, isByWanted: true, isForced: true }, false)).toBe('none')
   expect(wantedMove({ ...r, session: '' }, true)).toBe('none')
 })
+
+test('of several sessions, the one prompted last claims a relay a page asks for', () => {
+  const r = { ...newRelay(), session: 's' }
+  expect(wantedMove(r, true, '')).toBe('claim')
+  expect(wantedMove(r, true, 's')).toBe('claim')
+  expect(wantedMove(r, true, 'other')).toBe('none')
+  // Giving back does not depend on it.
+  expect(wantedMove({ ...r, isHeld: true, isByWanted: true }, false, 'other')).toBe('give')
+})

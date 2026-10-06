@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { aliveArgv, claimArgv, drainArgv, heldArgv, mirrorArgv, playArgv, releaseArgv, startArgv, takeArgv, wantedArgv } from '../hooks/relay.ts'
+import { aliveArgv, claimArgv, drainArgv, forgetArgv, heldArgv, latestArgv, mirrorArgv, playArgv, promptedArgv, releaseArgv, startArgv, takeArgv, wantedArgv } from '../hooks/relay.ts'
 
 let home = ''
 let spool = ''
@@ -130,4 +130,20 @@ test('a claim takes a free relay and leaves a held one to its owner', () => {
   rmSync(spool, { recursive: true, force: true })
   run(claimArgv('c'))
   assert.equal(existsSync(join(spool, 'owner')), false)
+})
+
+test('the session prompted last is the latest; one that ends leaves the list; no spool, no mark', () => {
+  assert.equal(run(latestArgv()).trim(), '')
+  run(promptedArgv('a'))
+  assert.equal(existsSync(join(spool, 'active')), false)
+  mkdirSync(spool, { recursive: true })
+  run(promptedArgv('a'))
+  spawnSync('sleep', ['0.02'])
+  run(promptedArgv('b'))
+  assert.equal(run(latestArgv()).trim(), 'b')
+  spawnSync('sleep', ['0.02'])
+  run(promptedArgv('a'))
+  assert.equal(run(latestArgv()).trim(), 'a')
+  run(forgetArgv('a'))
+  assert.equal(run(latestArgv()).trim(), 'b')
 })

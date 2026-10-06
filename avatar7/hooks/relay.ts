@@ -92,6 +92,16 @@ export const wantedArgv = (): string[] => [
 // the lock, so two sessions claiming at once leave one owner.
 export const claimArgv = (session: string): string[] =>
   owned('avatar7-claim', `[ -d "${RELAY_SPOOL}" ] && (set -C; printf %s "$2" > "${RELAY_SPOOL}/owner") 2>/dev/null; true`, session)
+// Each prompt, from any session that could hold the relay, leaves its mark
+// under active/: the newest is where the user is. A session that ends takes
+// its mark away.
+export const promptedArgv = (session: string): string[] =>
+  owned('avatar7-prompted', `[ -d "${RELAY_SPOOL}" ] && mkdir -p "${RELAY_SPOOL}/active" && touch "${RELAY_SPOOL}/active/$2"; true`, session)
+export const forgetArgv = (session: string): string[] =>
+  owned('avatar7-forget', `rm -f "${RELAY_SPOOL}/active/$2"; true`, session)
+// The session prompted last, or nothing when none has been since the relay
+// started.
+export const latestArgv = (): string[] => ['sh', '-c', `ls -t "${RELAY_SPOOL}/active" 2>/dev/null | head -1`, 'avatar7-latest']
 // Take the relay (when it runs), or give it back (when this session has it).
 export const takeArgv = (session: string): string[] =>
   owned('avatar7-take', `[ -d "${RELAY_SPOOL}" ] && printf %s "$2" > "${RELAY_SPOOL}/owner"`, session)
@@ -168,11 +178,19 @@ export const follows = (r: Relay, origin: string, isWanted = false): 'take' | 'g
         : 'stay'
 
 // Between prompts, at each check: a page listening and nobody holding the
-// relay, this session claims it; the last page gone (its grace over), a relay
+// relay, this session claims it if it was prompted last; the last page gone (its grace over), a relay
 // this session took for it goes back. Forced, or taken by Remote Control or
 // ssh, it stays.
-export const wantedMove = (r: Relay, isWanted: boolean): 'claim' | 'give' | 'none' =>
-  r.session === '' ? 'none' : isWanted && !r.isHeld ? 'claim' : !isWanted && r.isHeld && r.isByWanted && !r.isForced ? 'give' : 'none'
+// Of several sessions, only the one prompted last claims (`latest` empty:
+// none was since the relay started, the first to look takes it).
+export const wantedMove = (r: Relay, isWanted: boolean, latest = ''): 'claim' | 'give' | 'none' =>
+  r.session === ''
+    ? 'none'
+    : isWanted && !r.isHeld && (latest === '' || latest === r.session)
+      ? 'claim'
+      : !isWanted && r.isHeld && r.isByWanted && !r.isForced
+        ? 'give'
+        : 'none'
 
 // A session that ends gives the relay back: an owner gone for good would hold
 // the page on its last face, and keep the others' voices off it. A /clear goes
