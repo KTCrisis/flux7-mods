@@ -112,11 +112,14 @@ export const rankOf = (ask: Ask): number => {
 export const enqueue = (queue: Queued[], ask: Ask, at: number): Queued[] =>
   [...queue, { ask, rank: rankOf(ask), at }].sort((a, b) => b.rank - a.rank || a.at - b.at).slice(0, QUEUE_MAX)
 
+// A dialogue's turn never goes stale either: dropped while it waited (behind
+// the user's chats, which rank higher), it left the guest on stage for good,
+// since only a turn said ends the visit, and no duo could start again.
 export const fresh = (queue: Queued[], now: number): Queued[] =>
   queue.filter(
     q =>
       q.ask === 'talk' ||
-      (typeof q.ask === 'object' && ('answer' in q.ask || 'greet' in q.ask || 'consult' in q.ask || 'chat' in q.ask)) ||
+      (typeof q.ask === 'object' && ('answer' in q.ask || 'greet' in q.ask || 'consult' in q.ask || 'chat' in q.ask || 'duo' in q.ask)) ||
       now - q.at <= STALE_FRAMES,
   )
 

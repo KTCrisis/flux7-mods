@@ -4,7 +4,7 @@ import { drawsPictures, withPrivate } from './register'
 import { facePixel, faceSample, faceCells, pickFace, TINT, type View } from './draw'
 import { commandEvent, heard, heardSay, landed, nextStreak, streakNote } from './hearing'
 import { speakScript, synthArgv } from './voice'
-import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona } from './speech'
+import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona, STALE_FRAMES } from './speech'
 import { ambientCells, ambientPixel, QUAD } from './ambient'
 import { hdFrame, hdKey, hdSize, isSettled, PX, SETTLE_FRAMES, type Hd, type HdView, type Settle } from './hd'
 import { follows, givesOnEnd, newRelay, parseRemote, wantedMove } from './relay'
@@ -785,4 +785,14 @@ test('of several sessions, the one prompted last claims a relay a page asks for'
   expect(wantedMove(r, true, 'other')).toBe('none')
   // Giving back does not depend on it.
   expect(wantedMove({ ...r, isHeld: true, isByWanted: true }, false, 'other')).toBe('give')
+})
+
+test('a dialogue\'s turn waiting behind the user\'s chats never goes stale', () => {
+  let q = enqueue([], { duo: 'hal', turn: 1, topic: 'session', history: [] } as never, 0)
+  q = enqueue(q, { chat: 'hello' } as never, 10)
+  // The chat goes first; the turn waits far past the stale mark, and stays.
+  expect('chat' in (q[0]?.ask as object)).toBe(true)
+  expect(fresh(q, STALE_FRAMES * 3).length).toBe(2)
+  // A mod's event still goes stale.
+  expect(fresh(enqueue([], { mood: 'watch', event: 'x' } as never, 0), STALE_FRAMES + 1).length).toBe(0)
 })
