@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import type { Player, Say, Track } from '../types'
+import { pauseScript, REMOTE } from './remote'
 
 // Cheap sieve before any model call: a prompt that fails it reaches the
 // session untouched, with no added latency. A command to the jukebox is
@@ -249,7 +250,7 @@ const TAG = '--meta-title=jukebox7'
 const HTTP_PORT = 18797
 const HTTP_PASSWORD = 'jukebox7'
 const HTTP = `--extraintf http --http-host 127.0.0.1 --http-port ${HTTP_PORT} --http-password ${HTTP_PASSWORD}`
-const PIPE = `yt-dlp -q --no-warnings -f bestaudio -o - "https://www.youtube.com/watch?v=$1" | "${VLC}" --intf dummy --dummy-quiet --play-and-exit --no-video -q ${TAG} ${HTTP} - vlc://quit`
+const PIPE = `${REMOTE}yt-dlp -q --no-warnings -f bestaudio -o - "https://www.youtube.com/watch?v=$1" | "${VLC}" --intf dummy --dummy-quiet --play-and-exit --no-video -q ${TAG} ${HTTP} - vlc://quit`
 export const startArgv = (id: string): string[] => [
   'bash',
   '-c',
@@ -291,7 +292,12 @@ export const volumeArgv = (percent: number, retry = false): string[] => [
 // Pause and resume through the same interface: instant, where stopping the
 // WSL pipeline only starved VLC after its buffer ran out, seconds later or
 // not at all. force* are idempotent, so a missed click cannot invert them.
+// On the phone (music.json holds a song), pause flips its flag; here, VLC's.
 export const pauseArgv = (isPaused: boolean): string[] => [
+  'sh',
+  '-c',
+  pauseScript(isPaused),
+  '_',
   CURL,
   '-sf',
   '-o',

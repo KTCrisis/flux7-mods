@@ -17,6 +17,7 @@ stopping it. Reloads itself when this file changes.
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -35,6 +36,10 @@ ASSETS = (
 )
 SPOOL = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "avatar7" / "relay"
 STATE = SPOOL / "state.json"
+# jukebox7, while the relay is held, plays on the phone: it writes the song here
+# ({"id", "title", "paused"} or {} when nothing plays) and waits for ended-<id>.
+MUSIC = SPOOL / "music.json"
+TRACK_ID = re.compile(r"^[\w-]{11}$")
 # The page's buttons, one JSON file each, which avatar7 reads and removes.
 COMMANDS_DIR = SPOOL / "cmd"
 COMMANDS = {"talk", "ask", "answer", "chat", "avatar", "mute", "events", "visits", "volume"}
@@ -97,6 +102,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_bytes((TOOLS / name).read_bytes(), kind, cache=True)
         elif self.path.startswith("/persona/"):
             self.persona(self.path[9:])
+        elif self.path.startswith("/track/"):
+            self.track(self.path[7:])
         else:
             self.send_error(404)
 
@@ -123,6 +130,16 @@ class Handler(BaseHTTPRequestHandler):
             cmd = json.loads(self.rfile.read(size))
         except ValueError:
             self.send_error(400)
+            return
+        # The phone finished a song, or skips it: jukebox7's waiter for it ends,
+        # and jukebox7 moves on as when VLC ends a song.
+        if isinstance(cmd, dict) and cmd.get("cmd") == "ended":
+            tid = str(cmd.get("id", ""))
+            if not TRACK_ID.match(tid):
+                self.send_error(400)
+                return
+            (SPOOL / f"ended-{tid}").touch()
+            self.send_bytes(b"{}", "application/json")
             return
         # avatar7 checks each command again; this only keeps junk out of the spool.
         if not isinstance(cmd, dict) or cmd.get("cmd") not in COMMANDS:
@@ -156,6 +173,34 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def track(self, tid: str):
+        """A song's audio, streamed from YouTube through yt-dlp as it comes: the
+        phone asks void, whose address YouTube's links are bound to, not YouTube."""
+        if not TRACK_ID.match(tid):
+            self.send_error(404)
+            return
+        p = subprocess.Popen(
+            ["yt-dlp", "-q", "--no-warnings", "-f", "bestaudio", "-o", "-", f"https://www.youtube.com/watch?v={tid}"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        try:
+            first = p.stdout.read(65536)
+            if not first:
+                self.send_error(502, "yt-dlp gave nothing")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(first)
+            while chunk := p.stdout.read(65536):
+                self.wfile.write(chunk)
+        except OSError:  # the phone went: skipped, closed, or lost
+            pass
+        finally:
+            p.kill()
+            p.wait()
+
     def events(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -172,8 +217,18 @@ class Handler(BaseHTTPRequestHandler):
         seen = {p.name for p in voices() if last is None or mtime_ns(p) <= last}
         last_ping = time.monotonic()
         state_at = 0.0
+        music_at = 0.0
         try:
             while True:
+                # What jukebox7 plays on the phone, at connect and on each change.
+                try:
+                    at = MUSIC.stat().st_mtime
+                    if at != music_at:
+                        music_at = at
+                        self.wfile.write(b"event: music\ndata: " + MUSIC.read_bytes().replace(b"\n", b" ") + b"\n\n")
+                        self.wfile.flush()
+                except FileNotFoundError:
+                    pass
                 # The face's state, at connect and on each change.
                 try:
                     at = STATE.stat().st_mtime
