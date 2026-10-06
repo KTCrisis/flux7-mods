@@ -932,6 +932,11 @@ export const register: Register = (on, options) => {
             }
           } else if (r.cmd === 'avatar') {
             if (AVATARS.includes(r.id) && r.id !== whoId) pendingAvatar = r.id
+          } else if (r.cmd === 'duo') {
+            // A visit now, as /avatar duo with no name: a guest picked at random among the friends.
+            const gid = pickGuest(AVATARS, whoId, Math.random(), who?.friends)
+            const g = gid === undefined || gid === whoId ? null : await loadGuest($, gid)
+            if (g !== null) startDuo(g, Math.random() < 0.5 ? 'session' : 'stories')
           } else if (r.cmd === 'mute') await update($, isMuted, was => !was)
           else if (r.cmd === 'events') {
             eventsOn = !eventsOn

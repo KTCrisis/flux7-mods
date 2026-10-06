@@ -44,7 +44,7 @@ TRACK_ID = re.compile(r"^[\w-]{11}$")
 YTDLP = shutil.which("yt-dlp") or str(Path.home() / "py_env" / "bin" / "yt-dlp")
 # The page's buttons, one JSON file each, which avatar7 reads and removes.
 COMMANDS_DIR = SPOOL / "cmd"
-COMMANDS = {"talk", "ask", "answer", "chat", "avatar", "mute", "events", "visits", "volume"}
+COMMANDS = {"talk", "ask", "answer", "chat", "avatar", "mute", "events", "visits", "volume", "duo"}
 MAX_COMMAND = 2048
 MAX_PENDING = 16  # presses waiting for the session, at most
 KEEP_S = 120  # every voice is dropped after this, fetched or not; replay reaches this far

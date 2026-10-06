@@ -269,6 +269,7 @@ test('the ambient draws only where a layer lights, and stays dim', async () => {
 
 test('the relay page may only ask for the pane gestures, well formed', async () => {
   expect(parseRemote('{"cmd":"talk"}')).toEqual({ cmd: 'talk' })
+  expect(parseRemote('{"cmd":"duo"}')).toEqual({ cmd: 'duo' })
   expect(parseRemote('{"cmd":"ask","text":"why?"}')).toEqual({ cmd: 'ask', text: 'why?' })
   expect(parseRemote('{"cmd":"volume","step":-1}')).toEqual({ cmd: 'volume', step: -1 })
   expect(parseRemote('{"cmd":"volume","step":50}')).toBeUndefined()

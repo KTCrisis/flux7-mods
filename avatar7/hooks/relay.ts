@@ -36,7 +36,7 @@ export type Mirror = {
 // prompt. The relay binds to the tailnet only, and takes presses only while a
 // session holds it.
 export type Remote =
-  | { cmd: 'talk' | 'mute' | 'events' | 'visits' }
+  | { cmd: 'talk' | 'mute' | 'events' | 'visits' | 'duo' }
   | { cmd: 'ask' | 'answer' | 'chat'; text: string }
   | { cmd: 'avatar'; id: string }
   | { cmd: 'volume'; step: 1 | -1 }
@@ -49,7 +49,7 @@ export const parseRemote = (line: string): Remote | undefined => {
   }
   if (typeof r !== 'object' || r === null) return undefined
   const o = r as Record<string, unknown>
-  if (o.cmd === 'talk' || o.cmd === 'mute' || o.cmd === 'events' || o.cmd === 'visits') return { cmd: o.cmd }
+  if (o.cmd === 'talk' || o.cmd === 'mute' || o.cmd === 'events' || o.cmd === 'visits' || o.cmd === 'duo') return { cmd: o.cmd }
   if ((o.cmd === 'ask' || o.cmd === 'answer' || o.cmd === 'chat') && typeof o.text === 'string') return { cmd: o.cmd, text: o.text }
   if (o.cmd === 'avatar' && typeof o.id === 'string') return { cmd: 'avatar', id: o.id }
   if (o.cmd === 'volume' && (o.step === 1 || o.step === -1)) return { cmd: 'volume', step: o.step }
