@@ -6,7 +6,7 @@
   "piper": { "voice": "en_US-joe-medium", "lengthScale": 0.95, "fx": "aresample=22050,asetrate=22050*1.35,aresample=22050,atempo=0.8" },
   "color": "#ffd23f",
   "ambient": [{"kind": "scene", "color": "#ffd23f", "file": "scene.rgb", "width": 512, "height": 192}, {"kind": "rain", "color": "#9ab8d8", "density": 0.15, "speed": 18}],
-  "station": ["Venetian Snares", "Pixies", "Modest Mouse", "The Unicorns", "Sewerslvt", "Machine Girl", "Of Montreal", "Eels", "Ratatat", "Wu-Tang Clan", "Weezer"],
+  "station": ["Venetian Snares", "Pixies", "Modest Mouse", "The Unicorns", "Sewerslvt", "Machine Girl", "Of Montreal", "Eels", "Ratatat", "Wu-Tang Clan", "Weezer", "Stupeflip", "Les Savy Fav"],
   "eyes": [
     {
       "x": 23,
