@@ -65,14 +65,14 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
   {
     key: '3',
     label: 'metal',
-    artists: ['Dissection', 'Cradle of Filth Dusk and Her Embrace', 'Emperor', 'Dimmu Borgir Enthrone Darkness Triumphant', 'Agalloch', 'Ulver Bergtatt', 'Arcturus', 'Blut Aus Nord', 'Wolves in the Throne Room', 'Opeth', 'Gojira', 'Children of Bodom', 'In Flames', 'Therion', 'Diabolical Masquerade', 'Anorexia Nervosa'], discover: ['Deathspell Omega', 'Mgła', 'Panopticon', 'Alcest', 'Oranssi Pazuzu', 'Wiegedood', 'Cult of Luna', 'Russian Circles'],
+    artists: ['Dissection', 'Cradle of Filth Dusk and Her Embrace', 'Emperor', 'Dimmu Borgir Enthrone Darkness Triumphant', 'Agalloch', 'Ulver Bergtatt', 'Arcturus', 'Blut Aus Nord', 'Wolves in the Throne Room', 'Opeth', 'Gojira', 'Children of Bodom', 'In Flames', 'Therion', 'Diabolical Masquerade', 'Anorexia Nervosa', 'Summoning', 'CLANN', 'Drabikowski Batushka', 'Limbonic Art', 'Obtained Enslavement', 'Peste Noire'], discover: ['Deathspell Omega', 'Mgła', 'Panopticon', 'Alcest', 'Oranssi Pazuzu', 'Wiegedood', 'Cult of Luna', 'Russian Circles', 'Igorrr', 'Sumac'],
   },
-  { key: '4', label: 'synth & electro', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead', 'Master Boot Record', 'Crystal Castles', 'The Knife Silent Shout', 'Grimes Visions', 'Justice', 'Röyksopp', 'Atari Teenage Riot'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk'] },
-  { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel', 'Jega', 'Bogdan Raczynski', 'Ceephax Acid Crew', 'The Future Sound of London', 'Tujiko Noriko', 'Plone', 'Ochre'], discover: ['Richard Devine', 'Proem', 'Lusine', 'Funckarma', 'Sewerslvt', 'Machine Girl', 'Rival Consoles', 'Max Cooper'] },
+  { key: '4', label: 'synth & electro', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead', 'Master Boot Record', 'Crystal Castles', 'The Knife Silent Shout', 'Grimes Visions', 'Justice', 'Röyksopp', 'Atari Teenage Riot', 'Waveshaper', 'RWD', 'Lorn Ask the Dust'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk'] },
+  { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel', 'Jega', 'Bogdan Raczynski', 'Ceephax Acid Crew', 'The Future Sound of London', 'Tujiko Noriko', 'Plone', 'Ochre', 'The Tuss', 'Daed', 'EOD', 'Acrnym', 'Koolmorf Widesen', 'exandroid', 'James Shinra', 'Stazma', 'µ-Ziq'], discover: ['Richard Devine', 'Proem', 'Lusine', 'Funckarma', 'Sewerslvt', 'Machine Girl', 'Rival Consoles', 'Max Cooper'] },
   {
     key: '6',
     label: 'indie rock',
-    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT', 'Ratatat', 'Perfume Genius', 'The Notwist', 'Beach House', 'Weezer', 'Les Savy Fav', 'Wolf Parade', 'The Shins', 'Animal Collective', 'Arcade Fire', 'Joanna Newsom', 'Broadcast', 'Syd Matters', 'The Walkmen'], discover: ['Car Seat Headrest', 'Alex G', 'Duster Stratosphere', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra'],
+    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT', 'Ratatat', 'Perfume Genius', 'The Notwist', 'Beach House', 'Weezer', 'Les Savy Fav', 'Wolf Parade', 'The Shins', 'Animal Collective', 'Arcade Fire', 'Joanna Newsom', 'Broadcast', 'Syd Matters', 'The Walkmen', 'The Strokes', 'Metric', 'The Flaming Lips', 'Clues', 'Jason Lytle', 'Ugly Casanova', 'CocoRosie', 'Soap&Skin', 'Xiu Xiu', 'Lykke Li'], discover: ['Car Seat Headrest', 'Alex G', 'Duster Stratosphere', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra'],
   },
   {
     key: '7',
@@ -81,7 +81,7 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
       'NieR Automata soundtrack Keiichi Okabe', 'Jeremy Soule Skyrim', 'Jeremy Soule Morrowind', 'Jeremy Soule Oblivion',
       'Akira Yamaoka Silent Hill', 'Deus Ex soundtrack', 'Christopher Larkin Hollow Knight', 'C418 Minecraft', 'Cyberpunk 2077 soundtrack',
       'Darren Korb Bastion', 'Darren Korb Transistor', 'Lena Raine Celeste', 'Mark Morgan Fallout', 'Mark Morgan Planescape Torment',
-      'FlybyNo Endless Space', 'FlybyNo Endless Legend', 'Arnaud Roy Humankind', 'Andrew Prahlow Outer Wilds',
+      'FlybyNo Endless Space', 'FlybyNo Endless Legend', 'Arnaud Roy Humankind', 'Andrew Prahlow Outer Wilds', 'Furi soundtrack',
     ], discover: ['Disasterpeace Fez', 'Darren Korb Hades', 'Austin Wintory Journey', 'Ben Prunty FTL', 'Toby Fox Undertale', 'Mick Gordon Doom', 'Hideki Naganuma'],
   },
   {
@@ -93,13 +93,13 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
   {
     key: '9',
     label: 'hip-hop & abstract',
-    artists: ['Wu-Tang Clan', 'Jedi Mind Tricks', 'Kanye West', 'cLOUDDEAD', 'Sage Francis', 'Danger Mouse', 'Why?', 'Nujabes', 'Prefuse 73', 'DJ Shadow', 'Bonobo', 'Themselves', 'Odd Nosdam', 'Alias Anticon', 'Sole Anticon', 'Son Lux', 'Beastie Boys', 'Cypress Hill', 'Stupeflip', 'Wax Tailor'],
+    artists: ['Wu-Tang Clan', 'Jedi Mind Tricks', 'Kanye West', 'cLOUDDEAD', 'Sage Francis', 'Danger Mouse', 'Why?', 'Nujabes', 'Prefuse 73', 'DJ Shadow', 'Bonobo', 'Themselves', 'Odd Nosdam', 'Alias Anticon', 'Sole Anticon', 'Son Lux', 'Beastie Boys', 'Cypress Hill', 'Stupeflip', 'Wax Tailor', 'Outkast', 'Eminem', 'Dr. Dre', 'Passage Anticon', 'Death Grips'],
     discover: ['MF DOOM', 'Cannibal Ox', 'Aesop Rock', 'Company Flow', 'Armand Hammer', 'billy woods', 'clipping.', 'Deltron 3030', 'Madlib', 'J Dilla', 'Flying Lotus', 'Knxwledge'],
   },
   {
     key: '0',
     label: 'post-rock',
-    artists: ['Godspeed You! Black Emperor', 'Explosions in the Sky', 'Mono', 'Isis', 'Red Sparowes', 'Mogwai', 'Anathema', 'Sigur Rós', 'This Will Destroy You'],
+    artists: ['Godspeed You! Black Emperor', 'Explosions in the Sky', 'Mono', 'Isis', 'Red Sparowes', 'Mogwai', 'Anathema', 'Sigur Rós', 'This Will Destroy You', 'The Mars Volta'],
     discover: ['Caspian', 'If These Trees Could Talk', 'Pelican', 'Do Make Say Think', 'Tortoise', 'Hammock', 'Lost in Kiev', 'God Is an Astronaut'],
   },
 ]
