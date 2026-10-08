@@ -59,7 +59,7 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
   {
     key: '1',
     label: 'ambient',
-    artists: ['Boards of Canada', 'Loscil', 'Helios', 'Múm', 'Kenji Kawai Ghost in the Shell', 'Rafael Anton Irisarri', 'Ulver Perdition City', 'Brian Eno', 'bxnwxghxrn'], discover: ['Grouper', 'Tim Hecker', 'William Basinski', 'Stars of the Lid', 'Hiroshi Yoshimura', 'Chihei Hatakeyama', 'Biosphere', 'Huerco S.'],
+    artists: ['Boards of Canada', 'Loscil', 'Helios', 'Múm', 'Kenji Kawai Ghost in the Shell', 'Rafael Anton Irisarri', 'Ulver Perdition City', 'Brian Eno', 'bxnwxghxrn', 'Deru 1979'], discover: ['Grouper', 'Tim Hecker', 'William Basinski', 'Stars of the Lid', 'Hiroshi Yoshimura', 'Chihei Hatakeyama', 'Biosphere', 'Huerco S.'],
   },
   { key: '2', label: 'alt 90s', artists: ['Radiohead', 'The Clash', 'Pulp', 'Smashing Pumpkins', 'Pixies Doolittle', 'Pavement', 'Supergrass', 'Tool', 'Nine Inch Nails', 'Rage Against the Machine', 'My Bloody Valentine', 'Queens of the Stone Age', 'Slint', 'Beck'], discover: ['Unwound', 'Polvo', 'Archers of Loaf', 'Sebadoh', 'Hum', 'Failure', 'Swirlies', 'Dinosaur Jr'] },
   {
@@ -67,12 +67,12 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
     label: 'metal',
     artists: ['Dissection', 'Cradle of Filth Dusk and Her Embrace', 'Emperor', 'Dimmu Borgir Enthrone Darkness Triumphant', 'Agalloch', 'Ulver Bergtatt', 'Arcturus', 'Blut Aus Nord', 'Wolves in the Throne Room', 'Opeth', 'Gojira', 'Children of Bodom', 'In Flames', 'Therion', 'Diabolical Masquerade', 'Anorexia Nervosa', 'Summoning', 'CLANN', 'Drabikowski Batushka', 'Limbonic Art', 'Obtained Enslavement', 'Peste Noire'], discover: ['Deathspell Omega', 'Mgła', 'Panopticon', 'Alcest', 'Oranssi Pazuzu', 'Wiegedood', 'Cult of Luna', 'Russian Circles', 'Igorrr', 'Sumac'],
   },
-  { key: '4', label: 'synth & electro', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead', 'Master Boot Record', 'Crystal Castles', 'The Knife Silent Shout', 'Grimes Visions', 'Justice', 'Röyksopp', 'Atari Teenage Riot', 'Waveshaper', 'RWD', 'Lorn Ask the Dust'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk'] },
-  { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel', 'Jega', 'Bogdan Raczynski', 'Ceephax Acid Crew', 'The Future Sound of London', 'Tujiko Noriko', 'Plone', 'Ochre', 'The Tuss', 'Daed', 'EOD', 'Acrnym', 'Koolmorf Widesen', 'exandroid', 'James Shinra', 'Stazma', 'µ-Ziq'], discover: ['Richard Devine', 'Proem', 'Lusine', 'Funckarma', 'Sewerslvt', 'Machine Girl', 'Rival Consoles', 'Max Cooper'] },
+  { key: '4', label: 'synth & electro', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead', 'Master Boot Record', 'Crystal Castles', 'The Knife Silent Shout', 'Grimes Visions', 'Justice', 'Röyksopp', 'Atari Teenage Riot', 'Waveshaper', 'RWD NRTHNDR', 'Lorn Ask the Dust', 'SurgeryHead', 'Baldocaster', 'The Toxic Avenger', 'Scattle'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk'] },
+  { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel', 'Jega', 'Bogdan Raczynski', 'Ceephax Acid Crew', 'The Future Sound of London', 'Tujiko Noriko', 'Plone', 'Ochre', 'The Tuss', 'Daed', 'EOD Questionmarks', 'Acrnym', 'Koolmorf Widesen', 'exandroid', 'James Shinra', 'Stazma', 'µ-Ziq', 'ID:null', 'Gareth Clarke', 'Hitori Tori'], discover: ['Richard Devine', 'Proem', 'Lusine', 'Funckarma', 'Sewerslvt', 'Machine Girl', 'Rival Consoles', 'Max Cooper'] },
   {
     key: '6',
     label: 'indie rock',
-    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT', 'Ratatat', 'Perfume Genius', 'The Notwist', 'Beach House', 'Weezer', 'Les Savy Fav', 'Wolf Parade', 'The Shins', 'Animal Collective', 'Arcade Fire', 'Joanna Newsom', 'Broadcast', 'Syd Matters', 'The Walkmen', 'The Strokes', 'Metric', 'The Flaming Lips', 'Clues', 'Jason Lytle', 'Ugly Casanova', 'CocoRosie', 'Soap&Skin', 'Xiu Xiu', 'Lykke Li'], discover: ['Car Seat Headrest', 'Alex G', 'Duster Stratosphere', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra'],
+    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT', 'Ratatat', 'Perfume Genius', 'The Notwist', 'Beach House', 'Weezer', 'Les Savy Fav', 'Wolf Parade', 'The Shins', 'Animal Collective', 'Arcade Fire', 'Joanna Newsom', 'Broadcast', 'Syd Matters', 'The Walkmen', 'The Strokes', 'Metric', 'The Flaming Lips', 'Clues Alden Penner', 'Jason Lytle', 'Ugly Casanova', 'CocoRosie', 'Soap&Skin', 'Xiu Xiu', 'Lykke Li', 'Candy Claws', 'Surfer Blood'], discover: ['Car Seat Headrest', 'Alex G', 'Duster Stratosphere', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra'],
   },
   {
     key: '7',
@@ -81,7 +81,7 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
       'NieR Automata soundtrack Keiichi Okabe', 'Jeremy Soule Skyrim', 'Jeremy Soule Morrowind', 'Jeremy Soule Oblivion',
       'Akira Yamaoka Silent Hill', 'Deus Ex soundtrack', 'Christopher Larkin Hollow Knight', 'C418 Minecraft', 'Cyberpunk 2077 soundtrack',
       'Darren Korb Bastion', 'Darren Korb Transistor', 'Lena Raine Celeste', 'Mark Morgan Fallout', 'Mark Morgan Planescape Torment',
-      'FlybyNo Endless Space', 'FlybyNo Endless Legend', 'Arnaud Roy Humankind', 'Andrew Prahlow Outer Wilds', 'Furi soundtrack',
+      'FlybyNo Endless Space', 'FlybyNo Endless Legend', 'Arnaud Roy Humankind', 'Andrew Prahlow Outer Wilds', 'Furi soundtrack', 'Waveshaper Masters of Light',
     ], discover: ['Disasterpeace Fez', 'Darren Korb Hades', 'Austin Wintory Journey', 'Ben Prunty FTL', 'Toby Fox Undertale', 'Mick Gordon Doom', 'Hideki Naganuma'],
   },
   {
