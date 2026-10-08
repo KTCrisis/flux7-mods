@@ -7,7 +7,7 @@
   "color": "#4fc3ff",
   "cutout": 4,
   "ambient": [{"kind": "scene", "color": "#4fc3ff", "file": "scene.rgb", "width": 512, "height": 192, "animate": ["beacons", "windows"]}, {"kind": "pulse", "color": "#ffb000", "speed": 30}],
-  "station": ["Glenn Stafford StarCraft", "Derek Duke StarCraft", "Kenji Kawai Ghost in the Shell", "Front Line Assembly", "Autechre", "Deus Ex soundtrack", "Loscil", "Perturbator", "Master Boot Record", "Explosions in the Sky", "In Flames"],
+  "station": ["Glenn Stafford StarCraft", "Derek Duke StarCraft", "FlybyNo Endless Space", "Kenji Kawai Ghost in the Shell", "Front Line Assembly", "Autechre", "Deus Ex soundtrack", "Loscil", "Perturbator", "Master Boot Record", "Explosions in the Sky", "In Flames"],
   "eyes": [
     { "x": 20, "y": 27, "rx": 3, "ry": 1 },
     { "x": 44, "y": 27, "rx": 3, "ry": 1 }
