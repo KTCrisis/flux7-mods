@@ -43,7 +43,7 @@ MUSIC = SPOOL / "music.json"
 # What the jukebox shows the phone, and the phone's presses for it (one file each).
 JUKEBOX = SPOOL / "jukebox.json"
 JUKEBOX_DIR = SPOOL / "jukebox"
-JUKEBOX_DO = {"pause", "next", "similar", "stop", "genre", "find", "pick"}
+JUKEBOX_DO = {"pause", "next", "similar", "stop", "genre", "find", "pick", "back", "fav"}
 TRACK_ID = re.compile(r"^[\w-]{11}$")
 # The system service runs without the user's PATH, where yt-dlp lives.
 YTDLP = shutil.which("yt-dlp") or str(Path.home() / "py_env" / "bin" / "yt-dlp")
