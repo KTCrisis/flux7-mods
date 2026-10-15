@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
-import type { Found, ModelUse, Player, Say, Track } from '../types'
+import type { Found, History, ModelUse, Player, Say, Track } from '../types'
 import { drainArgv, heldArgv, parseJukebox, pauseScript, REMOTE, statusArgv } from './remote'
 
 // Cheap sieve before any model call: a prompt that fails it reaches the
@@ -145,6 +145,28 @@ const PANE_ROWS = 6
 const paneRows = (isSearching: boolean, results: number): number => PANE_ROWS + (isSearching ? 1 + Math.max(1, results) : 0)
 // Percent of VLC's 100 %, kept apart from the player so a stop keeps it.
 const volume = atom({ plugin: 'jukebox7', key: 'volume' } as const, 70)
+// What played, each song with its list and station, for back (⏮) and for
+// next to walk forward again before rolling a new song. `at` is the one
+// playing.
+const HISTORY_MAX = 50
+const history = atom({ plugin: 'jukebox7', key: 'history' } as const, { items: [], at: -1 } as History)
+// Back within the first seconds of a song goes to the one before; later, it
+// starts the song again.
+export const RESTART_MS = 5_000
+export const elapsedMs = (p: Player, now: number): number => (p.startedAt === null ? 0 : (p.pausedAt ?? now) - p.startedAt)
+// Songs kept with ★, across sessions ($.store), played back shuffled as a
+// station of their own.
+export const FAVORITES = '★ favorites'
+const FAVORITES_MAX = 500
+export const unmark = (title: string): string => title.replace(DISCOVERED, '')
+export const shuffled = <T,>(xs: T[]): T[] => {
+  const a = [...xs]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j] as T, a[i] as T]
+  }
+  return a
+}
 const VOLUME_STEP = 10
 const VOLUME_MAX = 125
 export const clampVolume = (v: number): number => Math.min(VOLUME_MAX, Math.max(0, Math.round(v)))
@@ -385,7 +407,7 @@ async function fillDuration($: Engine, id: string): Promise<void> {
 export const introEvent = (title: string): string =>
   `the jukebox starts "${title.replace(DISCOVERED, '')}"; introduce it in your own manner, the way a radio host would`
 
-async function playAt($: Engine, tracks: Track[], index: number, genre: string | null = null): Promise<Track | undefined> {
+async function playAt($: Engine, tracks: Track[], index: number, genre: string | null = null, isReplay = false): Promise<Track | undefined> {
   // Halted even when nothing plays from here: an orphan VLC on the port
   // would take the controls of the new one. One jukebox per machine.
   await halt($, (await read($, player)).pgid)
@@ -407,6 +429,14 @@ async function playAt($: Engine, tracks: Track[], index: number, genre: string |
     pausedAt: null,
   }
   await update($, player, () => p)
+  // A new song goes on top of what played (anything ahead of it is
+  // dropped); a song played again from the history leaves it as it is.
+  if (!isReplay) {
+    await update($, history, h => {
+      const items = [...h.items.slice(0, h.at + 1), { tracks, index, genre }].slice(-HISTORY_MAX)
+      return { items, at: items.length - 1 }
+    })
+  }
   // Every start goes through here: asked, from a genre, or the next one when
   // a song ends; avatar7, if loaded, speaks over the intro.
   await $.state.set({ plugin: 'jukebox7', key: 'say' }, { mood: 'watch', event: introEvent(track.title), at: Date.now() } satisfies Say)
@@ -436,9 +466,61 @@ async function once($: Engine, change: () => Promise<Track | undefined>): Promis
 // Past the last result the list ends (playAt goes idle): no wrapping back to
 // the first, which would loop for ever over tracks that cannot play.
 async function skip($: Engine, by: number): Promise<Track | undefined> {
+  // After a step back, next walks forward through what already played.
+  const h = await read($, history)
+  const ahead = h.items[h.at + 1]
+  if (by > 0 && ahead !== undefined) {
+    await update($, history, x => ({ ...x, at: x.at + 1 }))
+    return playAt($, ahead.tracks, ahead.index, ahead.genre, true)
+  }
   const p = await read($, player)
-  if (typeof p.genre === 'string') return playGenre($, p.genre)
-  return playAt($, p.tracks, p.index + by)
+  if (typeof p.genre === 'string' && p.genre !== FAVORITES) return playGenre($, p.genre)
+  return playAt($, p.tracks, p.index + by, p.genre)
+}
+
+// ⏮: the song again from its start, or, within its first seconds, the one
+// before it. Idle, the last song played starts again.
+async function back($: Engine): Promise<Track | undefined> {
+  const p = await read($, player)
+  const h = await read($, history)
+  const before = h.items[h.at - 1]
+  const isEarly = p.pgid !== null && elapsedMs(p, await $.clock.now()) <= RESTART_MS
+  if (isEarly && before !== undefined) {
+    await update($, history, x => ({ ...x, at: x.at - 1 }))
+    return playAt($, before.tracks, before.index, before.genre, true)
+  }
+  if (p.pgid !== null && p.tracks[p.index] !== undefined) return playAt($, p.tracks, p.index, p.genre, true)
+  const last = h.items[h.at]
+  return last === undefined ? undefined : playAt($, last.tracks, last.index, last.genre, true)
+}
+
+async function favorites($: Engine): Promise<Track[]> {
+  const v = await $.store.get('favorites')
+  return Array.isArray(v) ? (v as Track[]) : []
+}
+
+// ★: the song playing joins the favorites, or leaves them if it was there.
+// Undefined when nothing plays.
+async function toggleFavorite($: Engine): Promise<boolean | undefined> {
+  const p = await read($, player)
+  const now = p.pgid === null ? undefined : p.tracks[p.index]
+  if (now === undefined) return undefined
+  const list = await favorites($)
+  const isIn = list.some(t => t.id === now.id)
+  const next = isIn ? list.filter(t => t.id !== now.id) : [...list, { id: now.id, title: unmark(now.title), seconds: now.seconds }].slice(-FAVORITES_MAX)
+  await $.store.set('favorites', next)
+  $.ui.toast(isIn ? `music: "${unmark(now.title)}" left the favorites` : `music: ★ "${unmark(now.title)}" kept in the favorites`)
+  $.ui.invalidate('ui.render')
+  return !isIn
+}
+
+async function playFavorites($: Engine): Promise<Track | undefined> {
+  const list = await favorites($)
+  if (list.length === 0) {
+    $.ui.toast('music: no favorites yet, ★ keeps the song playing')
+    return undefined
+  }
+  return playAt($, shuffled(list), 0, FAVORITES)
 }
 
 async function toggle($: Engine): Promise<Player | undefined> {
@@ -629,7 +711,7 @@ export const register: Register = on => {
 
     await $.command.register({
       name: 'music',
-      description: 'Play music from YouTube: /music <search>, /music find <search> then /music pick <n>, /music pause, /music next, /music similar, /music stop, /music vol [+|-]<n>, /music alone for what plays',
+      description: 'Play music from YouTube: /music <search>, /music find <search> then /music pick <n>, /music pause, /music back, /music next, /music fav, /music favorites, /music similar, /music stop, /music vol [+|-]<n>, /music alone for what plays',
     })
 
     // A pipeline that ended by itself (the track is over) moves on to the
@@ -675,7 +757,7 @@ export const register: Register = on => {
         const { value: avatar } = await $.state.get(onDuty)
         const { value: onAir } = await $.state.get(onStation)
         const stationPick = avatar !== undefined && onAir !== undefined && onAir.artists.length > 0 ? `${onAir.name}'s pick` : undefined
-        const labels = [...GENRES.map(g => g.label), ...(stationPick !== undefined ? [stationPick] : [])]
+        const labels = [...GENRES.map(g => g.label), ...(stationPick !== undefined ? [stationPick] : []), FAVORITES]
         const out = (await $.process.run(drainArgv())).stdout
         for (const line of out.split('\n')) {
           const press = parseJukebox(line, labels)
@@ -683,10 +765,14 @@ export const register: Register = on => {
           if (press.do === 'pause') await toggle($)
           else if (press.do === 'stop') await stop($)
           else if (press.do === 'next') await once($, () => skip($, 1))
+          else if (press.do === 'back') await once($, () => back($))
+          else if (press.do === 'fav') await toggleFavorite($)
           else if (press.do === 'similar') await once($, () => playSimilar($))
           else if (press.do === 'find') {
             if (!isFinding) await find($, press.query)
           } else if (press.do === 'pick') await once($, () => pick($, press.index))
+          else if (press.do !== 'genre') continue
+          else if (press.genre === FAVORITES) await once($, () => playFavorites($))
           else {
             const genre = press.genre === stationPick && avatar !== undefined ? avatar : press.genre
             await once($, () => playGenre($, genre))
@@ -700,6 +786,8 @@ export const register: Register = on => {
           title: now?.title ?? '', isPlaying: now !== undefined && p.isPlaying,
           genre: stationPick !== undefined && p.genre === avatar ? stationPick : p.genre ?? '',
           genres: labels, isMoving,
+          // ★ full or empty on the phone for the song playing.
+          isFavorite: now !== undefined && (await favorites($)).some(t => t.id === now.id),
           // The last search, for the phone to list and pick from.
           query: f.query, found: f.tracks.map(t => ({ title: t.title, seconds: t.seconds })), isFinding,
         })
@@ -801,7 +889,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'music' }, async ($, e) => {
     const args = e.args.trim()
-    const isControl = args === '' || args === 'pause' || args === 'stop' || /^vol(?:ume)?\b/.test(args) || /^find\b/.test(args)
+    const isControl = args === '' || args === 'pause' || args === 'stop' || args === 'fav' || /^vol(?:ume)?\b/.test(args) || /^find\b/.test(args)
     if (!isControl && isMoving) return { text: 'A song is already on its way.' }
     const p = await read($, player)
     const now = p.tracks[p.index]
@@ -817,6 +905,20 @@ export const register: Register = on => {
       if (n === undefined) return { text: `Volume ${await read($, volume)}%.` }
       const v = await louder($, sign === '' ? Number(n) - (await read($, volume)) : Number(`${sign}${n}`))
       return { text: `Volume ${v}%.` }
+    }
+
+    if (args === 'back' || args === 'prev') {
+      const t = await once($, () => back($))
+      return { text: t === undefined ? 'Nothing played yet.' : `Back to: ${t.title}` }
+    }
+    if (args === 'fav') {
+      const isIn = await toggleFavorite($)
+      if (isIn === undefined) return { text: 'Nothing is playing from here.' }
+      return { text: isIn ? 'Kept in the favorites.' : 'Removed from the favorites.' }
+    }
+    if (args === 'favorites') {
+      const t = await once($, () => playFavorites($))
+      return { text: t === undefined ? 'No favorites yet: /music fav keeps the song playing.' : `Favorites: ${t.title}` }
     }
 
     if (args === 'similar' || args === 'like') {
@@ -873,17 +975,20 @@ export const register: Register = on => {
     const { value: avatar } = await $.state.get(onDuty)
     const { value: onAir } = await $.state.get(onStation)
     const station = onAir !== undefined && onAir.artists.length > 0 ? onAir : undefined
+    const isFavorite = now !== undefined && (await favorites($)).some(t => t.id === now.id)
     const isTerminal = e.surface === 'terminal'
     // The border and the play glyph take three columns on the terminal.
     const width = Math.max(10, (e.props.bodyColumns ?? 40) - (isTerminal ? 5 : 2))
     const title = now === undefined ? 'Nothing plays.' : now.title.length > width ? `${now.title.slice(0, width - 1)}…` : now.title
-    const where = p.genre === null || p.genre === undefined ? `${p.index + 1}/${p.tracks.length}` : (GENRES.some(g => g.label === p.genre) ? p.genre : (onAir?.name || p.genre))
+    const where = p.genre === null || p.genre === undefined ? `${p.index + 1}/${p.tracks.length}` : (GENRES.some(g => g.label === p.genre) || p.genre === FAVORITES ? p.genre : (onAir?.name || p.genre))
 
     // A list, not a fragment: the terminal lays a fragment out as a column of
     // its own, which stacked the controls one per row and cut off `u: vol+`.
     const controls = [
+      <Button key="back" label="⏮" hotkey="b" plain onPress={() => void once($, () => back($))} />,
       <Button key="toggle" label={p.isPlaying ? 'pause' : 'play'} hotkey="p" plain onPress={() => void toggle($)} />,
       <Button key="next" label="next" hotkey="n" plain onPress={() => void once($, () => skip($, 1))} />,
+      <Button key="fav" label={isFavorite ? '★' : '☆'} hotkey="k" plain onPress={() => void toggleFavorite($)} />,
       <Button key="similar" label="similar" hotkey="r" plain onPress={() => void once($, () => playSimilar($))} />,
       <Button key="stop" label="stop" hotkey="s" plain dimColor onPress={() => void stop($)} />,
       <Button key="quieter" label="vol−" hotkey="d" plain dimColor onPress={() => void louder($, -VOLUME_STEP)} />,
@@ -955,6 +1060,7 @@ export const register: Register = on => {
         {station !== undefined && avatar !== undefined && (
           <Button key="avatar" label={`${station.name}'s pick`} hotkey="a" plain onPress={() => void once($, () => playGenre($, avatar))} />
         )}
+        <Button key="favorites" label={FAVORITES} hotkey="v" plain dimColor onPress={() => void once($, () => playFavorites($))} />
         {isTerminal && finder}
       </Box>
     )
@@ -988,9 +1094,9 @@ export const register: Register = on => {
     // The controls and the stations wrap inside the frame (border and padding:
     // four columns); each row they take comes out of the rain.
     const inner = Math.max(10, (e.props.bodyColumns ?? 40) - 4)
-    const controlRows = now === undefined ? 0 : buttonRows([p.isPlaying ? 'pause' : 'play', 'next', 'similar', 'stop', 'vol−', 'vol+'], inner)
+    const controlRows = now === undefined ? 0 : buttonRows(['⏮', p.isPlaying ? 'pause' : 'play', 'next', '★', 'similar', 'stop', 'vol−', 'vol+'], inner)
     const stationRows = buttonRows(
-      [...GENRES.map(g => g.label), ...(station !== undefined ? [`${station.name}'s pick`] : []), isSearching ? 'close search' : 'find'],
+      [...GENRES.map(g => g.label), ...(station !== undefined ? [`${station.name}'s pick`] : []), FAVORITES, isSearching ? 'close search' : 'find'],
       inner,
     )
     // The field, then a result a row (or the one line saying why there are none).

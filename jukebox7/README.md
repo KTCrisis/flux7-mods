@@ -64,6 +64,14 @@ to 70 % of its level, then returns.
 `/music <search>` plays one named track; `/music pause|next|stop`;
 `/music vol 60`, `/music vol +20`. In words, `monte le son` works too.
 
+`⏮` (`b`, `/music back`) starts the song again; within its first five
+seconds it goes to the song before, through the last fifty that played, and
+`next` then walks forward again before rolling a new one. `★` (`k`,
+`/music fav`) keeps the song playing in the favorites, or takes it out; they
+are kept across sessions (`$.store`, at most 500) and play shuffled as the
+`★ favorites` station (`v`, `/music favorites`). The phone gets the same
+three: back, ★ (full when the song is kept) and the station.
+
 Only a short prompt (eight words at most) with a music word or phrase goes to
 Haiku; a longer one is talk to the assistant and passes untouched, even when
 it mentions music.

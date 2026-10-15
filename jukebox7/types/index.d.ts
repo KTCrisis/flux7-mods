@@ -27,9 +27,14 @@ export type Found = { query: string; tracks: Track[] }
 // One model call of this mod (the intent of a prompt), for usage-bell's tally.
 export type ModelUse = { model: string; input: number; output: number; cacheRead: number; at: number }
 
+// What played, for back (⏮) and for next to walk forward again: each song
+// with its list and its station; `at` is the one playing.
+export type Played = { tracks: Track[]; index: number; genre: string | null }
+export type History = { items: Played[]; at: number }
+
 declare module 'claude-code' {
   interface PluginState {
-    jukebox7: { player: Player; volume: number; say: Say; found: Found; searching: boolean; modelUse: ModelUse }
+    jukebox7: { player: Player; volume: number; say: Say; found: Found; searching: boolean; modelUse: ModelUse; history: History }
     // Read only: avatar7 owns it and says which face is on duty.
     avatar7: { avatar: string; color: string; isVoicing: boolean; station: { name: string; artists: string[] } }
   }

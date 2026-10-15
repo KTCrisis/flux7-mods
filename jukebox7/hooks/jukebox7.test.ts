@@ -2,6 +2,7 @@ import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
 import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio, introEvent, listing } from './register'
 import { parseJukebox } from './remote'
+import { unmark, shuffled, FAVORITES } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -11,6 +12,16 @@ const RESULTS = [
 // The engine beneath: Haiku answers `intent`, yt-dlp the results above, the
 // detached pipeline its process group 4242, the shell `kind` as
 // CLAUDE_CODE_SESSION_KIND, and every command line is kept.
+// $.store, in memory: what a session keeps for the next one.
+const memoryStore = (on: On, kept: Record<string, unknown> = {}) => {
+  on('store.get', ($, e) => ({ value: kept[(e as { key: string }).key] }) as never)
+  on('store.set', ($, e) => {
+    const w = e as { key: string; value: unknown }
+    kept[w.key] = w.value
+    return { value: undefined } as never
+  })
+  return kept
+}
 const engine = (on: On, intent: string, kind = '', fails: (argv: string[]) => boolean = () => false): { argv: string[][]; toasts: string[]; say: (next: string) => void } => {
   const said = { intent }
   const argv: string[][] = []
@@ -25,6 +36,7 @@ const engine = (on: On, intent: string, kind = '', fails: (argv: string[]) => bo
   })
   on('clock.now', () => ({ value: 1_000_000 }) as never)
   on('ui.status', () => ({ value: undefined }) as never)
+  memoryStore(on)
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('ui.close', () => ({ value: undefined }) as never)
   on('ui.toast', ($, e) => {
@@ -235,6 +247,7 @@ test('a track listed without duration asks yt-dlp for its own, for the progress 
   })
   on('clock.now', () => ({ value: 1_000_000 }) as never)
   on('ui.status', () => ({ value: undefined }) as never)
+  memoryStore(on)
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('ui.toast', () => ({ value: undefined }) as never)
   on('prompt.submit', ($, e) => ({ text: e.text }))
@@ -305,6 +318,7 @@ const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) =
     return ok()
   })
   on('ui.status', () => ({ value: undefined }) as never)
+  memoryStore(on)
   on('ui.toast', () => ({ value: undefined }) as never)
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('ui.close', () => ({ value: undefined }) as never)
@@ -313,7 +327,8 @@ const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) =
   const starts = () => argv.filter(a => a[0] === 'bash' && /^[\w-]{11}$/.test(a.at(-1) ?? '')).length
   const searches = () => argv.filter(a => a[0] === 'yt-dlp').length
   const kills = () => argv.filter(a => a[0] === 'kill' && a[1] === '-0').length
-  return { clock, starts, searches, kills }
+  const lastStart = () => argv.filter(a => a[0] === 'bash' && /^[\w-]{11}$/.test(a.at(-1) ?? '')).at(-1)?.at(-1)
+  return { clock, starts, searches, kills, lastStart }
 }
 const pane = { plugin: 'jukebox7', surface: 'terminal', component: 'Pane', requestId: 'jukebox7', props: { bodyColumns: 100, scroll: { bodyRows: 20 } } } as never
 
@@ -460,4 +475,41 @@ test("the phone gets the avatar's station under the terminal's name, and pressin
   await clock.advance(4_000)
   expect(starts()).toBe(1)
   expect(statuses.at(-1)?.genre).toBe("HAL 9000's pick")
+})
+
+test('back within five seconds goes to the song before; later it starts the song again; next walks forward again', async ($, on) => {
+  const { clock, lastStart } = clockedEngine(on, { searchMs: 1_000, alive: () => true })
+  await $.session.start({ cwd: '/home/u' } as never)
+  const f = $.command.run(music('find ambient'))
+  await clock.advance(1_500)
+  await f
+  await $.command.run(music('pick 1'))
+  await $.command.run(music('pick 2'))
+  expect(lastStart()).toBe('A8ChCZExAsw')
+  expect((await $.command.run(music('back'))).text).toContain('Tranquility')
+  expect(lastStart()).toBe('DRFHklnN-SM')
+  await clock.advance(6_000)
+  expect((await $.command.run(music('back'))).text).toContain('Tranquility')
+  expect(lastStart()).toBe('DRFHklnN-SM')
+  expect((await $.command.run(music('next'))).text).toContain('Aero Skyway')
+  expect(lastStart()).toBe('A8ChCZExAsw')
+})
+
+test('★ keeps the song playing across sessions, again removes it; the favorites play as a station', async ($, on) => {
+  engine(on, '{"action":"play","query":"ambient music","long":true}')
+  expect((await $.command.run(music('favorites'))).text).toContain('No favorites yet')
+  await $.prompt.submit(typed('joue moi un peu de musique ambient'))
+  expect((await $.command.run(music('fav'))).text).toBe('Kept in the favorites.')
+  expect((await $.command.run(music('fav'))).text).toBe('Removed from the favorites.')
+  await $.command.run(music('fav'))
+  await $.command.run(music('stop'))
+  expect((await $.command.run(music('favorites'))).text).toBe('Favorites: Tranquility - Deep Healing Ambient')
+  expect(unmark('✦ Grimes - Oblivion')).toBe('Grimes - Oblivion')
+  expect(shuffled([1, 2, 3, 4]).sort()).toEqual([1, 2, 3, 4])
+})
+
+test('the phone may press back and ★, and sees the favorites among the stations', () => {
+  expect(parseJukebox('{"do":"back"}', [])).toEqual({ do: 'back' })
+  expect(parseJukebox('{"do":"fav"}', [])).toEqual({ do: 'fav' })
+  expect(parseJukebox(JSON.stringify({ do: 'genre', genre: FAVORITES }), [FAVORITES])).toEqual({ do: 'genre', genre: FAVORITES })
 })
