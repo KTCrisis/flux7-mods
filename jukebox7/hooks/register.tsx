@@ -110,11 +110,41 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
 // A genre's artists, or else the station of the avatar on duty, which
 // avatar7 publishes from the persona's own persona.json.
 async function poolOf($: Engine, label: string): Promise<{ name: string; artists: string[] }> {
+  const taught = (await learned($))[label] ?? []
   const genre = GENRES.find(g => g.label === label)
-  if (genre !== undefined) return { name: label, artists: genre.artists }
+  if (genre !== undefined) return { name: label, artists: [...genre.artists, ...taught.filter(a => !genre.artists.includes(a))] }
   const { value } = await $.state.get(onStation)
-  return { name: value?.name || label, artists: value?.artists ?? [] }
+  const own = value?.artists ?? []
+  return { name: value?.name || label, artists: own.length === 0 ? [] : [...own, ...taught.filter(a => !own.includes(a))] }
 }
+
+// Artists a station learned: a ✦ discovery kept with ★ joins the station it
+// played on, across sessions ($.store), at most LEARNED_MAX each; taking the
+// ★ back takes the artist out again.
+const LEARNED_MAX = 50
+async function learned($: Engine): Promise<Record<string, string[]>> {
+  const v = await $.store.get('learned')
+  return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, string[]>) : {}
+}
+async function teach($: Engine, station: string, artist: string, isKept: boolean): Promise<void> {
+  const all = await learned($)
+  const now = all[station] ?? []
+  const next = isKept ? [...now.filter(a => a !== artist), artist].slice(-LEARNED_MAX) : now.filter(a => a !== artist)
+  await $.store.set('learned', { ...all, [station]: next })
+}
+
+// The same name, whatever its case and spacing: "Boards of Canada" and the
+// channel "boards of canada" are one artist; "Ghost band" covers "Ghost".
+const sameArtist = (a: string, b: string): boolean => {
+  const x = a.toLowerCase().replace(/\s+/g, ' ').trim()
+  const y = b.toLowerCase().replace(/\s+/g, ' ').trim()
+  return x !== '' && y !== '' && (x === y || x.startsWith(`${y} `) || y.startsWith(`${x} `))
+}
+// A discovery from the radio of what the station played last: a song by an
+// artist the station does not have yet, not heard lately. Undefined when
+// there is no seed or the radio has nothing new.
+export const radioDiscovery = (rows: RadioRow[], own: string[], heard: Set<string>): RadioRow | undefined =>
+  anyOf(rows.filter(r => r.artist !== '' && r.artist !== 'NA' && !own.some(a => sameArtist(a, r.artist)) && !heard.has(r.track.id)))
 // Artists picked for a genre beyond the listener's own: one pick in three
 // comes from there, and its title wears a ✦.
 const discoveries = (label: string): string[] => GENRES.find(g => g.label === label)?.discover ?? []
@@ -274,7 +304,8 @@ export const radioArgv = (id: string): string[] => [
   `https://music.youtube.com/watch?v=${id}&list=RDAMVM${id}`,
 ]
 const COVER = /\b(cover|tribute|relaxing|reimagined|orchestral version|piano version|8.?bit|lofi version|1 hour|hours?\b|extended|epic music|fantasy music|sleep|study)\b/i
-export const parseRadio = (stdout: string): Track[] => {
+export type RadioRow = { track: Track; artist: string }
+export const parseRadioRows = (stdout: string): RadioRow[] => {
   const rows = stdout
     .split('\n')
     .map(l => l.split('\t'))
@@ -289,8 +320,9 @@ export const parseRadio = (stdout: string): Track[] => {
   const kept = rest.filter(r => !COVER.test(r.title) && !COVER.test(r.artist) && (r.seconds === null || isSong(r)))
   const others = kept.filter(r => r.artist !== self?.artist)
   const same = kept.filter(r => r.artist === self?.artist)
-  return [...others, ...same].map(r => ({ id: r.id, title: r.artist === '' || r.artist === 'NA' ? r.title : `${r.artist} - ${r.title}`, seconds: r.seconds }))
+  return [...others, ...same].map(r => ({ track: { id: r.id, title: r.artist === '' || r.artist === 'NA' ? r.title : `${r.artist} - ${r.title}`, seconds: r.seconds }, artist: r.artist }))
 }
+export const parseRadio = (stdout: string): Track[] => parseRadioRows(stdout).map(r => r.track)
 
 // Audio only, no window: yt-dlp streams the best audio into Windows' VLC
 // with its dummy interface (WSLg's PulseAudio stalls after a sleep, VLC
@@ -527,6 +559,13 @@ async function toggleFavorite($: Engine): Promise<boolean | undefined> {
   const next = isIn ? list.filter(t => t.id !== now.id) : [...list, { id: now.id, title: unmark(now.title), seconds: now.seconds }].slice(-FAVORITES_MAX)
   await $.store.set('favorites', next)
   $.ui.toast(isIn ? `music: "${unmark(now.title)}" left the favorites` : `music: ★ "${unmark(now.title)}" kept in the favorites`)
+  // A discovery kept: its artist joins the station it played on.
+  const h = await read($, history)
+  const here = h.items[h.at]
+  if (now.title.startsWith(DISCOVERED) && here?.genre && here.genre !== FAVORITES && here.artist) {
+    await teach($, here.genre, here.artist, !isIn)
+    if (!isIn) $.ui.toast(`music: ${here.artist} joins the station`)
+  }
   $.ui.invalidate('ui.render')
   return !isIn
 }
@@ -620,13 +659,27 @@ export const listing = (tracks: Track[]): string =>
   tracks.map((t, i) => `${i + 1}. ${t.title}${t.seconds === null ? '' : ` (${clock(t.seconds)})`}`).join('\n')
 
 async function playGenre($: Engine, label: string): Promise<Track | undefined> {
-  const fresh = discoveries(label)
-  const isNew = fresh.length > 0 && Math.random() < DISCOVER_ODDS
   const pool = await poolOf($, label)
   // What played lately: the artists of this station, every song's id.
   const played = (await read($, history)).items
   const recent = played.filter(x => x.genre === label).map(x => x.artist ?? '').filter(a => a !== '')
   const heard = new Set(played.map(x => x.tracks[x.index]?.id ?? ''))
+  const wantsNew = Math.random() < DISCOVER_ODDS
+  // One pick in three is a discovery: first from the radio of the station's
+  // last song, else from the genre's written list.
+  const seed = [...played].reverse().find(x => x.genre === label)?.tracks[0]?.id
+  if (wantsNew && seed !== undefined) {
+    $.ui.status(`music: looking for something new in ${pool.name}…`)
+    const radio = await $.process.run(radioArgv(seed), { timeoutMs: 20_000 })
+    const found = radio.exitCode === 0 ? radioDiscovery(parseRadioRows(radio.stdout), [...pool.artists, ...discoveries(label)], heard) : undefined
+    if (found !== undefined) {
+      const track = { ...found.track, title: `${DISCOVERED}${found.track.title}` }
+      $.ui.toast(`music now playing: ${track.title}`)
+      return playAt($, [track], 0, label, false, found.artist)
+    }
+  }
+  const fresh = discoveries(label)
+  const isNew = wantsNew && fresh.length > 0
   const artist = anyOf(freshArtists(isNew ? fresh : pool.artists, recent))
   if (artist === undefined) return undefined
   $.ui.status(`music: looking for ${pool.name}, ${artist}…`)

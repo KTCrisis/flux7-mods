@@ -75,6 +75,11 @@ three: back, ★ (full when the song is kept) and the station.
 A station goes round its artists: those of its last songs are set aside, up
 to half its list (eight at most), and no song of the last fifty plays again;
 each pick looks through an artist's first fifteen songs on YouTube Music.
+One pick in three is a discovery (✦): first from the YouTube Music radio of
+the station's last song, an artist the station does not have yet; else from
+the genre's written list. A discovery kept with ★ teaches the station: its
+artist joins the station it played on, across sessions (`$.store`, fifty per
+station); taking the ★ back takes it out.
 Station lists name artists, not albums, except where the album is the style
 (`Ulver Perdition City` in ambient, `Aphex Twin Selected Ambient Works
 Volume II`) or a soundtrack names its work.

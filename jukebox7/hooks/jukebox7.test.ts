@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
 import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio, introEvent, listing } from './register'
 import { parseJukebox } from './remote'
-import { unmark, shuffled, FAVORITES, freshArtists, freshSongs } from './register'
+import { unmark, shuffled, FAVORITES, freshArtists, freshSongs, radioDiscovery, parseRadioRows } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -354,10 +354,12 @@ test('a genre song that ends starts one next song, however many polls the slow s
   expect(starts()).toBe(1)
   const before = searches()
   isOver = true
-  // Polls every 5 s; the search for the next song takes 15: three polls see
-  // the first song over while it runs.
-  await clock.advance(25_000)
-  expect(searches() - before).toBe(1)
+  // Polls every 5 s; the search for the next song takes 15 (30 when the
+  // station first asks the radio for a discovery, one pick in three): the
+  // polls that see the first song over meanwhile start nothing more.
+  await clock.advance(40_000)
+  expect(searches() - before).toBeGreaterThanOrEqual(1)
+  expect(searches() - before).toBeLessThanOrEqual(2)
   expect(starts()).toBe(2)
 })
 
@@ -523,4 +525,19 @@ test('a station goes round its artists before one comes back, and plays no song 
   const songs = [{ id: 'x1', title: 'x', seconds: 200 }, { id: 'x2', title: 'y', seconds: 200 }]
   expect(freshSongs(songs, new Set(['x1']))).toEqual([songs[1]])
   expect(freshSongs(songs, new Set(['x1', 'x2']))).toEqual(songs)
+})
+
+test('a discovery comes from the radio: an artist the station lacks, a song not heard lately', () => {
+  const rows = parseRadioRows([
+    'seed0000001\tRoygbiv\t150\tBoards of Canada - Topic',
+    'aaaaaaaaaa1\tAnother\t200\tboards of canada',
+    'bbbbbbbbbb2\tNight\t240\tTycho - Topic',
+    'cccccccccc3\tDawn\t210\tHelios',
+    'dddddddddd4\tLoop\t230\tNA',
+  ].join('\n'))
+  // Boards of Canada is the station's own, in any case; Helios was heard lately; NA names no one.
+  const own = ['Boards of Canada', 'Helios band']
+  const heard = new Set(['cccccccccc3'])
+  for (let i = 0; i < 20; i++) expect(radioDiscovery(rows, own, heard)?.artist).toBe('Tycho')
+  expect(radioDiscovery(rows, [...own, 'Tycho'], heard)).toBeUndefined()
 })
