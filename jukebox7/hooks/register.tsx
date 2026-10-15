@@ -197,7 +197,7 @@ export const RESTART_MS = 5_000
 export const elapsedMs = (p: Player, now: number): number => (p.startedAt === null ? 0 : (p.pausedAt ?? now) - p.startedAt)
 // Songs kept with ★, across sessions ($.store), played back shuffled as a
 // station of their own.
-export const FAVORITES = '★ favorites'
+export const FAVORITES = 'favorites'
 const FAVORITES_MAX = 500
 export const unmark = (title: string): string => title.replace(DISCOVERED, '')
 export const shuffled = <T,>(xs: T[]): T[] => {
@@ -673,7 +673,7 @@ async function toggleFavorite($: Engine): Promise<boolean | undefined> {
   const isIn = list.some(t => t.id === now.id)
   const next = isIn ? list.filter(t => t.id !== now.id) : [...list, { id: now.id, title: unmark(now.title), seconds: now.seconds }].slice(-FAVORITES_MAX)
   await $.store.set('favorites', next)
-  $.ui.toast(isIn ? `music: "${unmark(now.title)}" left the favorites` : `music: ★ "${unmark(now.title)}" kept in the favorites`)
+  $.ui.toast(isIn ? `music: "${unmark(now.title)}" left the favorites` : `music: "${unmark(now.title)}" kept in the favorites`)
   // A discovery kept: its artist joins the station it played on.
   const h = await read($, history)
   const here = h.items[h.at]
@@ -688,7 +688,7 @@ async function toggleFavorite($: Engine): Promise<boolean | undefined> {
 async function playFavorites($: Engine): Promise<Track | undefined> {
   const list = await favorites($)
   if (list.length === 0) {
-    $.ui.toast('music: no favorites yet, ★ keeps the song playing')
+    $.ui.toast('music: no favorites yet, keep adds the song playing')
     return undefined
   }
   return playAt($, shuffled(list), 0, FAVORITES)
@@ -1161,10 +1161,10 @@ export const register: Register = on => {
     // A list, not a fragment: the terminal lays a fragment out as a column of
     // its own, which stacked the controls one per row and cut off `u: vol+`.
     const controls = [
-      <Button key="back" label="⏮" hotkey="b" plain onPress={() => void once($, () => back($))} />,
+      <Button key="back" label="back" hotkey="b" plain onPress={() => void once($, () => back($))} />,
       <Button key="toggle" label={p.isPlaying ? 'pause' : 'play'} hotkey="p" plain onPress={() => void toggle($)} />,
       <Button key="next" label="next" hotkey="n" plain onPress={() => void once($, () => skip($, 1))} />,
-      <Button key="fav" label={isFavorite ? '★' : '☆'} hotkey="k" plain onPress={() => void toggleFavorite($)} />,
+      <Button key="fav" label={isFavorite ? 'kept' : 'keep'} hotkey="k" plain onPress={() => void toggleFavorite($)} />,
       <Button key="similar" label="similar" hotkey="r" plain onPress={() => void once($, () => playSimilar($))} />,
       <Button key="stop" label="stop" hotkey="s" plain dimColor onPress={() => void stop($)} />,
       <Button key="quieter" label="vol−" hotkey="d" plain dimColor onPress={() => void louder($, -VOLUME_STEP)} />,
@@ -1270,7 +1270,7 @@ export const register: Register = on => {
     // The controls and the stations wrap inside the frame (border and padding:
     // four columns); each row they take comes out of the rain.
     const inner = Math.max(10, (e.props.bodyColumns ?? 40) - 4)
-    const controlRows = now === undefined ? 0 : buttonRows(['⏮', p.isPlaying ? 'pause' : 'play', 'next', '★', 'similar', 'stop', 'vol−', 'vol+'], inner)
+    const controlRows = now === undefined ? 0 : buttonRows(['back', p.isPlaying ? 'pause' : 'play', 'next', 'keep', 'similar', 'stop', 'vol−', 'vol+'], inner)
     const stationRows = buttonRows(
       [...GENRES.map(g => g.label), ...(station !== undefined ? [`${station.name}'s pick`] : []), FAVORITES, isSearching ? 'close search' : 'find'],
       inner,

@@ -1471,7 +1471,7 @@ export const register: Register = (on, options) => {
         <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor="#000000">
           <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => speakLater('talk')} />
           {musicPlays && (
-            <Button key="music-next" label="♪ next" hotkey="n" plain onPress={() => void $.state.set({ plugin: 'avatar7', key: 'musicNext' }, Date.now())} />
+            <Button key="music-next" label="next song" hotkey="n" plain onPress={() => void $.state.set({ plugin: 'avatar7', key: 'musicNext' }, Date.now())} />
           )}
           <Button
             key="ask"

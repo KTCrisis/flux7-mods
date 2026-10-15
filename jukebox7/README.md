@@ -70,12 +70,12 @@ order: `next` and `⏮` walk the album, its end ends the list. The search does
 not give the album's name, so the first track's title (`Doolittle - Debaser`)
 shows which one it found.
 
-`⏮` (`b`, `/music back`) starts the song again; within its first five
+`back` (`b`, `/music back`) starts the song again; within its first five
 seconds it goes to the song before, through the last fifty that played, and
-`next` then walks forward again before rolling a new one. `★` (`k`,
+`next` then walks forward again before rolling a new one. `keep` (`k`,
 `/music fav`) keeps the song playing in the favorites, or takes it out; they
 are kept across sessions (`$.store`, at most 500) and play shuffled as the
-`★ favorites` station (`v`, `/music favorites`). The phone gets the same
+`favorites` station (`v`, `/music favorites`). The phone gets the same
 three: back, ★ (full when the song is kept) and the station.
 
 A station goes round its artists: those of its last songs are set aside, up
