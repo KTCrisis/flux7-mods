@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import type { Found, History, ModelUse, Player, Say, Track } from '../types'
-import { drainArgv, heldArgv, parseJukebox, pauseScript, REMOTE, statusArgv } from './remote'
+import { chatArgv, drainArgv, heldArgv, parseJukebox, pauseScript, REMOTE, statusArgv } from './remote'
 
 // Cheap sieve before any model call: a prompt that fails it reaches the
 // session untouched, with no added latency. A command to the jukebox is
@@ -23,12 +23,15 @@ const INTENT = [
   '{"action":"toggle"}',
   '{"action":"next"}',
   '{"action":"similar"}',
+  '{"action":"back"}',
+  '{"action":"fav"}',
   '{"action":"stop"}',
   '{"action":"volume","delta":10}',
   '{"action":"none"}',
   'play: the user wants music played now. query: YouTube search words, in English for a genre or mood, as given for a named artist or title.',
   'long: true for background or mood music (ambient, lofi, focus, a genre), false for one named track.',
   'album: the user names an album to hear whole (the word album, or an artist with one of its album titles). query: artist and album title, as given.',
+  'back: the song again, or the one before (précédent, recommence, encore). fav: keep the song playing in the favorites (garde, j aime, favori, celle-là).',
   'toggle: pause or resume the music. next: skip to another one. similar: more songs like the one playing. stop: stop, cut or turn off the music.',
   'volume: louder (delta 10, or 20 for much louder) or quieter (delta -10, or -20).',
   'Only a direct, short command to the music player counts. A question, a remark, a request to change software or code, or a description of how music should behave is none, even when it names volume or music.',
@@ -41,6 +44,8 @@ type Intent =
   | { action: 'toggle' }
   | { action: 'next' }
   | { action: 'similar' }
+  | { action: 'back' }
+  | { action: 'fav' }
   | { action: 'stop' }
   | { action: 'volume'; delta: number }
   | { action: 'none' }
@@ -230,7 +235,7 @@ export const parseIntent = (text: string): Intent => {
       return { action: 'play', query: v.query.trim(), long: v.long === true }
     }
     if (v.action === 'album' && typeof v.query === 'string' && v.query.trim() !== '') return { action: 'album', query: v.query.trim() }
-    if (v.action === 'toggle' || v.action === 'next' || v.action === 'similar' || v.action === 'stop') return { action: v.action }
+    if (v.action === 'toggle' || v.action === 'next' || v.action === 'similar' || v.action === 'stop' || v.action === 'back' || v.action === 'fav') return { action: v.action }
     if (v.action === 'volume' && typeof v.delta === 'number' && v.delta !== 0) return { action: 'volume', delta: v.delta }
   } catch {
     // Not JSON after all: the prompt goes on to the session.
@@ -530,6 +535,80 @@ async function playAt($: Engine, tracks: Track[], index: number, genre: string |
   $.ui.status(show(p))
   void $.ui.open({ id: PANE, title: 'jukebox7', rows: 6 })
   return track
+}
+
+// What a short message asks the jukebox, through Haiku: the line it answers
+// with when it did something, undefined when the message was not for it
+// (then the prompt goes on to the session, or a spoken phrase to the avatar).
+async function actOn($: Engine, text: string): Promise<string | undefined> {
+    const r = await $.model.complete({
+    model: 'haiku',
+    system: INTENT,
+    prompt: text.slice(0, 500),
+    maxTokens: 60,
+    effort: 'low',
+    timeoutMs: 8_000,
+  })
+  if (r.usage !== undefined) {
+    await $.state.set({ plugin: 'jukebox7', key: 'modelUse' }, {
+      model: 'haiku', input: r.usage.input_tokens, output: r.usage.output_tokens, cacheRead: r.usage.cache_read_input_tokens ?? 0, at: Date.now(),
+    } satisfies ModelUse)
+  }
+  const intent = r.isAnswered ? parseIntent(r.text) : ({ action: 'none' } as const)
+
+  if (intent.action === 'none') return undefined
+  // A song already on its way: no second search, and no false "nothing found".
+  const changes = intent.action === 'play' || intent.action === 'album' || intent.action === 'next' || intent.action === 'similar' || intent.action === 'back'
+  if (changes && isMoving) return 'jukebox7: a song is already on its way'
+
+  if (intent.action === 'album') {
+    const a = await once($, () => playAlbum($, intent.query).then(x => x?.track))
+    if (a === undefined) return `jukebox7: no album found on YouTube Music for "${intent.query}".`
+    $.ui.toast(`music now playing: ${a.title}`)
+    return `jukebox7: playing the album, from "${a.title}"`
+  }
+  if (intent.action !== 'play') {
+    // Nothing plays: a bare stop, pause or next was meant for the assistant.
+    if ((await read($, player)).pgid === null) return undefined
+    if (intent.action === 'stop') {
+      await stop($)
+      $.ui.toast('music stopped')
+      return 'jukebox7: stopped'
+    }
+    if (intent.action === 'volume') {
+      const v = await louder($, intent.delta)
+      $.ui.toast(`music volume ${v}%`)
+      return `jukebox7: volume ${v}%`
+    }
+    if (intent.action === 'back') {
+      const t = await once($, () => back($))
+      $.ui.toast(t === undefined ? 'music: nothing to go back to' : `music now playing: ${t.title}`)
+      return `jukebox7: ${t === undefined ? 'nothing to go back to' : `back, ${t.title}`}`
+    }
+    if (intent.action === 'fav') {
+      const isIn = await toggleFavorite($)
+      return `jukebox7: ${isIn === true ? 'kept in the favorites' : 'removed from the favorites'}`
+    }
+    if (intent.action === 'similar') {
+      const t = await once($, () => playSimilar($))
+      return `jukebox7: ${t === undefined ? 'no radio for this one' : `like it, ${t.title}`}`
+    }
+    if (intent.action === 'next') {
+      const t = await once($, () => skip($, 1))
+      $.ui.toast(t === undefined ? 'music: end of the list' : `music now playing: ${t.title}`)
+      return `jukebox7: ${t === undefined ? 'end of the list' : `next, ${t.title}`}`
+    }
+    const q = await toggle($)
+    if (q === undefined) return 'jukebox7: VLC did not answer'
+    const said = q.isPlaying ? `resumed: ${q.tracks[q.index]?.title ?? ''}` : 'paused'
+    $.ui.toast(`music ${said}`)
+    return `jukebox7: ${said}`
+  }
+
+  const track = await once($, () => play($, intent.query, intent.long))
+  if (track === undefined) return `jukebox7: nothing found on YouTube for "${intent.query}".`
+  $.ui.toast(`music now playing: ${track.title}`)
+  return `jukebox7: playing "${track.title}" (https://youtu.be/${track.id})`
 }
 
 // One change of song at a time: a search takes up to 40 s, and the poll, a
@@ -902,6 +981,13 @@ export const register: Register = on => {
           else if (press.do === 'next') await once($, () => skip($, 1))
           else if (press.do === 'back') await once($, () => back($))
           else if (press.do === 'fav') await toggleFavorite($)
+          else if (press.do === 'voice') {
+            // A phrase spoken to the phone: the jukebox's if it asks for
+            // music, else a word to the avatar, as the phone's chat.
+            const said = await actOn($, press.text)
+            if (said === undefined) await $.process.run(chatArgv(), { stdin: JSON.stringify({ cmd: 'chat', text: press.text }) })
+            else $.ui.toast(said.replace(/^jukebox7: /, 'music: '))
+          }
           else if (press.do === 'similar') await once($, () => playSimilar($))
           else if (press.do === 'find') {
             if (!isFinding) await find($, press.query)
@@ -967,65 +1053,8 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (isBackground || (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') || !isCandidate(e.text)) return next(e)
 
-    const r = await $.model.complete({
-      model: 'haiku',
-      system: INTENT,
-      prompt: e.text.slice(0, 500),
-      maxTokens: 60,
-      effort: 'low',
-      timeoutMs: 8_000,
-    })
-    if (r.usage !== undefined) {
-      await $.state.set({ plugin: 'jukebox7', key: 'modelUse' }, {
-        model: 'haiku', input: r.usage.input_tokens, output: r.usage.output_tokens, cacheRead: r.usage.cache_read_input_tokens ?? 0, at: Date.now(),
-      } satisfies ModelUse)
-    }
-    const intent = r.isAnswered ? parseIntent(r.text) : ({ action: 'none' } as const)
-
-    if (intent.action === 'none') return next(e)
-    // A song already on its way: no second search, and no false "nothing found".
-    const changes = intent.action === 'play' || intent.action === 'album' || intent.action === 'next' || intent.action === 'similar'
-    if (changes && isMoving) return { drop: 'jukebox7: a song is already on its way' }
-
-    if (intent.action === 'album') {
-      const a = await once($, () => playAlbum($, intent.query).then(x => x?.track))
-      if (a === undefined) return { drop: `jukebox7: no album found on YouTube Music for "${intent.query}".` }
-      $.ui.toast(`music now playing: ${a.title}`)
-      return { drop: `jukebox7: playing the album, from "${a.title}"` }
-    }
-    if (intent.action !== 'play') {
-      // Nothing plays: a bare stop, pause or next was meant for the assistant.
-      if ((await read($, player)).pgid === null) return next(e)
-      if (intent.action === 'stop') {
-        await stop($)
-        $.ui.toast('music stopped')
-        return { drop: 'jukebox7: stopped' }
-      }
-      if (intent.action === 'volume') {
-        const v = await louder($, intent.delta)
-        $.ui.toast(`music volume ${v}%`)
-        return { drop: `jukebox7: volume ${v}%` }
-      }
-      if (intent.action === 'similar') {
-        const t = await once($, () => playSimilar($))
-        return { drop: `jukebox7: ${t === undefined ? 'no radio for this one' : `like it, ${t.title}`}` }
-      }
-      if (intent.action === 'next') {
-        const t = await once($, () => skip($, 1))
-        $.ui.toast(t === undefined ? 'music: end of the list' : `music now playing: ${t.title}`)
-        return { drop: `jukebox7: ${t === undefined ? 'end of the list' : `next, ${t.title}`}` }
-      }
-      const q = await toggle($)
-      if (q === undefined) return { drop: 'jukebox7: VLC did not answer' }
-      const said = q.isPlaying ? `resumed: ${q.tracks[q.index]?.title ?? ''}` : 'paused'
-      $.ui.toast(`music ${said}`)
-      return { drop: `jukebox7: ${said}` }
-    }
-
-    const track = await once($, () => play($, intent.query, intent.long))
-    if (track === undefined) return { drop: `jukebox7: nothing found on YouTube for "${intent.query}".` }
-    $.ui.toast(`music now playing: ${track.title}`)
-    return { drop: `jukebox7: playing "${track.title}" (https://youtu.be/${track.id})` }
+    const said = await actOn($, e.text)
+    return said === undefined ? next(e) : { drop: said }
   })
 
   on('command.run', { command: 'music' }, async ($, e) => {

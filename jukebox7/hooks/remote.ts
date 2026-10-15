@@ -35,6 +35,15 @@ export const drainArgv = (): string[] => [
 
 // What the jukebox shows the phone (title, playing, genre, the genres), from
 // stdin, while a session holds the relay.
+// A phrase for the avatar, written as the relay writes the phone's chat: a
+// file in its command spool, which avatar7 drains.
+export const VOICE_MAX = 300
+export const chatArgv = (): string[] => [
+  'sh',
+  '-c',
+  `R=${RELAY}; [ -f "$R/owner" ] && mkdir -p "$R/cmd" && f="$R/cmd/$(date +%s%N)" && cat > "$f.part" && mv "$f.part" "$f.json"; true`,
+]
+
 export const statusArgv = (): string[] => [
   'sh',
   '-c',
@@ -45,6 +54,7 @@ export type JukeboxPress =
   | { do: 'pause' | 'next' | 'similar' | 'stop' | 'back' | 'fav' }
   | { do: 'genre'; genre: string }
   | { do: 'find'; query: string }
+  | { do: 'voice'; text: string }
   | { do: 'pick'; index: number }
 
 // A search asked from the phone, cut as the relay cuts it.
@@ -64,6 +74,8 @@ export const parseJukebox = (line: string, genres: string[]): JukeboxPress | und
   if (o.do === 'pause' || o.do === 'next' || o.do === 'similar' || o.do === 'stop' || o.do === 'back' || o.do === 'fav') return { do: o.do }
   if (o.do === 'genre' && typeof o.genre === 'string' && genres.includes(o.genre)) return { do: 'genre', genre: o.genre }
   if (o.do === 'find' && typeof o.query === 'string' && o.query.trim() !== '') return { do: 'find', query: o.query.trim().slice(0, QUERY_MAX) }
+  // A phrase the phone heard (its speech recognizer): Haiku reads it.
+  if (o.do === 'voice' && typeof o.text === 'string' && o.text.trim() !== '') return { do: 'voice', text: o.text.replace(/\s+/g, ' ').trim().slice(0, VOICE_MAX) }
   // Which result of the last search, from 0; checked against the list when it plays.
   if (o.do === 'pick' && typeof o.index === 'number' && Number.isInteger(o.index) && o.index >= 0) return { do: 'pick', index: o.index }
   return undefined

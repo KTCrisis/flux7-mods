@@ -296,7 +296,7 @@ test('a pause VLC does not answer leaves the state playing', async ($, on) => {
 
 // The same world with a clock the test moves: yt-dlp answers `searchMs`
 // later, and a process group lives while `alive(pgid)` says so.
-const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) => boolean; found?: () => string; held?: () => boolean; drain?: () => string; status?: (json: string) => void }) => {
+const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) => boolean; found?: () => string; held?: () => boolean; drain?: () => string; status?: (json: string) => void; chat?: (json: string) => void }) => {
   const clock = mock.clock(on)
   const argv: string[][] = []
   on('command.register', ($, e) => ({ value: { command: e.name } }) as never)
@@ -313,6 +313,7 @@ const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) =
     if (a[0] === 'sh' && a[3] === 'jukebox7-held') return ok(opts.held?.() ? 'up\n' : '')
     if (a[0] === 'sh' && (a[2] ?? '').includes('/jukebox/*.json')) return ok(opts.drain?.() ?? '')
     if (a[0] === 'sh' && (a[2] ?? '').includes('jukebox.part')) opts.status?.(String((e as { init?: { stdin?: string } }).init?.stdin ?? ''))
+    if (a[0] === 'sh' && (a[2] ?? '').includes('/cmd')) opts.chat?.(String((e as { init?: { stdin?: string } }).init?.stdin ?? ''))
     // Each start its own process group: 1001, 1002...
     if (a[0] === 'bash' && /^[\w-]{11}$/.test(a.at(-1) ?? '')) return ok(`${1000 + argv.filter(x => x[0] === 'bash' && /^[\w-]{11}$/.test(x.at(-1) ?? '')).length}\n`)
     return ok()
@@ -564,4 +565,25 @@ test('/music album with nothing found says so and plays nothing', async ($, on) 
   const { argv } = engine(on, '{"action":"none"}')
   expect((await $.command.run(music('album nothing at all'))).text).toBe('No album found on YouTube Music for "nothing at all".')
   expect(argv.some(a => a[0] === 'bash')).toBe(false)
+})
+
+test('a phrase the phone heard: back and ★ are understood, and the phone may send it', () => {
+  expect(parseIntent('{"action":"back"}')).toEqual({ action: 'back' })
+  expect(parseIntent('{"action":"fav"}')).toEqual({ action: 'fav' })
+  expect(parseJukebox('{"do":"voice","text":"  mets   du metal  "}', [])).toEqual({ do: 'voice', text: 'mets du metal' })
+  expect(parseJukebox('{"do":"voice","text":"   "}', [])).toBeUndefined()
+})
+
+test('a phrase the phone heard that asks no music goes to the avatar as chat', async ($, on) => {
+  let press = JSON.stringify({ do: 'voice', text: 'raconte moi ta journée' })
+  const chats: string[] = []
+  const { clock, starts } = clockedEngine(on, {
+    searchMs: 1_000, alive: () => true, held: () => true,
+    drain: () => { const p = press; press = ''; return p },
+    chat: json => chats.push(json),
+  })
+  await $.session.start({ cwd: '/home/u' } as never)
+  await clock.advance(2_000)
+  expect(chats).toEqual([JSON.stringify({ cmd: 'chat', text: 'raconte moi ta journée' })])
+  expect(starts()).toBe(0)
 })

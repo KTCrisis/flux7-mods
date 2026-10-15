@@ -43,7 +43,7 @@ MUSIC = SPOOL / "music.json"
 # What the jukebox shows the phone, and the phone's presses for it (one file each).
 JUKEBOX = SPOOL / "jukebox.json"
 JUKEBOX_DIR = SPOOL / "jukebox"
-JUKEBOX_DO = {"pause", "next", "similar", "stop", "genre", "find", "pick", "back", "fav"}
+JUKEBOX_DO = {"pause", "next", "similar", "stop", "genre", "find", "pick", "back", "fav", "voice"}
 TRACK_ID = re.compile(r"^[\w-]{11}$")
 # The system service runs without the user's PATH, where yt-dlp lives.
 YTDLP = shutil.which("yt-dlp") or str(Path.home() / "py_env" / "bin" / "yt-dlp")
@@ -168,6 +168,9 @@ class Handler(BaseHTTPRequestHandler):
             # A search from the phone, and which of its results to play.
             if cmd["do"] == "find":
                 press["query"] = str(cmd.get("query", ""))[:120]
+            # A phrase the phone heard: jukebox7 reads it, or passes it to the avatar.
+            if cmd["do"] == "voice":
+                press["text"] = str(cmd.get("text", ""))[:300]
             if cmd["do"] == "pick":
                 index = cmd.get("index")
                 if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < 50:
