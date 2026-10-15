@@ -144,7 +144,7 @@ const sameArtist = (a: string, b: string): boolean => {
 // artist the station does not have yet, not heard lately. Undefined when
 // there is no seed or the radio has nothing new.
 export const radioDiscovery = (rows: RadioRow[], own: string[], heard: Set<string>): RadioRow | undefined =>
-  anyOf(rows.filter(r => r.artist !== '' && r.artist !== 'NA' && !own.some(a => sameArtist(a, r.artist)) && !heard.has(r.track.id)))
+  anyOf(rows.filter(r => r.isArtist && r.artist !== '' && !own.some(a => sameArtist(a, r.artist)) && !heard.has(r.track.id)))
 // Artists picked for a genre beyond the listener's own: one pick in three
 // comes from there, and its title wears a ✦.
 const discoveries = (label: string): string[] => GENRES.find(g => g.label === label)?.discover ?? []
@@ -304,7 +304,10 @@ export const radioArgv = (id: string): string[] => [
   `https://music.youtube.com/watch?v=${id}&list=RDAMVM${id}`,
 ]
 const COVER = /\b(cover|tribute|relaxing|reimagined|orchestral version|piano version|8.?bit|lofi version|1 hour|hours?\b|extended|epic music|fantasy music|sleep|study)\b/i
-export type RadioRow = { track: Track; artist: string }
+// `isArtist`: the channel is YouTube Music's own for an artist ("<name> -
+// Topic"), so its name is the artist's. A label ("Napalm Records") or a
+// "<name>VEVO" channel names no artist a station could search.
+export type RadioRow = { track: Track; artist: string; isArtist: boolean }
 export const parseRadioRows = (stdout: string): RadioRow[] => {
   const rows = stdout
     .split('\n')
@@ -315,12 +318,13 @@ export const parseRadioRows = (stdout: string): RadioRow[] => {
       title: (title ?? '').trim(),
       seconds: d === undefined || !/^\d+(\.\d+)?$/.test(d.trim()) ? null : Math.round(Number(d)),
       artist: (channel ?? '').replace(/ - Topic$/, '').trim(),
+      isArtist: / - Topic$/.test((channel ?? '').trim()),
     }))
   const [self, ...rest] = rows
   const kept = rest.filter(r => !COVER.test(r.title) && !COVER.test(r.artist) && (r.seconds === null || isSong(r)))
   const others = kept.filter(r => r.artist !== self?.artist)
   const same = kept.filter(r => r.artist === self?.artist)
-  return [...others, ...same].map(r => ({ track: { id: r.id, title: r.artist === '' || r.artist === 'NA' ? r.title : `${r.artist} - ${r.title}`, seconds: r.seconds }, artist: r.artist }))
+  return [...others, ...same].map(r => ({ track: { id: r.id, title: r.artist === '' || r.artist === 'NA' ? r.title : `${r.artist} - ${r.title}`, seconds: r.seconds }, artist: r.artist, isArtist: r.isArtist }))
 }
 export const parseRadio = (stdout: string): Track[] => parseRadioRows(stdout).map(r => r.track)
 

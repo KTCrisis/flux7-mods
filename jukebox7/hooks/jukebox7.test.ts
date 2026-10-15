@@ -532,10 +532,13 @@ test('a discovery comes from the radio: an artist the station lacks, a song not 
     'seed0000001\tRoygbiv\t150\tBoards of Canada - Topic',
     'aaaaaaaaaa1\tAnother\t200\tboards of canada',
     'bbbbbbbbbb2\tNight\t240\tTycho - Topic',
-    'cccccccccc3\tDawn\t210\tHelios',
+    'cccccccccc3\tDawn\t210\tHelios - Topic',
     'dddddddddd4\tLoop\t230\tNA',
+    'eeeeeeeeee5\tHymn\t260\tNapalm Records',
+    'ffffffffff6\tGlow\t220\tChvrchesVEVO',
   ].join('\n'))
-  // Boards of Canada is the station's own, in any case; Helios was heard lately; NA names no one.
+  // Boards of Canada is the station's own, in any case; Helios was heard lately; NA, a label and a
+  // VEVO channel name no artist: only a YouTube Music artist channel (" - Topic") does.
   const own = ['Boards of Canada', 'Helios band']
   const heard = new Set(['cccccccccc3'])
   for (let i = 0; i < 20; i++) expect(radioDiscovery(rows, own, heard)?.artist).toBe('Tycho')
