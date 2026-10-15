@@ -72,6 +72,13 @@ are kept across sessions (`$.store`, at most 500) and play shuffled as the
 `★ favorites` station (`v`, `/music favorites`). The phone gets the same
 three: back, ★ (full when the song is kept) and the station.
 
+A station goes round its artists: those of its last songs are set aside, up
+to half its list (eight at most), and no song of the last fifty plays again;
+each pick looks through an artist's first fifteen songs on YouTube Music.
+Station lists name artists, not albums, except where the album is the style
+(`Ulver Perdition City` in ambient, `Aphex Twin Selected Ambient Works
+Volume II`) or a soundtrack names its work.
+
 Only a short prompt (eight words at most) with a music word or phrase goes to
 Haiku; a longer one is talk to the assistant and passes untouched, even when
 it mentions music.

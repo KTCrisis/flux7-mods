@@ -29,7 +29,7 @@ export type ModelUse = { model: string; input: number; output: number; cacheRead
 
 // What played, for back (⏮) and for next to walk forward again: each song
 // with its list and its station; `at` is the one playing.
-export type Played = { tracks: Track[]; index: number; genre: string | null }
+export type Played = { tracks: Track[]; index: number; genre: string | null; artist?: string }
 export type History = { items: Played[]; at: number }
 
 declare module 'claude-code' {

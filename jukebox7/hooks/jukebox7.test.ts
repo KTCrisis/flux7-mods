@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
 import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio, introEvent, listing } from './register'
 import { parseJukebox } from './remote'
-import { unmark, shuffled, FAVORITES } from './register'
+import { unmark, shuffled, FAVORITES, freshArtists, freshSongs } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -512,4 +512,15 @@ test('the phone may press back and ★, and sees the favorites among the station
   expect(parseJukebox('{"do":"back"}', [])).toEqual({ do: 'back' })
   expect(parseJukebox('{"do":"fav"}', [])).toEqual({ do: 'fav' })
   expect(parseJukebox(JSON.stringify({ do: 'genre', genre: FAVORITES }), [FAVORITES])).toEqual({ do: 'genre', genre: FAVORITES })
+})
+
+test('a station goes round its artists before one comes back, and plays no song heard lately', () => {
+  const pool = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
+  // Half the list at most is set aside: the last five of ten.
+  expect(freshArtists(pool, ['a', 'b', 'c', 'd', 'e', 'f'])).toEqual(['a', 'g', 'h', 'i', 'j'])
+  // A list of one keeps playing its artist rather than nothing.
+  expect(freshArtists(['solo'], ['solo'])).toEqual(['solo'])
+  const songs = [{ id: 'x1', title: 'x', seconds: 200 }, { id: 'x2', title: 'y', seconds: 200 }]
+  expect(freshSongs(songs, new Set(['x1']))).toEqual([songs[1]])
+  expect(freshSongs(songs, new Set(['x1', 'x2']))).toEqual(songs)
 })

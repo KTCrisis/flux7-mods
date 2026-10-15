@@ -48,6 +48,8 @@ const MIN_SECONDS = 120
 const LONG_SECONDS = 300
 const MAX_SECONDS = 1200
 const SEARCH_SIZE = 8
+// A station looks further into each artist's songs than a search does.
+const STATION_SEARCH_SIZE = 15
 const PANE = 'jukebox7'
 const POLL_MS = 5_000
 // The phone's presses are read this often.
@@ -59,20 +61,20 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
   {
     key: '1',
     label: 'ambient',
-    artists: ['Boards of Canada', 'Loscil', 'Helios', 'Múm', 'Kenji Kawai Ghost in the Shell', 'Rafael Anton Irisarri', 'Ulver Perdition City', 'Brian Eno', 'bxnwxghxrn', 'Deru 1979'], discover: ['Grouper', 'Tim Hecker', 'William Basinski', 'Stars of the Lid', 'Hiroshi Yoshimura', 'Chihei Hatakeyama', 'Biosphere', 'Huerco S.', 'Kali Malone', 'Sarah Davachi', '36 ambient', 'Rafael Anton Irisarri Agitas'],
+    artists: ['Boards of Canada', 'Loscil', 'Helios', 'Múm', 'Kenji Kawai Ghost in the Shell', 'Rafael Anton Irisarri', 'Ulver Perdition City', 'Brian Eno', 'bxnwxghxrn', 'Deru'], discover: ['Grouper', 'Tim Hecker', 'William Basinski', 'Stars of the Lid', 'Hiroshi Yoshimura', 'Chihei Hatakeyama', 'Biosphere', 'Huerco S.', 'Kali Malone', 'Sarah Davachi', '36 ambient'],
   },
-  { key: '2', label: 'alt 90s', artists: ['Radiohead', 'The Clash', 'Pulp', 'Smashing Pumpkins', 'Pixies Doolittle', 'Pavement', 'Supergrass', 'Tool', 'Nine Inch Nails', 'Rage Against the Machine', 'My Bloody Valentine', 'Queens of the Stone Age', 'Slint', 'Beck'], discover: ['Unwound', 'Polvo', 'Archers of Loaf', 'Sebadoh', 'Hum', 'Failure', 'Swirlies', 'Dinosaur Jr', 'MJ Lenderman', 'Wednesday band', 'Horse Jumper of Love'] },
+  { key: '2', label: 'alt 90s', artists: ['Radiohead', 'The Clash', 'Pulp', 'Smashing Pumpkins', 'Pixies', 'Pavement', 'Supergrass', 'Tool', 'Nine Inch Nails', 'Rage Against the Machine', 'My Bloody Valentine', 'Queens of the Stone Age', 'Slint', 'Beck', 'Sonic Youth'], discover: ['Unwound', 'Polvo', 'Archers of Loaf', 'Sebadoh', 'Hum', 'Failure', 'Swirlies', 'Dinosaur Jr', 'MJ Lenderman', 'Wednesday band', 'Horse Jumper of Love'] },
   {
     key: '3',
     label: 'metal',
-    artists: ['Dissection', 'Cradle of Filth Dusk and Her Embrace', 'Emperor', 'Dimmu Borgir Enthrone Darkness Triumphant', 'Agalloch', 'Ulver Bergtatt', 'Arcturus', 'Blut Aus Nord', 'Wolves in the Throne Room', 'Opeth', 'Gojira', 'Children of Bodom', 'In Flames', 'Therion', 'Diabolical Masquerade', 'Anorexia Nervosa', 'Summoning', 'CLANN', 'Drabikowski Batushka', 'Limbonic Art', 'Obtained Enslavement', 'Peste Noire'], discover: ['Deathspell Omega', 'Mgła', 'Panopticon', 'Alcest', 'Oranssi Pazuzu', 'Wiegedood', 'Cult of Luna', 'Russian Circles', 'Igorrr', 'Sumac', 'Misþyrming', 'Svartidauði', 'Imperial Triumphant', 'Erang dungeon synth', 'Old Tower'],
+    artists: ['Dissection', 'Cradle of Filth', 'Emperor', 'Dimmu Borgir', 'Agalloch', 'Ulver', 'Arcturus', 'Blut Aus Nord', 'Wolves in the Throne Room', 'Opeth', 'Gojira', 'Children of Bodom', 'In Flames', 'Therion', 'Diabolical Masquerade', 'Anorexia Nervosa', 'Summoning', 'CLANN', 'Drabikowski Batushka', 'Limbonic Art', 'Obtained Enslavement', 'Peste Noire', 'Ghost band'], discover: ['Deathspell Omega', 'Mgła', 'Panopticon', 'Alcest', 'Oranssi Pazuzu', 'Wiegedood', 'Cult of Luna', 'Russian Circles', 'Igorrr', 'Sumac', 'Misþyrming', 'Svartidauði', 'Imperial Triumphant', 'Erang dungeon synth', 'Old Tower'],
   },
-  { key: '4', label: 'synth & electro', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead', 'Master Boot Record', 'Crystal Castles', 'The Knife Silent Shout', 'Grimes Visions', 'Justice', 'Röyksopp', 'Atari Teenage Riot', 'Waveshaper', 'RWD NRTHNDR', 'Lorn Ask the Dust', 'SurgeryHead', 'Baldocaster', 'The Toxic Avenger', 'Scattle'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk', 'Boy Harsher', 'Drab Majesty', 'Kavinsky Reborn', 'Perturbator Lustful Sacraments'] },
-  { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp The Shimmering Hour', 'Arovane', 'Kettel', 'Jega', 'Bogdan Raczynski', 'Ceephax Acid Crew', 'The Future Sound of London', 'Tujiko Noriko', 'Plone', 'Ochre', 'The Tuss', 'Daed', 'EOD Questionmarks', 'Acrnym', 'Koolmorf Widesen', 'exandroid', 'James Shinra', 'Stazma', 'µ-Ziq', 'ID:null', 'Gareth Clarke', 'Hitori Tori'], discover: ['Richard Devine', 'Proem', 'Lusine', 'Funckarma', 'Sewerslvt', 'Machine Girl', 'Rival Consoles', 'Max Cooper', 'Jlin', 'Lanark Artefax', 'Loraine James', 'Bogdan Raczynski Rave Till You Cry'] },
+  { key: '4', label: 'synth & electro', artists: ['Fixions', 'Mega Drive', 'Danger 11h30', 'Perturbator', 'Carpenter Brut', 'Dan Terminus', 'Gost', 'Dance With the Dead', 'Master Boot Record', 'Crystal Castles', 'The Knife', 'Grimes', 'Justice', 'Röyksopp', 'Waveshaper', 'RWD NRTHNDR', 'Lorn', 'SurgeryHead', 'Baldocaster', 'The Toxic Avenger', 'Scattle'], discover: ['Volkor X', 'Daniel Deluxe', 'Magic Sword', 'Irving Force', 'Hollywood Burns', 'Lueur Verte', 'Gunship', 'Lazerhawk', 'Boy Harsher', 'Drab Majesty', 'Kavinsky'] },
+  { key: '5', label: 'idm', artists: ['Aphex Twin', 'Plaid', 'Boards of Canada', 'Squarepusher', 'Venetian Snares', 'Autechre', 'Clark', 'Wisp IDM', 'Arovane', 'Kettel', 'Jega', 'Bogdan Raczynski', 'Ceephax Acid Crew', 'The Future Sound of London', 'Tujiko Noriko', 'Plone', 'Ochre', 'The Tuss', 'Daed', 'EOD Questionmarks', 'Acrnym', 'Koolmorf Widesen', 'exandroid', 'James Shinra', 'Stazma', 'µ-Ziq', 'ID:null', 'Gareth Clarke', 'Hitori Tori'], discover: ['Richard Devine', 'Proem', 'Lusine', 'Funckarma', 'Sewerslvt', 'Machine Girl', 'Rival Consoles', 'Max Cooper', 'Jlin', 'Lanark Artefax', 'Loraine James'] },
   {
     key: '6',
     label: 'indie rock',
-    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT', 'Ratatat', 'Perfume Genius', 'The Notwist', 'Beach House', 'Weezer', 'Les Savy Fav', 'Wolf Parade', 'The Shins', 'Animal Collective', 'Arcade Fire', 'Joanna Newsom', 'Broadcast', 'Syd Matters', 'The Walkmen', 'The Strokes', 'Metric', 'The Flaming Lips', 'Clues Alden Penner', 'Jason Lytle', 'Ugly Casanova', 'CocoRosie', 'Soap&Skin', 'Xiu Xiu', 'Lykke Li', 'Candy Claws', 'Surfer Blood'], discover: ['Car Seat Headrest', 'Alex G', 'Duster Stratosphere', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra', 'Black Country New Road', 'Weyes Blood', 'Alvvays', 'Caroline Polachek', 'Zola Jesus', 'Chelsea Wolfe', 'Ethel Cain', 'Fever Ray'],
+    artists: ['Pixies', 'Modest Mouse', 'Blonde Redhead', 'Eels', 'Sparklehorse', 'Elliott Smith', 'Grandaddy', 'Built to Spill', 'The Unicorns', 'Sufjan Stevens', 'MGMT', 'Ratatat', 'Perfume Genius', 'The Notwist', 'Beach House', 'Weezer', 'Les Savy Fav', 'Wolf Parade', 'The Shins', 'Animal Collective', 'Arcade Fire', 'Joanna Newsom', 'Broadcast', 'Syd Matters', 'The Walkmen', 'The Strokes', 'Metric', 'The Flaming Lips', 'Clues Alden Penner', 'Jason Lytle', 'Ugly Casanova', 'CocoRosie', 'Soap&Skin', 'Xiu Xiu', 'Lykke Li', 'Candy Claws', 'Surfer Blood'], discover: ['Car Seat Headrest', 'Alex G', 'Duster band', 'Pinegrove', 'Big Thief', 'Low Sparhawk slowcore', 'Sun Kil Moon', 'Unknown Mortal Orchestra', 'Black Country New Road', 'Weyes Blood', 'Alvvays', 'Caroline Polachek', 'Zola Jesus', 'Chelsea Wolfe', 'Ethel Cain', 'Fever Ray'],
   },
   {
     key: '7',
@@ -82,13 +84,14 @@ export const GENRES: { key: string; label: string; artists: string[]; discover?:
       'Akira Yamaoka Silent Hill', 'Deus Ex soundtrack', 'Christopher Larkin Hollow Knight', 'C418 Minecraft', 'Cyberpunk 2077 soundtrack',
       'Darren Korb Bastion', 'Darren Korb Transistor', 'Lena Raine Celeste', 'Mark Morgan Fallout', 'Mark Morgan Planescape Torment',
       'FlybyNo Endless Space', 'FlybyNo Endless Legend', 'Arnaud Roy Humankind', 'Andrew Prahlow Outer Wilds', 'Furi soundtrack', 'Waveshaper Masters of Light',
+      'Hiroyuki Sawano Attack on Titan', 'Hiroyuki Sawano Xenoblade Chronicles X', 'Seiji Yokoyama Saint Seiya', 'League of Legends soundtrack', 'League of Legends login theme',
     ], discover: ['Disasterpeace Fez', 'Darren Korb Hades', 'Austin Wintory Journey', 'Ben Prunty FTL', 'Toby Fox Undertale', 'Mick Gordon Doom', 'Hideki Naganuma', 'Christopher Larkin Silksong', 'Darren Korb Hades II', 'Disasterpeace Hyper Light Drifter', 'Lena Raine Chicory', 'Toby Fox Deltarune', 'Mick Gordon Atomic Heart'],
   },
   {
     key: '8',
     label: 'film & modern classical',
     artists: ['Joe Hisaishi', 'Philip Glass', 'Max Richter', 'Kenji Kawai Ghost in the Shell', 'Ryuichi Sakamoto', 'Jóhann Jóhannsson', 'Hans Zimmer The Thin Red Line', 'Clint Mansell The Fountain', 'Trevor Jones The Last of the Mohicans', 'Elliot Goldenthal Heat', 'Thomas Newman American Beauty', 'John Williams', 'Antonín Dvořák New World Symphony'],
-    discover: ['Ólafur Arnalds', 'Nils Frahm', 'Arvo Pärt', 'Hildur Guðnadóttir', 'Steve Reich', 'Michael Nyman', 'Hania Rani', 'A Winged Victory for the Sullen', 'Hildur Guðnadóttir Chernobyl', 'Kali Malone Living Torch', 'Caterina Barbieri'],
+    discover: ['Ólafur Arnalds', 'Nils Frahm', 'Arvo Pärt', 'Hildur Guðnadóttir', 'Steve Reich', 'Michael Nyman', 'Hania Rani', 'A Winged Victory for the Sullen', 'Hildur Guðnadóttir Chernobyl', 'Kali Malone', 'Caterina Barbieri'],
   },
   {
     key: '9',
@@ -167,6 +170,20 @@ export const shuffled = <T,>(xs: T[]): T[] => {
   }
   return a
 }
+// A station goes round its artists before one comes back: the ones of its
+// last songs are set aside, up to half its list (at most RECENT_ARTISTS),
+// and no song of the last HISTORY_MAX plays again. With all set aside, the
+// whole list again rather than silence.
+const RECENT_ARTISTS = 8
+export const freshArtists = (pool: string[], recent: string[]): string[] => {
+  const kept = recent.slice(-Math.min(RECENT_ARTISTS, Math.floor(pool.length / 2)))
+  const fresh = pool.filter(a => !kept.includes(a))
+  return fresh.length > 0 ? fresh : pool
+}
+export const freshSongs = (songs: Track[], heard: Set<string>): Track[] => {
+  const fresh = songs.filter(t => !heard.has(t.id))
+  return fresh.length > 0 ? fresh : songs
+}
 const VOLUME_STEP = 10
 const VOLUME_MAX = 125
 export const clampVolume = (v: number): number => Math.min(VOLUME_MAX, Math.max(0, Math.round(v)))
@@ -226,7 +243,7 @@ export const musicSearch = (query: string): string[] => [
   '--flat-playlist',
   '--no-warnings',
   '--playlist-end',
-  String(SEARCH_SIZE),
+  String(STATION_SEARCH_SIZE),
   '--print',
   '%(id)s\t%(title)s\t%(duration)s',
   `https://music.youtube.com/search?q=${encodeURIComponent(query)}#songs`,
@@ -407,7 +424,7 @@ async function fillDuration($: Engine, id: string): Promise<void> {
 export const introEvent = (title: string): string =>
   `the jukebox starts "${title.replace(DISCOVERED, '')}"; introduce it in your own manner, the way a radio host would`
 
-async function playAt($: Engine, tracks: Track[], index: number, genre: string | null = null, isReplay = false): Promise<Track | undefined> {
+async function playAt($: Engine, tracks: Track[], index: number, genre: string | null = null, isReplay = false, artist?: string): Promise<Track | undefined> {
   // Halted even when nothing plays from here: an orphan VLC on the port
   // would take the controls of the new one. One jukebox per machine.
   await halt($, (await read($, player)).pgid)
@@ -433,7 +450,7 @@ async function playAt($: Engine, tracks: Track[], index: number, genre: string |
   // dropped); a song played again from the history leaves it as it is.
   if (!isReplay) {
     await update($, history, h => {
-      const items = [...h.items.slice(0, h.at + 1), { tracks, index, genre }].slice(-HISTORY_MAX)
+      const items = [...h.items.slice(0, h.at + 1), { tracks, index, genre, ...(artist !== undefined ? { artist } : {}) }].slice(-HISTORY_MAX)
       return { items, at: items.length - 1 }
     })
   }
@@ -606,10 +623,13 @@ async function playGenre($: Engine, label: string): Promise<Track | undefined> {
   const fresh = discoveries(label)
   const isNew = fresh.length > 0 && Math.random() < DISCOVER_ODDS
   const pool = await poolOf($, label)
-  const artist = anyOf(isNew ? fresh : pool.artists)
+  // What played lately: the artists of this station, every song's id.
+  const played = (await read($, history)).items
+  const recent = played.filter(x => x.genre === label).map(x => x.artist ?? '').filter(a => a !== '')
+  const heard = new Set(played.map(x => x.tracks[x.index]?.id ?? ''))
+  const artist = anyOf(freshArtists(isNew ? fresh : pool.artists, recent))
   if (artist === undefined) return undefined
   $.ui.status(`music: looking for ${pool.name}, ${artist}…`)
-  const was = (await read($, player)).tracks
   const music = await $.process.run(musicSearch(artist), { timeoutMs: 20_000 })
   let songs = music.exitCode === 0 ? parseTracks(music.stdout).filter(t => t.seconds === null || isSong(t)) : []
   // Its titles carry no artist; the query names it.
@@ -619,8 +639,7 @@ async function playGenre($: Engine, label: string): Promise<Track | undefined> {
     songs = found.exitCode === 0 ? parseTracks(found.stdout).filter(isSong) : []
     if (isNew) songs = songs.map(t => ({ ...t, title: `${DISCOVERED}${t.title}` }))
   }
-  const unheard = songs.filter(t => !was.some(w => w.id === t.id))
-  const track = anyOf(unheard.length > 0 ? unheard : songs)
+  const track = anyOf(freshSongs(songs, heard))
   if (track === undefined) {
     $.ui.status(undefined)
     $.ui.toast(`music: nothing found for ${artist}`)
@@ -628,7 +647,7 @@ async function playGenre($: Engine, label: string): Promise<Track | undefined> {
     return undefined
   }
   $.ui.toast(`music now playing: ${track.title}`)
-  return playAt($, [track], 0, label)
+  return playAt($, [track], 0, label, false, artist)
 }
 
 // More like the song playing: its YouTube Music radio, as a list next walks.
