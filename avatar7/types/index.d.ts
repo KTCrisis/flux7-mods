@@ -43,6 +43,10 @@ declare module 'claude-code' {
       station: Station
       // The last model call, for usage-bell's tally.
       modelUse: ModelUse
+      // ♪ next pressed in the pane (when): jukebox7 plays its next song.
+      musicNext: number
     }
+    // Read only: jukebox7 owns it; its process group says a song plays.
+    jukebox7: { player: { pgid: number | null } }
   }
 }

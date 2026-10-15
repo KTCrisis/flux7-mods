@@ -832,6 +832,13 @@ export const register: Register = on => {
     return done
   })
 
+  // ♪ next pressed in avatar7's pane: the next song, as from this pane.
+  on('state.set', { plugin: 'avatar7', key: 'musicNext' }, async ($, e, next) => {
+    const done = await next(e)
+    if ((await read($, player)).pgid !== null) void once($, () => skip($, 1))
+    return done
+  })
+
   on('session.start', async ($, e, next) => {
     const kind = await $.process.run(['sh', '-c', 'printf %s "$CLAUDE_CODE_SESSION_KIND"'])
     isBackground = kind.stdout === 'bg'

@@ -1328,6 +1328,9 @@ export const register: Register = (on, options) => {
     const { Box, Text, Raster, Button, Input, Image } = $.ui.resolve(e)
     const muted = await read($, isMuted)
     const vol = await read($, volume)
+    // jukebox7 playing, if loaded: the pane offers its next song.
+    const { value: music } = await $.state.get({ plugin: 'jukebox7', key: 'player' } as const)
+    const musicPlays = music !== undefined && music.pgid !== null
     const current = await read($, onDuty)
     size = fit(e.props.bodyColumns, e.props.scroll.bodyRows)
     // Rules in the persona's color between the face, the line and the
@@ -1467,6 +1470,9 @@ export const register: Register = (on, options) => {
         )}
         <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor="#000000">
           <Button key="talk" label="talk" hotkey="t" plain dimColor onPress={() => speakLater('talk')} />
+          {musicPlays && (
+            <Button key="music-next" label="♪ next" hotkey="n" plain onPress={() => void $.state.set({ plugin: 'avatar7', key: 'musicNext' }, Date.now())} />
+          )}
           <Button
             key="ask"
             label={isConsulting ? 'close ask' : 'ask'}

@@ -36,6 +36,6 @@ declare module 'claude-code' {
   interface PluginState {
     jukebox7: { player: Player; volume: number; say: Say; found: Found; searching: boolean; modelUse: ModelUse; history: History }
     // Read only: avatar7 owns it and says which face is on duty.
-    avatar7: { avatar: string; color: string; isVoicing: boolean; station: { name: string; artists: string[] } }
+    avatar7: { avatar: string; color: string; isVoicing: boolean; station: { name: string; artists: string[] }; musicNext: number }
   }
 }
