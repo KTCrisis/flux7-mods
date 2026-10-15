@@ -670,9 +670,15 @@ export const register: Register = on => {
           const p = await read($, player)
           if (p.pgid !== null && p.isPlaying) await once($, () => playAt($, p.tracks, p.index, p.genre))
         }
+        // The avatar on duty's station, offered to the phone under the same
+        // name as on the terminal's button.
+        const { value: avatar } = await $.state.get(onDuty)
+        const { value: onAir } = await $.state.get(onStation)
+        const stationPick = avatar !== undefined && onAir !== undefined && onAir.artists.length > 0 ? `${onAir.name}'s pick` : undefined
+        const labels = [...GENRES.map(g => g.label), ...(stationPick !== undefined ? [stationPick] : [])]
         const out = (await $.process.run(drainArgv())).stdout
         for (const line of out.split('\n')) {
-          const press = parseJukebox(line, GENRES.map(g => g.label))
+          const press = parseJukebox(line, labels)
           if (press === undefined) continue
           if (press.do === 'pause') await toggle($)
           else if (press.do === 'stop') await stop($)
@@ -681,15 +687,19 @@ export const register: Register = on => {
           else if (press.do === 'find') {
             if (!isFinding) await find($, press.query)
           } else if (press.do === 'pick') await once($, () => pick($, press.index))
-          else await once($, () => playGenre($, press.genre))
+          else {
+            const genre = press.genre === stationPick && avatar !== undefined ? avatar : press.genre
+            await once($, () => playGenre($, genre))
+          }
           $.ui.invalidate('ui.render')
         }
         const p = await read($, player)
         const now = p.pgid === null ? undefined : p.tracks[p.index]
         const f = await read($, found)
         const status = JSON.stringify({
-          title: now?.title ?? '', isPlaying: now !== undefined && p.isPlaying, genre: p.genre ?? '',
-          genres: GENRES.map(g => g.label), isMoving,
+          title: now?.title ?? '', isPlaying: now !== undefined && p.isPlaying,
+          genre: stationPick !== undefined && p.genre === avatar ? stationPick : p.genre ?? '',
+          genres: labels, isMoving,
           // The last search, for the phone to list and pick from.
           query: f.query, found: f.tracks.map(t => ({ title: t.title, seconds: t.seconds })), isFinding,
         })

@@ -283,7 +283,7 @@ test('a pause VLC does not answer leaves the state playing', async ($, on) => {
 
 // The same world with a clock the test moves: yt-dlp answers `searchMs`
 // later, and a process group lives while `alive(pgid)` says so.
-const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) => boolean; found?: () => string; held?: () => boolean }) => {
+const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) => boolean; found?: () => string; held?: () => boolean; drain?: () => string; status?: (json: string) => void }) => {
   const clock = mock.clock(on)
   const argv: string[][] = []
   on('command.register', ($, e) => ({ value: { command: e.name } }) as never)
@@ -298,6 +298,8 @@ const clockedEngine = (on: On, opts: { searchMs: number; alive: (pgid: number) =
     }
     if (a[0] === 'kill' && a[1] === '-0') return ok('', opts.alive(Number((a[3] ?? '').slice(1))) ? 0 : 1)
     if (a[0] === 'sh' && a[3] === 'jukebox7-held') return ok(opts.held?.() ? 'up\n' : '')
+    if (a[0] === 'sh' && (a[2] ?? '').includes('/jukebox/*.json')) return ok(opts.drain?.() ?? '')
+    if (a[0] === 'sh' && (a[2] ?? '').includes('jukebox.part')) opts.status?.(String((e as { init?: { stdin?: string } }).init?.stdin ?? ''))
     // Each start its own process group: 1001, 1002...
     if (a[0] === 'bash' && /^[\w-]{11}$/.test(a.at(-1) ?? '')) return ok(`${1000 + argv.filter(x => x[0] === 'bash' && /^[\w-]{11}$/.test(x.at(-1) ?? '')).length}\n`)
     return ok()
@@ -435,3 +437,27 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(await ui.find({ key: 'query' })).toBeUndefined()
   })
 }
+
+test("the phone gets the avatar's station under the terminal's name, and pressing it plays that station", async ($, on) => {
+  let press = ''
+  const statuses: { genre: string; genres: string[] }[] = []
+  const { clock, starts } = clockedEngine(on, {
+    searchMs: 1_000, alive: () => true, held: () => true,
+    drain: () => { const p = press; press = ''; return p },
+    status: json => statuses.push(JSON.parse(json)),
+  })
+  on('state.get', ($, e, next) => {
+    const r = e as { plugin: string; key: string }
+    if (r.plugin === 'avatar7' && r.key === 'avatar') return { value: { value: 'hal' } } as never
+    if (r.plugin === 'avatar7' && r.key === 'station') return { value: { value: { name: 'HAL 9000', artists: ['Wendy Carlos'] } } } as never
+    return next(e)
+  })
+  await $.session.start({ cwd: '/home/u' } as never)
+  await clock.advance(1_500)
+  expect(statuses.at(-1)?.genres).toContain("HAL 9000's pick")
+  expect(statuses.at(-1)?.genres).toContain('ambient')
+  press = JSON.stringify({ do: 'genre', genre: "HAL 9000's pick" })
+  await clock.advance(4_000)
+  expect(starts()).toBe(1)
+  expect(statuses.at(-1)?.genre).toBe("HAL 9000's pick")
+})
