@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
 import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio, introEvent, listing } from './register'
 import { parseJukebox } from './remote'
-import { unmark, shuffled, FAVORITES, freshArtists, freshSongs, radioDiscovery, parseRadioRows } from './register'
+import { unmark, shuffled, FAVORITES, freshArtists, freshSongs, radioDiscovery, parseRadioRows, parseAlbum, albumSearchArgv } from './register'
 
 const RESULTS = [
   'DRFHklnN-SM\tTranquility - Deep Healing Ambient\t420',
@@ -543,4 +543,25 @@ test('a discovery comes from the radio: an artist the station lacks, a song not 
   const heard = new Set(['cccccccccc3'])
   for (let i = 0; i < 20; i++) expect(radioDiscovery(rows, own, heard)?.artist).toBe('Tycho')
   expect(radioDiscovery(rows, [...own, 'Tycho'], heard)).toBeUndefined()
+})
+
+test('an album: its tracks in order, named after the album; the intent and the search that find it', () => {
+  const a = parseAlbum([
+    'HvldypUz9w8\tDebaser\t172\tAlbum - Doolittle',
+    '2Yn3Ls5jZ4g\tTame\t117\tAlbum - Doolittle',
+    'not a track line',
+  ].join('\n'))
+  expect(a.name).toBe('Doolittle')
+  expect(a.tracks).toEqual([
+    { id: 'HvldypUz9w8', title: 'Doolittle - Debaser', seconds: 172 },
+    { id: '2Yn3Ls5jZ4g', title: 'Doolittle - Tame', seconds: 117 },
+  ])
+  expect(parseIntent('{"action":"album","query":"Pixies Doolittle"}')).toEqual({ action: 'album', query: 'Pixies Doolittle' })
+  expect(albumSearchArgv('pixies doolittle').at(-1)).toBe('https://music.youtube.com/search?q=pixies%20doolittle#albums')
+})
+
+test('/music album with nothing found says so and plays nothing', async ($, on) => {
+  const { argv } = engine(on, '{"action":"none"}')
+  expect((await $.command.run(music('album nothing at all'))).text).toBe('No album found on YouTube Music for "nothing at all".')
+  expect(argv.some(a => a[0] === 'bash')).toBe(false)
 })

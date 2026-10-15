@@ -19,6 +19,7 @@ const INTENT = [
   'You read one message typed to a coding assistant and decide whether it asks to control music playback on the computer.',
   'Answer with one line of JSON and nothing else, one of:',
   '{"action":"play","query":"...","long":true}',
+  '{"action":"album","query":"..."}',
   '{"action":"toggle"}',
   '{"action":"next"}',
   '{"action":"similar"}',
@@ -27,6 +28,7 @@ const INTENT = [
   '{"action":"none"}',
   'play: the user wants music played now. query: YouTube search words, in English for a genre or mood, as given for a named artist or title.',
   'long: true for background or mood music (ambient, lofi, focus, a genre), false for one named track.',
+  'album: the user names an album to hear whole (the word album, or an artist with one of its album titles). query: artist and album title, as given.',
   'toggle: pause or resume the music. next: skip to another one. similar: more songs like the one playing. stop: stop, cut or turn off the music.',
   'volume: louder (delta 10, or 20 for much louder) or quieter (delta -10, or -20).',
   'Only a direct, short command to the music player counts. A question, a remark, a request to change software or code, or a description of how music should behave is none, even when it names volume or music.',
@@ -35,6 +37,7 @@ const INTENT = [
 
 type Intent =
   | { action: 'play'; query: string; long: boolean }
+  | { action: 'album'; query: string }
   | { action: 'toggle' }
   | { action: 'next' }
   | { action: 'similar' }
@@ -226,6 +229,7 @@ export const parseIntent = (text: string): Intent => {
     if (v.action === 'play' && typeof v.query === 'string' && v.query.trim() !== '') {
       return { action: 'play', query: v.query.trim(), long: v.long === true }
     }
+    if (v.action === 'album' && typeof v.query === 'string' && v.query.trim() !== '') return { action: 'album', query: v.query.trim() }
     if (v.action === 'toggle' || v.action === 'next' || v.action === 'similar' || v.action === 'stop') return { action: v.action }
     if (v.action === 'volume' && typeof v.delta === 'number' && v.delta !== 0) return { action: 'volume', delta: v.delta }
   } catch {
@@ -253,6 +257,34 @@ export const pickTrack = (stdout: string, long: boolean): Track | undefined => {
   if (!long) return tracks[0]
   const songs = tracks.filter(isSong)
   return songs.find(t => (t.seconds ?? 0) >= LONG_SECONDS) ?? songs[0] ?? tracks[0]
+}
+
+// An album: the first one YouTube Music's albums tab finds, then its tracks in
+// order. The search gives the album's page, not its name; the listing does
+// ("Album - Doolittle").
+export const albumSearchArgv = (query: string): string[] => [
+  'yt-dlp',
+  '--flat-playlist',
+  '--no-warnings',
+  '--playlist-end',
+  '1',
+  '--print',
+  '%(url)s',
+  `https://music.youtube.com/search?q=${encodeURIComponent(query)}#albums`,
+]
+export const albumTracksArgv = (url: string): string[] => [
+  'yt-dlp',
+  '--flat-playlist',
+  '--no-warnings',
+  '--print',
+  '%(id)s\t%(title)s\t%(duration)s\t%(playlist_title)s',
+  url,
+]
+export const parseAlbum = (stdout: string): { name: string; tracks: Track[] } => {
+  const lines = stdout.split('\n').filter(l => /^[\w-]{11}\t/.test(l))
+  const name = (lines[0]?.split('\t')[3] ?? '').replace(/^Album - /, '').replace(/^NA$/, '').trim()
+  const tracks = parseTracks(lines.map(l => l.split('\t').slice(0, 3).join('\t')).join('\n'))
+  return { name, tracks: tracks.map(t => ({ ...t, title: name === '' ? t.title : `${name} - ${t.title}` })) }
 }
 
 const search = (query: string): string[] => [
@@ -634,6 +666,26 @@ async function play($: Engine, query: string, long: boolean): Promise<Track | un
   return playAt($, [first, ...rest], 0)
 }
 
+// The album asked for, from its first track, in order: next walks it, back
+// goes back in it, and its end ends the list.
+async function playAlbum($: Engine, query: string): Promise<{ name: string; track: Track } | undefined> {
+  $.ui.status(`music: looking for the album ${query}…`)
+  const found = await $.process.run(albumSearchArgv(query), { timeoutMs: 20_000 })
+  const url = found.exitCode === 0 ? found.stdout.split('\n').map(l => l.trim()).find(l => l.startsWith('https://')) : undefined
+  if (url === undefined) {
+    $.ui.status(undefined)
+    return undefined
+  }
+  const listed = await $.process.run(albumTracksArgv(url), { timeoutMs: 30_000 })
+  const album = listed.exitCode === 0 ? parseAlbum(listed.stdout) : { name: '', tracks: [] }
+  if (album.tracks.length === 0) {
+    $.ui.status(undefined)
+    return undefined
+  }
+  const track = await playAt($, album.tracks, 0)
+  return track === undefined ? undefined : { name: album.name, track }
+}
+
 // Lists what YouTube finds for a search, and keeps it for a pick; undefined
 // when yt-dlp failed. One search at a time.
 async function find($: Engine, query: string): Promise<Track[] | undefined> {
@@ -787,7 +839,7 @@ export const register: Register = on => {
 
     await $.command.register({
       name: 'music',
-      description: 'Play music from YouTube: /music <search>, /music find <search> then /music pick <n>, /music pause, /music back, /music next, /music fav, /music favorites, /music similar, /music stop, /music vol [+|-]<n>, /music alone for what plays',
+      description: 'Play music from YouTube: /music <search>, /music find <search> then /music pick <n>, /music album <artist album>, /music pause, /music back, /music next, /music fav, /music favorites, /music similar, /music stop, /music vol [+|-]<n>, /music alone for what plays',
     })
 
     // A pipeline that ended by itself (the track is over) moves on to the
@@ -925,9 +977,15 @@ export const register: Register = on => {
 
     if (intent.action === 'none') return next(e)
     // A song already on its way: no second search, and no false "nothing found".
-    const changes = intent.action === 'play' || intent.action === 'next' || intent.action === 'similar'
+    const changes = intent.action === 'play' || intent.action === 'album' || intent.action === 'next' || intent.action === 'similar'
     if (changes && isMoving) return { drop: 'jukebox7: a song is already on its way' }
 
+    if (intent.action === 'album') {
+      const a = await once($, () => playAlbum($, intent.query).then(x => x?.track))
+      if (a === undefined) return { drop: `jukebox7: no album found on YouTube Music for "${intent.query}".` }
+      $.ui.toast(`music now playing: ${a.title}`)
+      return { drop: `jukebox7: playing the album, from "${a.title}"` }
+    }
     if (intent.action !== 'play') {
       // Nothing plays: a bare stop, pause or next was meant for the assistant.
       if ((await read($, player)).pgid === null) return next(e)
@@ -983,6 +1041,12 @@ export const register: Register = on => {
       return { text: `Volume ${v}%.` }
     }
 
+    const asAlbum = /^album\s+(.+)$/.exec(args)
+    if (asAlbum !== null) {
+      const query = (asAlbum[1] ?? '').trim()
+      const t = await once($, () => playAlbum($, query).then(x => x?.track))
+      return { text: t === undefined ? `No album found on YouTube Music for "${query}".` : `Album: ${t.title}` }
+    }
     if (args === 'back' || args === 'prev') {
       const t = await once($, () => back($))
       return { text: t === undefined ? 'Nothing played yet.' : `Back to: ${t.title}` }

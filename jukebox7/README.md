@@ -64,6 +64,12 @@ to 70 % of its level, then returns.
 `/music <search>` plays one named track; `/music pause|next|stop`;
 `/music vol 60`, `/music vol +20`. In words, `monte le son` works too.
 
+`/music album pixies doolittle` (or in words, "joue l'album Doolittle des
+Pixies") plays the first album YouTube Music finds for it, track by track in
+order: `next` and `⏮` walk the album, its end ends the list. The search does
+not give the album's name, so the first track's title (`Doolittle - Debaser`)
+shows which one it found.
+
 `⏮` (`b`, `/music back`) starts the song again; within its first five
 seconds it goes to the song before, through the last fifty that played, and
 `next` then walks forward again before rolling a new one. `★` (`k`,
