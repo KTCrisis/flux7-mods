@@ -7,15 +7,26 @@ const POLL_MS = 3_000
 
 type Output = { name: string; kind: string; mtime: number }
 type Queue = { queue_running: unknown[]; queue_pending: unknown[] }
+// An EffectCraft clip render, as flux7-studio reads it from the CLI's --progress.
+type Progress = { clip: string; file: string; done: number; total: number | null; left: number | null }
+type Clip = { name: string; renders: { file: string }[] }
 
 const clock = (seconds: number): string => {
   const d = new Date(seconds * 1000)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// For avatar7, when loaded: a render ready is calm news.
-async function announce($: Engine): Promise<void> {
-  await $.state.set({ plugin: 'atelier-bell', key: 'announce' }, { mood: 'watch', event: 'an atelier finished its work' })
+const remaining = (s: number | null): string =>
+  s === null ? '' : s < 90 ? `, ${Math.round(s)} s left` : `, ${Math.round(s / 60)} min left`
+
+const percent = (p: Progress): string => (p.total ? `${Math.floor((100 * p.done) / p.total)}%` : 'starting')
+
+// For avatar7, when loaded: a render ready is calm news, a failed one is not.
+async function announce($: Engine, failed = false): Promise<void> {
+  await $.state.set(
+    { plugin: 'atelier-bell', key: 'announce' },
+    failed ? { mood: 'error', event: 'a clip render failed' } : { mood: 'watch', event: 'an atelier finished its work' },
+  )
 }
 
 export const register: Register = on => {
@@ -24,6 +35,8 @@ export const register: Register = on => {
   let seen: Set<string> | null = null
   let status = ''
   let last = ''
+  // Clip renders in progress at the last poll, by file name.
+  let rendering = new Map<string, Progress>()
 
   on('session.start', async ($, e, next) => {
     await announce($)
@@ -33,7 +46,11 @@ export const register: Register = on => {
 
     $.clock.every(POLL_MS, async () => {
       try {
-        const [out, queue] = await Promise.all([$.http.fetch(`${STUDIO}/outputs`), $.http.fetch(`${COMFY}/queue`)])
+        const [out, queue, prog] = await Promise.all([
+          $.http.fetch(`${STUDIO}/outputs`),
+          $.http.fetch(`${COMFY}/queue`),
+          $.http.fetch(`${STUDIO}/clips/progress`),
+        ])
         if (!out.ok) return
         const outputs = JSON.parse(out.text) as Output[]
 
@@ -54,15 +71,30 @@ export const register: Register = on => {
           }
         }
 
+        // A clip render gone from the list has ended: its mp4 is there if it
+        // went through, the studio deletes a truncated one.
+        const active = prog.ok ? (JSON.parse(prog.text) as Progress[]) : [...rendering.values()]
+        const ended = [...rendering.values()].filter(p => !active.some(a => a.file === p.file))
+        rendering = new Map(active.map(p => [p.file, p]))
+        if (ended.length > 0) {
+          const clips = await $.http.fetch(`${STUDIO}/clips`)
+          const listed = clips.ok ? (JSON.parse(clips.text) as Clip[]) : []
+          for (const p of ended) {
+            const ok = listed.some(c => c.name === p.clip && c.renders.some(r => r.file === p.file))
+            await announce($, !ok)
+            if (ok) last = `clip ${p.clip} at ${clock(Date.now() / 1000)}`
+            $.ui.toast(ok ? `studio: clip ${p.clip} is rendered, ${p.file}` : `studio: clip ${p.clip} render failed`)
+          }
+        }
+
         const q = queue.ok ? (JSON.parse(queue.text) as Queue) : { queue_running: [], queue_pending: [] }
         const running = q.queue_running.length
         const waiting = q.queue_pending.length
-        const now =
-          running > 0
-            ? `studio: rendering${waiting > 0 ? `, ${waiting} queued` : ''}`
-            : last !== ''
-              ? `studio: last ${last}`
-              : ''
+        const busy = [
+          ...active.map(p => `clip ${p.clip} ${percent(p)}${remaining(p.left)}`),
+          ...(running > 0 ? [`rendering${waiting > 0 ? `, ${waiting} queued` : ''}`] : []),
+        ]
+        const now = busy.length > 0 ? `studio: ${busy.join(' · ')}` : last !== '' ? `studio: last ${last}` : ''
         if (now !== status) {
           status = now
           $.ui.invalidate('ui.render')
