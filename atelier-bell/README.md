@@ -5,14 +5,18 @@ work. Studio only for now.
 
 ## What it does
 
-Every 3 s it reads `GET localhost:8700/outputs` (flux7-studio) and
-`GET localhost:8188/queue` (ComfyUI):
+Every 3 s it reads `GET localhost:8700/outputs` and `/clips/progress`
+(flux7-studio) and `GET localhost:8188/queue` (ComfyUI):
 
 - a new output (image, video) since the last poll: a toast, `studio: image
   kf_00042_.png is ready`, or one toast for a batch;
 - dim at the end of the hint line under the prompt (not a pinned status line,
   which the engine draws with a warning sign): `studio: rendering, 2 queued`
   while ComfyUI works, then `studio: last kf_00042_.png at 12:31`;
+- an EffectCraft clip render (EffectCraft 0.13.0 or later, for `--progress`)
+  rides the same line, `studio: clip descent 50%, 3 min left`, whether it was
+  started by the API or the command line; when it ends, a toast says it is
+  rendered, or that it failed (avatar7 turns amber);
 - `/bell` prints that status; `/bell test` rings a sample toast, to hear
   avatar7 announce it without waiting for a render.
 
