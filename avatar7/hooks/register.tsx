@@ -73,7 +73,7 @@ import {
   QUESTION_FRAMES,
   reads,
   RECENT_LINES,
-  STYLE,
+  styleFor,
   type Ask,
   type Duo,
   type Persona,
@@ -469,7 +469,7 @@ async function summarize($: Engine, at: MemoryAt, agent: string, voice: Persona,
   if (episodes.length === 0) return
   const r = await $.model.complete({
     model: 'haiku',
-    system: personalize(voice.persona, userName, voice.nobody) + STYLE,
+    system: personalize(voice.persona, userName, voice.nobody) + styleFor(voice),
     prompt: journalPrompt(episodes, userName !== '' ? userName : 'the user'),
     maxTokens: 200,
     timeoutMs: 30_000,
@@ -522,7 +522,7 @@ async function speak($: Engine, stage: Stage, ask: Ask, c: Speaking): Promise<vo
       const past = c.memory !== null && recalls(ask) ? await remembered($, c.memory, c.voiceId, queryFor(ask, c.asked, other)) : ''
       const r = await $.model.complete({
         model: 'haiku',
-        system: personalize(c.voice.persona, c.userName, c.voice.nobody) + STYLE,
+        system: personalize(c.voice.persona, c.userName, c.voice.nobody) + styleFor(c.voice),
         prompt: prompt + past,
         maxTokens: isOpinion(ask) ? 160 : 80,
         timeoutMs: 15_000,

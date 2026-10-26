@@ -4,7 +4,7 @@ import { drawsPictures, withPrivate } from './register'
 import { facePixel, faceSample, faceCells, pickFace, TINT, type View } from './draw'
 import { commandEvent, heard, heardSay, landed, nextStreak, streakNote } from './hearing'
 import { speakScript, synthArgv } from './voice'
-import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona, STALE_FRAMES } from './speech'
+import { enqueue, fallbackPool, fresh, isOpinion, lineFrom, pickEvent, pickGuest, promptFor, rankOf, reads, recentNote, type Persona, STALE_FRAMES, STYLE, styleFor } from './speech'
 import { ambientCells, ambientPixel, QUAD } from './ambient'
 import { hdFrame, hdKey, hdSize, isSettled, PX, SETTLE_FRAMES, type Hd, type HdView, type Settle } from './hd'
 import { follows, givesOnEnd, newRelay, parseRemote, wantedMove } from './relay'
@@ -795,4 +795,11 @@ test('a dialogue\'s turn waiting behind the user\'s chats never goes stale', () 
   expect(fresh(q, STALE_FRAMES * 3).length).toBe(2)
   // A mod's event still goes stale.
   expect(fresh(enqueue([], { mood: 'watch', event: 'x' } as never, 0), STALE_FRAMES + 1).length).toBe(0)
+})
+
+test('a persona speaks English unless it says "fr"', () => {
+  expect(styleFor({})).toBe(STYLE)
+  expect(styleFor({ lang: 'en' })).toBe(STYLE)
+  expect(styleFor({ lang: 'fr' })).toContain('you always answer in French')
+  expect(styleFor({ lang: 'fr' })).toContain('no em dash')
 })

@@ -9,6 +9,13 @@ import type { Mood } from './mood'
 // Rules every persona keeps, whatever its character: added to each prompt.
 export const STYLE = ' The user may write in French; you always answer in English. Never flattering. No quotes, no emoji, no em dash.'
 
+// The same rules for a persona that speaks French ("lang": "fr"); its Piper
+// voice must be a French one too, or the lines come out with an accent.
+export const styleFor = (p: Pick<Persona, 'lang'>): string =>
+  p.lang === 'fr'
+    ? ' The user may write in English; you always answer in French. Never flattering. No quotes, no emoji, no em dash.'
+    : STYLE
+
 // When poked, the avatar reads the last messages of the conversation, each cut
 // to this many characters.
 export const TALK_MESSAGES = 6
@@ -128,6 +135,8 @@ export type Persona = {
   voice: string
   rate: number
   pitch?: number
+  // The language it speaks: English unless "fr" (see styleFor).
+  lang?: 'en' | 'fr'
   // Piper voice name and pace (length-scale, under 1 is faster).
   // fx: an ffmpeg audio filter run on the WAV, from aresample=22050 so pitch
   // shifts by asetrate hold whatever the voice's own rate.
