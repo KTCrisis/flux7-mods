@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
-import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio, introEvent, listing } from './register'
+import { pauseArgv, parseIntent, pickTrack, startArgv, killVlcArgv, stopVlcArgv, detachedKillVlcArgv, progress, isSong, GENRES, volumeArgv, duckArgv, DUCK, buttonRows, isCandidate, durationArgv, clampVolume, rain, musicSearch, parseTracks, parseRadio, introEvent, listing } from './register'
 import { parseJukebox } from './remote'
 import { unmark, shuffled, FAVORITES, freshArtists, freshSongs, radioDiscovery, parseRadioRows, parseAlbum, albumSearchArgv } from './register'
 
@@ -63,21 +63,22 @@ test('asking for ambient plays the first song of five to twenty minutes through 
   const r = await $.prompt.submit(typed('joue moi un peu de musique ambient'))
   expect(r.drop).toContain('Tranquility')
   expect(argv[0]?.at(-1)).toBe('ytsearch8:ambient music')
-  expect(argv[1]).toEqual(killVlcArgv)
+  expect(argv[1]).toEqual(stopVlcArgv)
   expect(argv[2]).toEqual(startArgv('DRFHklnN-SM'))
   expect(argv[2]?.[2]).toContain('vlc.exe')
   expect(toasts).toEqual(['music now playing: Tranquility - Deep Healing Ambient'])
 })
 
-test('a second request stops the first pipeline and its VLC before starting', async ($, on) => {
+test('a second request ends the first song and stops VLC, which stays up, before starting', async ($, on) => {
   const { argv } = engine(on, '{"action":"play","query":"ambient music","long":true}')
   await $.prompt.submit(typed('joue moi un peu de musique ambient'))
   await $.prompt.submit(typed('mets de la musique ambient'))
   expect(argv).toContainEqual(['kill', '-TERM', '--', '-4242'])
-  expect(argv).toContainEqual(killVlcArgv)
+  expect(argv).toContainEqual(stopVlcArgv)
+  expect(argv).not.toContainEqual(killVlcArgv)
 })
 
-test('pause asks VLC to pause, stop ends the group and its VLC', async ($, on) => {
+test('pause asks VLC to pause, stop ends the group and stops VLC', async ($, on) => {
   const { argv, say } = engine(on, '{"action":"play","query":"ambient music","long":true}')
   await $.prompt.submit(typed('joue moi un peu de musique ambient'))
   say('{"action":"toggle"}')
@@ -86,14 +87,24 @@ test('pause asks VLC to pause, stop ends the group and its VLC', async ($, on) =
   expect(argv).toContainEqual(pauseArgv(true))
   say('{"action":"stop"}')
   await $.prompt.submit(typed('coupe la musique'))
-  expect(argv.slice(-3)).toEqual([['kill', '-CONT', '--', '-4242'], ['kill', '-TERM', '--', '-4242'], killVlcArgv])
+  expect(argv.slice(-3)).toEqual([['kill', '-CONT', '--', '-4242'], ['kill', '-TERM', '--', '-4242'], stopVlcArgv])
 })
 
-test('a first song, nothing playing from here, still ends any jukebox VLC left on the port', async ($, on) => {
+test('a first song, nothing playing from here, still stops a song a lost session left on the VLC', async ($, on) => {
   const { argv } = engine(on, '{"action":"play","query":"ambient music","long":true}')
   await $.prompt.submit(typed('joue moi un peu de musique ambient'))
-  expect(argv.slice(1, 3)).toEqual([killVlcArgv, startArgv('DRFHklnN-SM')])
-  expect(killVlcArgv[3]).toContain('-LocalPort 18797')
+  expect(argv.slice(1, 3)).toEqual([stopVlcArgv, startArgv('DRFHklnN-SM')])
+  expect(stopVlcArgv[2]).toContain('command=pl_stop')
+})
+
+test('a song plays from the cache through one VLC that never loops, and the session end takes VLC down by its port', async () => {
+  const script = startArgv('DRFHklnN-SM')[2]
+  expect(script).toContain('jukebox7/songs')
+  expect(script).toContain('--no-loop --no-repeat')
+  expect(script).not.toContain('--play-and-exit')
+  expect(script).toContain('command=in_play')
+  expect(killVlcArgv[2]).toContain('127.0.0.1:18797')
+  expect(killVlcArgv[2]).toContain('taskkill.exe')
 })
 
 test('Haiku saying none lets the prompt through', async ($, on) => {

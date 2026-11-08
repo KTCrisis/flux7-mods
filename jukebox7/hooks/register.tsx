@@ -2,7 +2,9 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import type { Found, History, ModelUse, Player, Say, Track } from '../types'
-import { chatArgv, drainArgv, heldArgv, parseJukebox, pauseScript, REMOTE, statusArgv } from './remote'
+import { chatArgv, drainArgv, heldArgv, parseJukebox, pauseScript, statusArgv } from './remote'
+import { CURL, HTTP_PASSWORD, HTTP_PORT, killVlcArgv, startArgv, stopVlcArgv } from './vlc'
+export { CACHE_BYTES, killVlcArgv, startArgv, stopVlcArgv } from './vlc'
 
 // Cheap sieve before any model call: a prompt that fails it reaches the
 // session untouched, with no added latency. A command to the jukebox is
@@ -365,49 +367,9 @@ export const parseRadioRows = (stdout: string): RadioRow[] => {
 }
 export const parseRadio = (stdout: string): Track[] => parseRadioRows(stdout).map(r => r.track)
 
-// Audio only, no window: yt-dlp streams the best audio into Windows' VLC
-// with its dummy interface (WSLg's PulseAudio stalls after a sleep, VLC
-// plays on the Windows side and takes no focus). setsid puts the WSL side in
-// a process group of its own, which stop ends (pause asks VLC itself); vlc://quit
-// ends it with the stream; the id arrives as $1, checked against
-// /^[\w-]{11}$/ before.
-const VLC = '/mnt/c/Program Files/VideoLAN/VLC/vlc.exe'
-const TAG = '--meta-title=jukebox7'
-// The volume goes through VLC's HTTP interface, bound to Windows' loopback:
-// curl.exe runs there, where WSL's own localhost does not reach. The
-// password only satisfies VLC, which refuses the interface without one.
-const HTTP_PORT = 18797
-const HTTP_PASSWORD = 'jukebox7'
-const HTTP = `--extraintf http --http-host 127.0.0.1 --http-port ${HTTP_PORT} --http-password ${HTTP_PASSWORD}`
-const PIPE = `${REMOTE}yt-dlp -q --no-warnings -f bestaudio -o - "https://www.youtube.com/watch?v=$1" | "${VLC}" --intf dummy --dummy-quiet --play-and-exit --no-video -q ${TAG} ${HTTP} - vlc://quit`
-export const startArgv = (id: string): string[] => [
-  'bash',
-  '-c',
-  `setsid bash -c '${PIPE}' _ "$1" </dev/null >/dev/null 2>&1 & echo $!`,
-  '_',
-  id,
-]
-// Killing the WSL side leaves vlc.exe running: it goes by its tag, so a VLC
-// the user opened themselves is never touched. A VLC whose WSL side died
-// with its window shows no command line any more, and still holds the port
-// beside the next one (Windows lets both listen, the controls reach one of
-// them). Windows refuses to end that one even to its own user, but it still
-// obeys its interface: pl_stop ends it (--play-and-exit), once per listener,
-// each request reaching one. The port's owner goes last, where allowed.
-const POWERSHELL = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
-const BASIC = btoa(`:${HTTP_PASSWORD}`)
-export const killVlcArgv = [
-  POWERSHELL,
-  '-NoProfile',
-  '-Command',
-  `1..3 | ForEach-Object { try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Headers @{ Authorization = 'Basic ${BASIC}' } 'http://127.0.0.1:${HTTP_PORT}/requests/status.xml?command=pl_stop' | Out-Null } catch {} }; ` +
-    `Get-CimInstance Win32_Process -Filter "Name='vlc.exe'" | Where-Object { $_.CommandLine -like '*${TAG}*' } | Invoke-CimMethod -MethodName Terminate | Out-Null; ` +
-    `Get-NetTCPConnection -LocalPort ${HTTP_PORT} -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue } | Where-Object Name -eq 'vlc' | Stop-Process -Force -ErrorAction SilentlyContinue`,
-]
 // VLC counts 256 for 100 %. A fresh VLC starts at whatever Windows kept for
 // it (--mmdevice-volume is ignored), so each start sets the level again,
 // retrying while the interface is not up yet.
-const CURL = '/mnt/c/Windows/System32/curl.exe'
 export const volumeArgv = (percent: number, retry = false): string[] => [
   CURL,
   '-s',
@@ -473,7 +435,7 @@ async function halt($: Engine, pgid: number | null) {
     await $.process.run(signal('CONT', pgid))
     await $.process.run(signal('TERM', pgid))
   }
-  await $.process.run(killVlcArgv)
+  await $.process.run(stopVlcArgv)
 }
 
 // Fills in the duration of the track playing, if it still plays when the
@@ -498,8 +460,8 @@ export const introEvent = (title: string): string =>
   `the jukebox starts "${title.replace(DISCOVERED, '')}"; introduce it in your own manner, the way a radio host would`
 
 async function playAt($: Engine, tracks: Track[], index: number, genre: string | null = null, isReplay = false, artist?: string): Promise<Track | undefined> {
-  // Halted even when nothing plays from here: an orphan VLC on the port
-  // would take the controls of the new one. One jukebox per machine.
+  // Stopped even when nothing plays from here: the one VLC may still play a
+  // song a lost session started. One jukebox per machine.
   await halt($, (await read($, player)).pgid)
   const track = tracks[index]
   if (track === undefined) {
@@ -1035,9 +997,9 @@ export const register: Register = on => {
   })
 
   // Quitting (or /clear, which loses $.state's pgid) must not orphan the
-  // detached pipeline. The end chain runs under one short bound and
-  // PowerShell starts slower than that: the group goes at once, the VLC
-  // kill is detached so it outlives the exit.
+  // song's process or leave VLC up. The end chain runs under one short bound
+  // and Windows' tools start slower than that: the group goes at once, the
+  // VLC kill is detached so it outlives the exit.
   // A session that never played (another window, a background spare) leaves
   // the VLC alone: it may be another session's song.
   on('session.end', async ($, e, next) => {

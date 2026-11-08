@@ -12,17 +12,24 @@ melody, reaches the session untouched; a prompt without a music word skips
 the model call altogether.
 
 - **play**: `yt-dlp` searches YouTube, keeps songs of two to twenty minutes
-  (a mood asked in words prefers five and more), and streams the audio into
-  Windows' VLC with its dummy interface: no window, no focus taken. The
-  track asked for plays whatever its length; next walks the songs alone,
-  and past the last one the list ends.
-- **toggle / next / stop**: the WSL side runs in a process group of its own
-  (`setsid`); pause is VLC's own `pl_forcepause` over its HTTP interface, at once,
-  stop is `CONT` then `TERM`, and the `vlc.exe` it started is terminated by
-  its `--meta-title=jukebox7` tag, so a VLC opened by hand is never touched.
-  A pause VLC does not answer changes nothing and says so. One change of song
-  runs at a time (a search takes up to 40 s): a press meanwhile is refused.
-  A session that never played leaves the VLC alone when it ends.
+  (a mood asked in words prefers five and more), downloads the audio into a
+  cache (`~/.cache/jukebox7/songs`, newest kept up to 1 GB) and has one
+  Windows VLC play the file, with its dummy interface: no window, no focus
+  taken. A first play waits for the download (about 3 s for a four-minute
+  song), a song from the cache starts at once. The track asked for plays
+  whatever its length; next walks the songs alone, and past the last one the
+  list ends.
+- **toggle / next / stop**: each song is a process group of its own (`setsid`)
+  that wakes the one VLC if it does not answer, has it play the file over its
+  HTTP interface, then watches its status and ends when VLC stops or another
+  song takes the player. Pause is VLC's `pl_forcepause`, at once, and lasts as
+  long as it likes: the file stays. Stop is `CONT` then `TERM` for the group
+  and `pl_stop` for VLC, which stays up for the next song; the session's end
+  takes VLC down, by the process listening on its port. VLC is started with
+  `--no-loop --no-repeat`, since it keeps "loop" from its saved Windows
+  preferences. A pause VLC does not answer changes nothing and says so. One
+  change of song runs at a time (a search takes up to 40 s): a press meanwhile
+  is refused. A session that never played leaves VLC alone when it ends.
 
 The **pane** (`/music`, or opened on the first song) shows the title, its
 state and volume, `p` pause, `n` next, `r` similar, `s` stop, `d` and `u` the volume by
@@ -96,7 +103,9 @@ Haiku; a longer one is talk to the assistant and passes untouched, even when
 it mentions music.
 
 The volume goes through VLC's HTTP interface on Windows' loopback (port
-18797), reached with Windows' own `curl.exe`. The level is kept apart from
+18797), reached with Windows' own `curl.exe` (the song's process reaches it
+from WSL directly with `networkingMode=mirrored`, `curl.exe` otherwise). The
+level is kept apart from
 the player, survives a stop, and is set again on each new song: a fresh VLC
 starts at whatever level Windows kept for it.
 
@@ -111,9 +120,10 @@ real time and nothing comes out) until `wsl --shutdown`.
 
 - The genre lists are one listener's; edit `GENRES` in `hooks/register.tsx`.
   A station belongs to its persona, in avatar7's `personas/<id>/persona.json`.
-- A very long pause may let YouTube drop the stream behind VLC, which then
-  ends the song early on resume.
 - A song that ends moves on within five seconds (the liveness poll).
+- On the phone (avatar7's relay held) the song still streams live from
+  yt-dlp through the relay: a network drop or a long pause there can still end
+  it early. Serving the cached file with ranges is the next step.
 
 ## Tests
 
