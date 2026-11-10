@@ -524,6 +524,7 @@ test('★ keeps the song playing across sessions, again removes it; the favorite
 
 test('the phone may press back and ★, and sees the favorites among the stations', () => {
   expect(parseJukebox('{"do":"back"}', [])).toEqual({ do: 'back' })
+  expect(parseJukebox('{"do":"clear"}', [])).toEqual({ do: 'clear' })
   expect(parseJukebox('{"do":"fav"}', [])).toEqual({ do: 'fav' })
   expect(parseJukebox(JSON.stringify({ do: 'genre', genre: FAVORITES }), [FAVORITES])).toEqual({ do: 'genre', genre: FAVORITES })
 })
