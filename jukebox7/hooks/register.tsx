@@ -943,6 +943,8 @@ export const register: Register = on => {
           else if (press.do === 'next') await once($, () => skip($, 1))
           else if (press.do === 'back') await once($, () => back($))
           else if (press.do === 'fav') await toggleFavorite($)
+          // The phone clears its search: the list goes, a song picked from it plays on.
+          else if (press.do === 'clear') await update($, found, () => ({ query: '', tracks: [] }))
           else if (press.do === 'voice') {
             // A phrase spoken to the phone: the jukebox's if it asks for
             // music, else a word to the avatar, as the phone's chat.

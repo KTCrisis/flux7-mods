@@ -51,7 +51,7 @@ export const statusArgv = (): string[] => [
 ]
 
 export type JukeboxPress =
-  | { do: 'pause' | 'next' | 'similar' | 'stop' | 'back' | 'fav' }
+  | { do: 'pause' | 'next' | 'similar' | 'stop' | 'back' | 'fav' | 'clear' }
   | { do: 'genre'; genre: string }
   | { do: 'find'; query: string }
   | { do: 'voice'; text: string }
@@ -71,7 +71,7 @@ export const parseJukebox = (line: string, genres: string[]): JukeboxPress | und
   }
   if (typeof r !== 'object' || r === null) return undefined
   const o = r as Record<string, unknown>
-  if (o.do === 'pause' || o.do === 'next' || o.do === 'similar' || o.do === 'stop' || o.do === 'back' || o.do === 'fav') return { do: o.do }
+  if (o.do === 'pause' || o.do === 'next' || o.do === 'similar' || o.do === 'stop' || o.do === 'back' || o.do === 'fav' || o.do === 'clear') return { do: o.do }
   if (o.do === 'genre' && typeof o.genre === 'string' && genres.includes(o.genre)) return { do: 'genre', genre: o.genre }
   if (o.do === 'find' && typeof o.query === 'string' && o.query.trim() !== '') return { do: 'find', query: o.query.trim().slice(0, QUERY_MAX) }
   // A phrase the phone heard (its speech recognizer): Haiku reads it.
