@@ -974,7 +974,12 @@ export const register: Register = on => {
           // The last search, for the phone to list and pick from.
           query: f.query, found: f.tracks.map(t => ({ title: t.title, seconds: t.seconds })), isFinding,
         })
-        if (status !== shown) {
+        // Written only while the relay is held (statusArgv checks the owner), so
+        // only then is it shown: a status computed before the relay was taken
+        // must still reach the phone once it is (the list stayed empty there
+        // when nothing had changed since, 2026-11-10).
+        if (!isHeld) shown = ''
+        else if (status !== shown) {
           await $.process.run(statusArgv(), { stdin: status })
           shown = status
         }
