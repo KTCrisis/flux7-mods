@@ -1,0 +1,7 @@
+{
+  "name": "atlas7",
+  "version": "0.1.0",
+  "description": "A wireframe planisphere in a pane: the lit half of the Earth now, earthquakes, natural events and the world's headlines placed on it",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

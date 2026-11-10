@@ -17,8 +17,8 @@ each writes under its own name, and whoever cares listens to the write.
 | Key | Written by | Read by | Meaning |
 | --- | --- | --- | --- |
 | `<mod>.announce` | atelier-bell, usage-bell | avatar7 | voice my toasts, in this mood, from this event |
-| `<mod>.say` | mesh7-pane, jukebox7 | avatar7 | say this now, no toast needed |
-| `avatar7.avatar`, `color`, `station` | avatar7 | jukebox7 | the persona on duty, its color, its music |
+| `<mod>.say` | mesh7-pane, jukebox7, atlas7 | avatar7 | say this now, no toast needed |
+| `avatar7.avatar`, `color`, `station` | avatar7 | jukebox7, atlas7 (`color`) | the persona on duty, its color, its music |
 | `avatar7.isVoicing` | avatar7 | jukebox7 | a line is being heard: lower the music |
 
 The mod gives the fact; the persona gives the voice. avatar7 picks the face
@@ -95,6 +95,7 @@ To give a new mod a voice, see
 | `atelier-bell` | Tells you when an atelier finishes: flux7-studio renders as toasts and a status line (`studio: rendering`, `studio: last …`), `/bell` for the state. See [atelier-bell/README.md](atelier-bell/README.md). |
 | `usage-bell` | Rings when the session nears a limit: context fill (70/85/95 %), the 5 h and 7 d rate-limit windows (80/95 %), the auto-memory index the engine cuts at 200 lines or 25 kB. A status line (`ctx 62% · 5h 41% · 7d 12% · mem 145/200`), `/usage7` for the detail. See [usage-bell/README.md](usage-bell/README.md). |
 | `jukebox7` | Music on demand, in plain words ("put on some ambient"): YouTube audio through a hidden VLC, no browser, no focus taken. A pane with genre buttons, each a radio of artists, and the pick of the avatar on duty. See [jukebox7/README.md](jukebox7/README.md). |
+| `atlas7` | The world in a pane: a wireframe planisphere in braille dots, bright where it is day and dim where it is night (the sun's position is computed, not fetched), with the earthquakes of the day (USGS), the natural events still open (NASA EONET) and the headlines of three press feeds (BBC, France 24, Al Jazeera). A quake or a storm is a full mark where it is; a headline is a hollow mark on the capital of the country it names first, from a small lexicon, so to the country and no closer, and a headline that names none is listed without a mark. No service, no key: five public feeds read every ten minutes while the pane is open. `/atlas` opens it, `/atlas now` reads again, `/atlas off` closes it. With avatar7 loaded it says a quake of magnitude 6.5 and over. |
 
 ## Loading
 
