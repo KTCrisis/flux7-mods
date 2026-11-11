@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { curve, isUp, parsePing, parsePorts, parseProbe, parseSpeed, parseWho, sayMs, sayOrg, sayReach, turned, veil, verdict } from './register'
+import { curve, isUp, parsePing, parsePorts, parseProbe, parseSpeed, parseSweep, parseWho, sayMs, sayOrg, sayReach, turned, veil, verdict } from './register'
 
 const EMPTY = { at: 0, device: '', gateway: '', dns: '', hop: '', box: { sent: 0, got: 0, ms: 0 }, isp: { sent: 0, got: 0, ms: 0 }, world: [], web: { ok: false, name: 0, shake: 0, whole: 0 }, ports: [], trail: [] }
 const ping = (got: number, ms: string): string => `3 packets transmitted, ${got} received, ${Math.round(((3 - got) / 3) * 100)}% packet loss, time 408ms ${got > 0 ? `rtt min/avg/max/mdev = 0.609/${ms}/0.781/0.078 ms` : ''}`
@@ -65,4 +65,17 @@ test('the trail is a curve, the newest on the right, taller when slower, with a 
   expect(curve([], 4, 1)).toEqual(['⠀⠀⠀⠀'])
   expect(curve([50, -1, 25, 1], 3, 1)).toEqual(['⠀⡇⣄'])                      // full height, a gap, then half and one dot in the same cell
   expect(curve([100, 100], 1, 2)).toEqual(['⣿', '⣿'])
+})
+
+test('the home network\'s devices come by address, the box named, a made-up hardware address said so', () => {
+  const got = parseSweep(['@net 192.168.1.55/24', '@lan 192.168.1.134 a0:b1:c2:00:00:01 desk.home|Intel Corporate', '@lan 192.168.1.1 00:11:22:33:44:55 box.home|', '@lan 192.168.1.20 de:ad:be:ef:00:01 |', '@lan 192.168.1.9 00:aa:bb:cc:dd:ee |'].join('\n'), '192.168.1.1')
+  expect(got.devices).toEqual([
+    { ip: '192.168.1.1', mac: '00:11:22:33:44:55', name: 'the box', maker: '' },
+    { ip: '192.168.1.9', mac: '00:aa:bb:cc:dd:ee', name: '', maker: '' },
+    { ip: '192.168.1.20', mac: 'de:ad:be:ef:00:01', name: '', maker: 'private address' },
+    { ip: '192.168.1.134', mac: 'a0:b1:c2:00:00:01', name: 'desk', maker: 'Intel Corporate' },
+  ])
+  expect([got.net, got.refused, got.missing]).toEqual(['192.168.1.55/24', false, false])
+  expect(parseSweep('@net 203.0.113.7/24\n@refused', '').refused).toBe(true)        // not a private network: not swept
+  expect(parseSweep('@nonmap', '').missing).toBe(true)
 })

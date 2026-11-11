@@ -6,7 +6,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
-import type { Board, Port, Reach, Say, Speed, Who } from '../types'
+import type { Board, Device, Port, Reach, Say, Speed, Who } from '../types'
 
 const PANE = 'net7'
 const READ_MS = 30_000
@@ -20,6 +20,8 @@ let tick: { cancel: () => void } | undefined
 let who: Who | undefined
 let speed: Speed | undefined
 let measuring = false
+// The devices of the home network, counted when asked (/net lan).
+let lan: { at: number; net: string; devices: Device[] } | undefined
 
 // ---- the reading
 
@@ -170,6 +172,41 @@ export const parseSpeed = (out: string, at: number): Speed | undefined => {
   return down > 0 ? { down: Math.round((down * 8) / 1e6), up: Math.round(((Number.isFinite(up) ? up : 0) * 8) / 1e6), at } : undefined
 }
 
+// ---- the home network
+
+// Who is on the home network: nmap knocks once at every address (no root: it only tries to connect), which makes
+// the system ask each one for its hardware address; the system's own table then lists the ones that answered,
+// even those that refuse every connection. Only a private network of a thousand addresses at most is swept:
+// anywhere else (a public address, a large company network) the sweep is refused.
+const SWEEP = `
+command -v nmap >/dev/null || { echo "@nonmap"; exit 0; }
+dev=$(ip route show default 2>/dev/null | awk 'NR==1{print $5}'); net=$(ip -4 -o addr show dev "$dev" 2>/dev/null | awk 'NR==1{print $4}')
+echo "@net $net"
+case "$net" in 10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*) ;; *) echo "@refused"; exit 0;; esac
+[ "\${net##*/}" -ge 22 ] || { echo "@refused"; exit 0; }
+nmap -sn -n -T4 --max-retries 1 "$net" >/dev/null 2>&1
+ip -4 neigh show dev "$dev" | awk '/lladdr/ && $NF!="FAILED"{print $1, $3}' | while read ip mac; do
+  pre=$(echo "$mac" | tr -d : | cut -c1-6 | tr a-f A-F)
+  echo "@lan $ip $mac $(timeout 1 getent hosts "$ip" | awk '{print $2; exit}')|$(grep -m1 "^$pre " /usr/share/nmap/nmap-mac-prefixes 2>/dev/null | cut -d' ' -f2-)"
+done
+`
+export const sweepArgv = (): string[] => ['sh', '-c', SWEEP]
+// A hardware address a phone or a laptop made up for this network instead of showing its maker's (the second
+// digit says so: 2, 6, A or E).
+const isPrivate = (mac: string): boolean => /^.[26ae]/i.test(mac)
+// The devices from what the sweep printed, by address; the box is named as such. `refused` when the network is
+// not one this mod sweeps, `missing` when nmap is not installed.
+export const parseSweep = (out: string, gateway: string): { net: string; devices: Device[]; refused: boolean; missing: boolean } => {
+  const lines = out.split('\n')
+  const devices = lines.filter(l => l.startsWith('@lan ')).flatMap(l => {
+    const [ip = '', mac = '', ...rest] = l.slice(5).split(' ')
+    const [name = '', maker = ''] = rest.join(' ').split('|')
+    return ip === '' ? [] : [{ ip, mac, name: ip === gateway ? 'the box' : name.replace(/\.(home|lan|local|localdomain)$/, ''), maker: maker.trim() || (isPrivate(mac) ? 'private address' : '') }]
+  })
+  const last = (ip: string): number => ip.split('.').reduce((n, part) => n * 256 + Number(part), 0)
+  return { net: lines.find(l => l.startsWith('@net '))?.slice(5).trim() ?? '', devices: devices.sort((a, b) => last(a.ip) - last(b.ip)), refused: lines.includes('@refused'), missing: lines.includes('@nonmap') }
+}
+
 // ---- the pane
 
 // The palette the mods share, avatar7's.
@@ -178,7 +215,7 @@ const CYAN = '#00e5ff'
 const RED = '#ff2a6d'
 const AMBER = '#ffb000'
 const GREEN = '#3ddc84'
-const HELP = '/net: open the pane and read the connection · /net now: read again · /net speed: measure the speed (spends about 200 MB at most) · /net who: the public address in full · /net off: close the pane'
+const HELP = '/net: open the pane and read the connection · /net now: read again · /net speed: measure the speed (spends about 200 MB at most) · /net lan: count the devices of the home network (needs nmap) · /net who: the public address in full · /net off: close the pane'
 // Read only: avatar7 owns it and says which face is on duty; the frame takes its color, as jukebox7's does.
 const tint = { plugin: 'avatar7', key: 'color' } as const
 
@@ -205,7 +242,7 @@ const watch = ($: Engine): void => {
   if (tick === undefined) tick = $.clock.every(READ_MS, () => void load($))
 }
 const show = async ($: Engine): Promise<void> => {
-  await $.ui.open({ id: PANE, title: 'net7', rows: 22 })
+  await $.ui.open({ id: PANE, title: 'net7', rows: 26 })
   watch($)
   await load($)
 }
@@ -237,7 +274,13 @@ export const register: Register = on => {
     const open = b.ports.filter(p => p.open), local = b.ports.length - open.length
     // The frame: its two borders and ten rows at most. The curve takes two rows, the ports what is left.
     const curveRows = rows >= 18 ? 2 : 0
-    const portRows = Math.max(0, rows - 12 - curveRows - 1)
+    // Under the curve, the devices of the home network once they were counted (two rows are kept for the ports),
+    // then the ports.
+    const under = Math.max(0, rows - 12 - curveRows)
+    const half = Math.max(1, Math.floor((columns - 2) / 40))
+    const devices = lan === undefined ? [] : lan.devices.slice(0, Math.max(0, under - 3) * half)
+    const deviceRows = lan === undefined ? 0 : 1 + Math.ceil(devices.length / half)
+    const portRows = Math.max(0, under - deviceRows - 1)
     const perRow = Math.max(1, Math.floor((columns - 2) / 18))
     const listed = open.slice(0, portRows * perRow)
     return (
@@ -272,6 +315,20 @@ export const register: Register = on => {
         {curveRows > 0 && curve(b.trail, Math.max(1, columns - 2), curveRows).map((line, y) => (
           <Text key={`c${y}`} backgroundColor={BLACK} color={v.level === 'error' ? RED : accent}>{` ${line}`}</Text>
         ))}
+        {lan !== undefined && (
+          <Text backgroundColor={BLACK} dimColor wrap="truncate-end">{` ${lan.devices.length} devices on ${lan.net} at ${hour(lan.at)}${devices.length < lan.devices.length ? ` (${lan.devices.length - devices.length} not shown)` : ''}`}</Text>
+        )}
+        {Array.from({ length: Math.ceil(devices.length / half) }, (_, y) => (
+          <Text key={`d${y}`} backgroundColor={BLACK} wrap="truncate-end">
+            {' '}
+            {devices.slice(y * half, (y + 1) * half).map(d => (
+              <Text key={d.ip}>
+                <Text color={CYAN}>{d.ip.padEnd(16)}</Text>
+                <Text dimColor={d.name === ''}>{(d.name || d.maker || 'unknown').slice(0, 22).padEnd(24)}</Text>
+              </Text>
+            ))}
+          </Text>
+        ))}
         {Array.from({ length: Math.ceil(listed.length / perRow) }, (_, y) => (
           <Text key={`p${y}`} backgroundColor={BLACK} wrap="truncate-end">
             {' '}
@@ -293,7 +350,7 @@ export const register: Register = on => {
   })
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'net', description: 'net7: the connection, where it is slow, the open ports, a speed test (/net, /net now, /net speed, /net who, /net off, /net help)' })
+    await $.command.register({ name: 'net', description: 'net7: the connection, where it is slow, the open ports, a speed test (/net, /net now, /net speed, /net lan, /net who, /net off, /net help)' })
     return next(e)
   })
 
@@ -303,6 +360,15 @@ export const register: Register = on => {
       tick?.cancel(); tick = undefined
       await $.ui.close({ id: PANE })
       return { text: 'net7: the pane is closed and nothing is read any more (/net opens it again).' }
+    }
+    if (args === 'lan') {
+      const gateway = (await read($, board)).gateway
+      const got = parseSweep((await $.process.run(sweepArgv(), { timeoutMs: 60_000 })).stdout, gateway)
+      if (got.missing) return { text: 'net7: nmap is not installed (sudo apt-get install nmap).' }
+      if (got.refused || got.net === '') return { text: `net7: ${got.net === '' ? 'no network to sweep' : `${got.net} is not a home network (private, a thousand addresses at most): not swept`}.` }
+      lan = { at: Date.now(), net: got.net, devices: got.devices }
+      $.ui.invalidate('ui.render')
+      return { text: `net7: ${got.devices.length} devices answered on ${got.net} (this machine not counted):\n${got.devices.map(d => `${d.ip.padEnd(16)}${d.mac}  ${[d.name, d.maker].filter(t => t !== '').join(' · ') || 'unknown'}`).join('\n')}` }
     }
     if (args === 'who') {
       if (who === undefined) await load($)

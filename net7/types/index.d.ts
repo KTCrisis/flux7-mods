@@ -25,6 +25,11 @@ export type Board = {
   trail: number[]
 }
 
+// A device that answered on the home network: its address, its hardware address, the name the network knows it
+// by (empty when none) and its maker, read from the hardware address ("private address" when the device made
+// one up, as phones do).
+export type Device = { ip: string; mac: string; name: string; maker: string }
+
 // Who the world sees: the public address, the ISP and its city, asked once a session from ipinfo.io.
 export type Who = { ip: string; org: string; city: string }
 
