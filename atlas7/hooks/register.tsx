@@ -207,7 +207,7 @@ export const draw = (columns: number, rows: number, events: readonly Event[], ms
 
 // ---- the pane
 
-const HELP = '/atlas: open the planisphere (the lit half of the Earth, quakes, natural events, headlines) · /atlas off: close it · /atlas now: read the feeds again'
+const HELP = 'opens with the session · /atlas: open the planisphere (the lit half of the Earth, quakes, natural events, headlines) · /atlas off: close it · /atlas now: read the feeds again'
 const TAG: Record<Kind, string> = { quake: 'quake', storm: 'storm', fire: 'fire', volcano: 'volc.', ice: 'ice', other: 'event', news: '' }
 // Read only: avatar7 owns it and says which face is on duty; the frame takes its color, as jukebox7's does.
 const tint = { plugin: 'avatar7', key: 'color' } as const
@@ -244,6 +244,12 @@ const load = async ($: Engine): Promise<void> => {
 }
 const watch = ($: Engine): void => {
   if (tick === undefined) tick = $.clock.every(WIRE_MS, () => void load($))
+}
+// The pane opened, the timer set, the feeds read once.
+const show = async ($: Engine): Promise<void> => {
+  await $.ui.open({ id: PANE, title: 'atlas7', rows: 32 })
+  watch($)
+  await load($)
 }
 const hour = (ms: number): string => {
   const d = new Date(ms)
@@ -308,6 +314,7 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'atlas', description: 'atlas7: the planisphere of what is happening (/atlas, /atlas off, /atlas now, /atlas help)' })
+    void show($)        // not awaited: a feed that is slow or silent must not hold the session's start
     return next(e)
   })
 
@@ -320,9 +327,7 @@ export const register: Register = on => {
       return { text: 'atlas7: the planisphere is closed (/atlas opens it again).' }
     }
     if (args !== '' && args !== 'now') return { text: `atlas7: ${HELP}` }
-    await $.ui.open({ id: PANE, title: 'atlas7', rows: 32 })
-    watch($)
-    await load($)
+    await show($)
     const b = await read($, wire)
     return { text: `atlas7: ${b.events.length} events read${b.failed.length > 0 ? ` (silent: ${b.failed.join(', ')})` : ''}, read again every ten minutes while the pane is open (/atlas off closes it).` }
   })
