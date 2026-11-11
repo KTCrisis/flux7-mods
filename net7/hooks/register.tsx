@@ -216,7 +216,9 @@ export const parseSweep = (out: string, gateway: string): { net: string; devices
 // over SSH. Nothing here asks for root, so what only root can read (the firewall's rules, root's own keys) is not
 // read; and the SSH log is read only by root or by a member of adm or systemd-journal: when it cannot be, the
 // shell says so (@logs no) rather than report a month without a single attempt. The log is boiled down where it
-// lies, a busy server writes tens of megabytes of refused passwords a month.
+// lies, a busy server writes tens of megabytes of refused passwords a month. The same holds for the programs:
+// the system shows the file a program runs from only to its own account, so those of root and of the others are
+// counted as not looked at (@procs, its second number), the kernel's own threads aside (they have no command).
 const GUARD = `
 echo "@me $(id -un) $(hostname)"
 echo "@from $(echo "$SSH_CONNECTION" | cut -d' ' -f1)"
@@ -238,10 +240,16 @@ echo "@offers $(ssh -o BatchMode=yes -o PreferredAuthentications=none -o PubkeyA
 for f in "$HOME/.ssh/authorized_keys" /root/.ssh/authorized_keys; do
   [ -r "$f" ] && echo "@keys $f $(grep -cvE '^[[:space:]]*(#|$)' "$f") $(stat -c %Y "$f")"
 done
+mine=0; blind=0
 for p in /proc/[0-9]*; do
-  e=$(readlink "$p/exe" 2>/dev/null) || continue
-  case "$e" in *" (deleted)"|/tmp/*|/dev/shm/*|/var/tmp/*) echo "@ghost $(basename "$p") $e";; esac
+  if e=$(readlink "$p/exe" 2>/dev/null); then
+    mine=$((mine+1))
+    case "$e" in *" (deleted)"|/tmp/*|/dev/shm/*|/var/tmp/*) echo "@ghost $(basename "$p") $e";; esac
+  elif [ -n "$(tr -d '\\0' < "$p/cmdline" 2>/dev/null | head -c 1)" ]; then
+    blind=$((blind+1))
+  fi
 done
+echo "@procs $mine $blind"
 find /etc/systemd/system /etc/cron.d /etc/cron.hourly /etc/cron.daily "$HOME/.config/systemd/user" -maxdepth 1 -type f ! -name 'snap[.-]*' -mtime -30 2>/dev/null | head -12 | sed 's/^/@new /'
 echo "@cron $(crontab -l 2>/dev/null | grep -cvE '^[[:space:]]*(#|$)')"
 ss -tlnpH 2>/dev/null | sed 's/^/@port /'
@@ -274,6 +282,7 @@ const counted = (lines: readonly string[]): { n: number; what: string }[] => lin
 export const parseGuard = (out: string, host: string, at: number): Guard => {
   const [user = '', name = ''] = (tagged(out, 'me')[0] ?? '').split(' ')
   const [failed = 0, invalid = 0] = (tagged(out, 'fail')[0] ?? '').split(' ').map(Number)
+  const [checked = 0, blind = 0] = (tagged(out, 'procs')[0] ?? '').split(' ').map(Number)
   const keys = new Map(tagged(out, 'keys').map(l => l.split(' ')).map(([path = '', count = '0', changed = '0']) => [path, { path, count: Number(count), at: Number(changed) * 1000 }] as const))
   return {
     at, host, user, name,
@@ -291,6 +300,7 @@ export const parseGuard = (out: string, host: string, at: number): Guard => {
     named: counted(tagged(out, 'named')).map(c => ({ n: c.n, user: c.what })),
     offers: (tagged(out, 'offers').find(l => l !== '') ?? '').split(',').filter(m => m !== ''),
     keys: [...keys.values()],
+    checked, blind,
     ghosts: tagged(out, 'ghost').map(l => ({ pid: Number(l.split(' ')[0]), exe: l.split(' ').slice(1).join(' ') })),
     fresh: tagged(out, 'new'),
     cron: Number(tagged(out, 'cron')[0] ?? 0),
@@ -319,7 +329,8 @@ export const judge = (g: Guard): { level: 'fine' | 'warn' | 'error'; notes: stri
   const notes = [...errors, ...warns]
   if (notes.length > 0) return { level: errors.length > 0 ? 'error' : 'warn', notes }
   const entries = g.entries.reduce((n, e) => n + e.n, 0)
-  return { level: 'fine', notes: [`nothing wrong: ${entries} SSH entries in 30 days, all from near, ${g.failed} passwords refused`] }
+  // Never more than what was looked at: the programs of the other accounts stay unseen without root.
+  return { level: 'fine', notes: [`nothing wrong${g.blind > 0 ? ' in what could be read' : ''}: ${entries} SSH entries in 30 days, all from near, ${g.failed} passwords refused${g.blind > 0 ? `, ${g.blind} programs of other accounts not looked at` : ''}`] }
 }
 const day = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
 // The round in full, for the answer to the command: the pane only keeps the verdict.
@@ -342,6 +353,7 @@ export const sayGuard = (g: Guard): string => {
     ...(g.host === '' ? [] : [row('from outside', g.doors.length === 0 ? `no door answers at ${g.addr || g.host}` : `${g.doors.join(', ')} answer at ${g.addr || g.host}`)]),
     ...(!g.reached ? [] : [
       row('keys', g.keys.length === 0 ? 'none readable' : g.keys.map(k => `${k.path}: ${k.count}, changed ${day(k.at)}`).join(' · ')),
+      row('programs', `${g.checked} looked at, ${g.ghosts.length === 0 ? 'none' : g.ghosts.length} from a file that is gone or a temporary folder${g.blind === 0 ? '' : ` · ${g.blind} of other accounts not readable (root would see them)`}`),
       row('listening', open.length === 0 ? 'nothing beyond the machine itself' : open.map(p => `${p.port}${p.who === '' ? '' : ` ${p.who}`}`).join(' · ')),
       row('new in 30 d', `${g.fresh.length === 0 ? 'no unit, no cron file' : g.fresh.map(f => f.split('/').pop()).join(' · ')} · ${g.cron} lines in ${g.user}'s crontab`),
     ]),

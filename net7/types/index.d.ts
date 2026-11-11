@@ -48,7 +48,8 @@ export type Entry = { n: number; method: string; user: string; from: string }
 // the names that do not exist; `sources` are where most of them came from, `named` the existing accounts they
 // tried. `offers` is what sshd accepts from a caller who shows nothing. `keys` are the authorized keys files that
 // could be read (how many keys, changed when, ms). `ghosts` are programs whose file is gone or lies in a
-// temporary folder. `fresh` are the units and cron files changed in thirty days, `cron` the lines of the user's
+// temporary folder, among the `checked` ones: the system shows that file only to the program's own account, so
+// `blind` counts the programs of the other accounts, which were not looked at (0 when the round runs as root). `fresh` are the units and cron files changed in thirty days, `cron` the lines of the user's
 // crontab. `ports` is what listens (seen from inside), `doors` the ports that answered from outside.
 export type Guard = {
   at: number
@@ -67,6 +68,8 @@ export type Guard = {
   named: { n: number; user: string }[]
   offers: string[]
   keys: { path: string; count: number; at: number }[]
+  checked: number
+  blind: number
   ghosts: { pid: number; exe: string }[]
   fresh: string[]
   cron: number

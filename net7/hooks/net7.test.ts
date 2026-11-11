@@ -81,7 +81,7 @@ test('the home network\'s devices come by address, the box named, a made-up hard
 })
 
 // What the guard's shells print for a server: seen from outside first, then from inside.
-const round = (over: { logs?: boolean; offers?: string; doors?: number[]; entries?: string[]; inside?: boolean; ghost?: string } = {}): string => [
+const round = (over: { blind?: number; logs?: boolean; offers?: string; doors?: number[]; entries?: string[]; inside?: boolean; ghost?: string } = {}): string => [
   '@addr 203.0.113.7',
   `@offers ${over.offers ?? 'publickey'}`,
   ...(over.doors ?? [22, 80, 443]).map(p => `@door ${p}`),
@@ -91,6 +91,7 @@ const round = (over: { logs?: boolean; offers?: string; doors?: number[]; entrie
     '@offers publickey,password',                                               // what sshd says to itself: the outside answer came first and is kept
     '@keys /home/deploy/.ssh/authorized_keys 1 1773615000',
     ...(over.ghost === undefined ? [] : [`@ghost ${over.ghost}`]),
+    `@procs 41 ${over.blind ?? 0}`,
     '@new /etc/systemd/system/app.service', '@cron 2',
     '@port LISTEN 0 4096 0.0.0.0:22 0.0.0.0:*', '@port LISTEN 0 511 0.0.0.0:443 0.0.0.0:* users:(("nginx",pid=9,fd=8))', '@port LISTEN 0 4096 127.0.0.1:5432 0.0.0.0:*',
   ]),
@@ -101,7 +102,7 @@ test('a guard round is put together from both sides, the busiest sources and nam
   expect([g.host, g.user, g.name, g.reached, g.logs, g.from, g.self, g.addr, g.at]).toEqual(['web1', 'deploy', 'web1', true, true, '198.51.100.4', ['203.0.113.7'], '203.0.113.7', 9])
   expect(g.entries).toEqual([{ n: 703, method: 'publickey', user: 'deploy', from: '198.51.100.4' }])
   expect([g.failed, g.invalid, g.sources, g.named]).toEqual([36897, 16030, [{ n: 2884, ip: '192.0.2.50' }, { n: 1995, ip: '192.0.2.9' }], [{ n: 17538, user: 'root' }, { n: 40, user: 'backup' }]])
-  expect([g.offers, g.doors, g.cron, g.fresh, g.ghosts]).toEqual([['publickey'], [22, 80, 443], 2, ['/etc/systemd/system/app.service'], []])
+  expect([g.offers, g.doors, g.cron, g.fresh, g.ghosts, g.checked, g.blind]).toEqual([['publickey'], [22, 80, 443], 2, ['/etc/systemd/system/app.service'], [], 41, 0])
   expect(g.keys).toEqual([{ path: '/home/deploy/.ssh/authorized_keys', count: 1, at: 1773615000000 }])
   expect(g.ports.filter(p => p.open).map(p => p.port)).toEqual([22, 443])
   expect(judge(g)).toEqual({ level: 'fine', notes: ['nothing wrong: 703 SSH entries in 30 days, all from near, 36897 passwords refused'] })
@@ -113,6 +114,10 @@ test('the guard names what is left ajar, and an entry from elsewhere before anyt
   expect(notes({ doors: [22, 443, 3000, 8000] })).toEqual(['ports 3000, 8000 answer from outside'])
   expect(notes({ doors: [22, 3000] })).toEqual(['port 3000 answers from outside'])
   expect(notes({ ghost: '412 /tmp/.x/kworker' })).toEqual(['1 programs run from a file that is gone or from a temporary folder: 412 /tmp/.x/kworker'])
+  // Programs that could not be looked at are counted in the verdict, never passed over.
+  const partial = parseGuard(round({ blind: 87 }), 'web1', 1)
+  expect(judge(partial)).toEqual({ level: 'fine', notes: ['nothing wrong in what could be read: 703 SSH entries in 30 days, all from near, 36897 passwords refused, 87 programs of other accounts not looked at'] })
+  expect(sayGuard(partial)).toContain('  programs      41 looked at, none from a file that is gone or a temporary folder · 87 of other accounts not readable (root would see them)')
   // An unread log is said, never taken for a quiet month.
   const blind = parseGuard(round({ logs: false }), 'web1', 1)
   expect([blind.entries, blind.failed, judge(blind)]).toEqual([[], 0, { level: 'warn', notes: ['the SSH log could not be read (deploy is neither root nor in adm): who came in is not known'] }])
