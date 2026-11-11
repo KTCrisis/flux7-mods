@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { curve, guardArgv, isHost, isNear, isUp, judge, parseGuard, parsePing, parsePorts, parseProbe, parseSpeed, parseSweep, parseWho, sayGuard, sayMs, sayOrg, sayReach, turned, veil, verdict } from './register'
+import { curve, guardArgv, isHost, isNear, isUp, judge, parseGuard, parseListen, parsePing, parsePorts, parseProbe, parseSpeed, parseSweep, parseWho, sayGuard, sayMs, sayOrg, sayPorts, sayReach, turned, veil, verdict, whence } from './register'
 
 const EMPTY = { at: 0, device: '', gateway: '', dns: '', hop: '', box: { sent: 0, got: 0, ms: 0 }, isp: { sent: 0, got: 0, ms: 0 }, world: [], web: { ok: false, name: 0, shake: 0, whole: 0 }, ports: [], trail: [] }
 const ping = (got: number, ms: string): string => `3 packets transmitted, ${got} received, ${Math.round(((3 - got) / 3) * 100)}% packet loss, time 408ms ${got > 0 ? `rtt min/avg/max/mdev = 0.609/${ms}/0.781/0.078 ms` : ''}`
@@ -104,7 +104,7 @@ test('a guard round is put together from both sides, the busiest sources and nam
   expect([g.failed, g.invalid, g.sources, g.named]).toEqual([36897, 16030, [{ n: 2884, ip: '192.0.2.50' }, { n: 1995, ip: '192.0.2.9' }], [{ n: 17538, user: 'root' }, { n: 40, user: 'backup' }]])
   expect([g.offers, g.doors, g.cron, g.fresh, g.ghosts, g.checked, g.blind]).toEqual([['publickey'], [22, 80, 443], 2, ['/etc/systemd/system/app.service'], [], 41, 0])
   expect(g.keys).toEqual([{ path: '/home/deploy/.ssh/authorized_keys', count: 1, at: 1773615000000 }])
-  expect(g.ports.filter(p => p.open).map(p => p.port)).toEqual([22, 443])
+  expect(g.ports).toEqual([{ port: 22, who: 'ssh', reach: 'all' }, { port: 443, who: 'nginx', reach: 'all' }])     // the loopback's 5432 is nobody else's
   expect(judge(g)).toEqual({ level: 'fine', notes: ['nothing wrong: 703 SSH entries in 30 days, all from near, 36897 passwords refused'] })
 })
 
@@ -117,7 +117,7 @@ test('the guard names what is left ajar, and an entry from elsewhere before anyt
   // Programs that could not be looked at are counted in the verdict, never passed over.
   const partial = parseGuard(round({ blind: 87 }), 'web1', 1)
   expect(judge(partial)).toEqual({ level: 'fine', notes: ['nothing wrong in what could be read: 703 SSH entries in 30 days, all from near, 36897 passwords refused, 87 programs of other accounts not looked at'] })
-  expect(sayGuard(partial)).toContain('  programs      41 looked at, none from a file that is gone or a temporary folder · 87 of other accounts not readable (root would see them)')
+  expect(sayGuard(partial)).toContain('    87 programs of other accounts (only root sees where they run from)')
   // An unread log is said, never taken for a quiet month.
   const blind = parseGuard(round({ logs: false }), 'web1', 1)
   expect([blind.entries, blind.failed, judge(blind)]).toEqual([[], 0, { level: 'warn', notes: ['the SSH log could not be read (deploy is neither root nor in adm): who came in is not known'] }])
@@ -142,12 +142,48 @@ test('the guard takes a host as SSH knows it and nothing a shell or ssh would re
   expect([there[0], there[3], there[4]?.startsWith('sh -c \'')]).toEqual(['bash', 'web1', true])
 })
 
-test('the round is told in rows, an unread log as such and this machine without an outside', () => {
-  const told = sayGuard(parseGuard(round({ doors: [22, 3000] }), 'web1', 1)).split('\n')
-  expect(told[0]).toBe('net7 guard · web1 (deploy@web1): 1 thing to look at')
-  expect(told[1]).toBe('  - port 3000 answers from outside')
-  expect(told.find(l => l.includes('came in'))).toBe('  came in, 30 d 703 publickey deploy from 198.51.100.4 (here)')
-  expect(told.find(l => l.startsWith('  from outside'))).toBe('  from outside  22, 3000 answer at 203.0.113.7')
-  expect(sayGuard(parseGuard(round({ logs: false }), 'web1', 1))).toContain('came in, 30 d not readable')
-  expect(sayGuard(parseGuard(round(), '', 1))).not.toContain('from outside')
+test('what listens is sorted by who can knock, neighbours said as one stretch', () => {
+  const ports = parseListen([
+    'LISTEN 0 4096 0.0.0.0:22 0.0.0.0:*', 'LISTEN 0 4096 [::]:22 [::]:*',
+    'LISTEN 0 4096 100.109.119.89%tailscale0:8443 0.0.0.0:*', 'LISTEN 0 4096 [fd7a:115c:a1e0::1]%tailscale0:8444 [::]:*', 'LISTEN 0 5 100.109.119.89:8797 0.0.0.0:* users:(("python3",pid=7,fd=3))',
+    'LISTEN 0 4096 10.255.255.254:7681 0.0.0.0:*', 'LISTEN 0 4096 127.0.0.1:8750 0.0.0.0:*', 'LISTEN 0 4096 *:9090 *:* users:(("mesh7",pid=3,fd=19))',
+    'LISTEN 0 4096 100.109.119.89%tailscale0:9090 0.0.0.0:*',                   // the widest address of a port is kept
+  ])
+  expect(ports.map(p => `${p.port} ${p.reach}`)).toEqual(['22 all', '7681 one', '8443 tailnet', '8444 tailnet', '8797 tailnet', '9090 all'])
+  expect(sayPorts(ports.filter(p => p.reach === 'tailnet'))).toBe('8443–8444 · 8797 python3')
+  expect(sayPorts([{ port: 54321, who: '' }, { port: 54322, who: '' }, { port: 54324, who: '' }, { port: 22, who: 'ssh' }])).toBe('22 ssh · 54321–54322 · 54324')
+  const g = { from: '198.51.100.4', self: ['203.0.113.7'] }
+  expect(['198.51.100.4', '203.0.113.7', '100.101.49.13', '192.168.1.9', '192.0.2.50'].map(ip => whence(ip, g))).toEqual(['here', 'this machine', 'tailnet', 'home network', 'elsewhere'])
+})
+
+test('the round is told as a verdict and four questions, the blind spots in one place', () => {
+  expect(sayGuard(parseGuard(round({ doors: [22, 3000], blind: 87 }), 'web1', 1))).toBe([
+    'net7 guard · web1 (deploy@web1) · 1 to fix',
+    '  ! port 3000 answers from outside',
+    '',
+    '  who came in · 30 days',
+    '    703×   deploy  publickey  198.51.100.4     here',
+    '    turned away: 36897 passwords, 16030 unknown names · most from 192.0.2.50 (2884), 192.0.2.9 (1995)',
+    '    accounts they tried: root 17538 · backup 40',
+    '',
+    '  what is open',
+    '    sshd accepts        publickey',
+    '    answers from here   22 · 3000  (at 203.0.113.7)',
+    '    listens to everyone 22 ssh · 443 nginx',
+    '',
+    '  what is new · 30 days',
+    '    keys                1 in ~/.ssh/authorized_keys, last changed 2026-03-15',
+    '    units and cron      app.service · 2 lines in deploy\'s crontab',
+    '    programs            41 of deploy\'s looked at: none from a deleted file or a temporary folder',
+    '',
+    '  not looked at',
+    '    87 programs of other accounts (only root sees where they run from)',
+    '    the firewall\'s rules and root\'s own keys (root only)',
+  ].join('\n'))
+  const blind = sayGuard(parseGuard(round({ logs: false }), 'web1', 1))
+  expect([blind.includes('who came in · 30 days'), blind.includes('    the SSH log, so who came in (deploy is neither root nor in adm)')]).toEqual([false, true])
+  expect(sayGuard(parseGuard(round(), '', 1)).split('\n').slice(0, 2)).toEqual(['net7 guard · this machine (deploy@web1) · all clear', '  ✓ nothing wrong: 703 SSH entries in 30 days, all from near, 36897 passwords refused'])
+  expect(sayGuard(parseGuard(round(), '', 1))).not.toContain('answers from here')
+  const shut = sayGuard(parseGuard(round({ inside: false, doors: [22] }), 'web1', 1))
+  expect([shut.split('\n')[0], shut.includes('    everything inside: the keys, the programs, what listens')]).toEqual(['net7 guard · web1 · alert', true])
 })

@@ -36,6 +36,10 @@ export type Who = { ip: string; org: string; city: string }
 // The last speed test, in Mbit/s, and when.
 export type Speed = { down: number; up: number; at: number }
 
+// A port that listens beyond the loopback, and for whom: every address of the machine ('all'), its tailnet
+// address only ('tailnet'), or one other address ('one').
+export type Listen = { port: number; who: string; reach: 'all' | 'tailnet' | 'one' }
+
 // Someone who came in over SSH in the last thirty days: how many times, by which method (publickey, password),
 // under which account, from which address.
 export type Entry = { n: number; method: string; user: string; from: string }
@@ -73,7 +77,7 @@ export type Guard = {
   ghosts: { pid: number; exe: string }[]
   fresh: string[]
   cron: number
-  ports: Port[]
+  ports: Listen[]
   doors: number[]
 }
 

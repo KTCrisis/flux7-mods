@@ -7,7 +7,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
-import type { Board, Device, Entry, Guard, Port, Reach, Say, Speed, Who } from '../types'
+import type { Board, Device, Entry, Guard, Listen, Port, Reach, Say, Speed, Who } from '../types'
 
 const PANE = 'net7'
 const READ_MS = 30_000
@@ -275,6 +275,35 @@ const quoted = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`
 // This machine when no host is named.
 export const guardArgv = (host: string): string[] => (host === '' ? ['sh', '-c', GUARD] : ['bash', '-c', OUTSIDE, host, `sh -c ${quoted(GUARD)}`])
 
+const TAILNET = /^(100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|\[?fd7a:)/i
+const WIDER: Record<Listen['reach'], number> = { all: 2, tailnet: 1, one: 0 }
+// What listens, and for whom: on every address of the machine ('all': the whole network can knock), on its
+// tailnet address only ('tailnet'), or on one other address ('one'). What listens on the loopback alone is left
+// out: nobody else reaches it. A port keeps the widest of its addresses.
+export const parseListen = (lines: readonly string[]): Listen[] => {
+  const seen = new Map<number, Listen>()
+  for (const line of lines) {
+    const local = line.trim().split(/\s+/)[3] ?? ''
+    const cut = local.lastIndexOf(':')
+    const port = Number(local.slice(cut + 1))
+    const host = local.slice(0, cut).replace(/%[^\]]*/, '')
+    if (cut < 0 || !Number.isInteger(port) || port <= 0 || host.startsWith('127.') || host === '[::1]') continue
+    const reach: Listen['reach'] = host === '*' || host === '0.0.0.0' || host === '[::]' ? 'all' : TAILNET.test(host) ? 'tailnet' : 'one'
+    const before = seen.get(port)
+    seen.set(port, { port, who: before?.who || (/\(\("([^"]+)"/.exec(line)?.[1] ?? USUAL[port] ?? ''), reach: before !== undefined && WIDER[before.reach] > WIDER[reach] ? before.reach : reach })
+  }
+  return [...seen.values()].sort((a, b) => a.port - b.port)
+}
+// "22 ssh · 8443–8447 · 9090 mesh7": neighbours that share a name (or have none) are said as one stretch.
+export const sayPorts = (ports: readonly { port: number; who: string }[]): string => {
+  const runs: { from: number; to: number; who: string }[] = []
+  for (const p of [...ports].sort((a, b) => a.port - b.port)) {
+    const last = runs[runs.length - 1]
+    if (last !== undefined && p.port === last.to + 1 && p.who === last.who) last.to = p.port
+    else runs.push({ from: p.port, to: p.port, who: p.who })
+  }
+  return runs.map(r => `${r.from}${r.to > r.from ? `–${r.to}` : ''}${r.who === '' ? '' : ` ${r.who}`}`).join(' · ')
+}
 const tagged = (out: string, name: string): string[] => out.split('\n').filter(l => l.startsWith(`@${name} `)).map(l => l.slice(name.length + 2).trim())
 const counted = (lines: readonly string[]): { n: number; what: string }[] => lines.map(l => ({ n: Number(l.split(' ')[0]), what: l.split(' ').slice(1).join(' ') })).filter(c => Number.isFinite(c.n) && c.what !== '').sort((a, b) => b.n - a.n)
 // The round from what the shells printed. `reached` is false when the inside shell printed nothing (the server
@@ -304,14 +333,21 @@ export const parseGuard = (out: string, host: string, at: number): Guard => {
     ghosts: tagged(out, 'ghost').map(l => ({ pid: Number(l.split(' ')[0]), exe: l.split(' ').slice(1).join(' ') })),
     fresh: tagged(out, 'new'),
     cron: Number(tagged(out, 'cron')[0] ?? 0),
-    ports: parsePorts(tagged(out, 'port')),
+    ports: parseListen(tagged(out, 'port')),
     doors: tagged(out, 'door').map(Number).filter(Number.isInteger).sort((a, b) => a - b),
   }
 }
+// Where an address is, in a word.
+export const whence = (ip: string, g: Pick<Guard, 'from' | 'self'>): 'here' | 'this machine' | 'tailnet' | 'home network' | 'elsewhere' =>
+  ip === g.from ? 'here'
+    : g.self.includes(ip) || /^(127\.|::1$)/.test(ip) ? 'this machine'
+      : TAILNET.test(ip) ? 'tailnet'
+        : /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|fe80:|f[cd][0-9a-f]{2}:)/i.test(ip) ? 'home network'
+          : 'elsewhere'
 // An address that is no stranger: this machine or the home network, the tailnet (100.64.0.0/10), the machine
 // that is looked at, or the one the round is made from.
 export const isNear = (ip: string, g: Pick<Guard, 'from' | 'self'>): boolean =>
-  ip === g.from || g.self.includes(ip) || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(ip) || /^(::1$|fe80:|f[cd][0-9a-f]{2}:)/i.test(ip)
+  whence(ip, g) !== 'elsewhere'
 const PUBLIC_DOORS = [22, 80, 443]
 // What the round found, the gravest first: 'error' for someone who came in from elsewhere (or a server that
 // could not be entered at all), 'warn' for what is left ajar or could not be read, 'fine' otherwise. A password
@@ -333,30 +369,45 @@ export const judge = (g: Guard): { level: 'fine' | 'warn' | 'error'; notes: stri
   return { level: 'fine', notes: [`nothing wrong${g.blind > 0 ? ' in what could be read' : ''}: ${entries} SSH entries in 30 days, all from near, ${g.failed} passwords refused${g.blind > 0 ? `, ${g.blind} programs of other accounts not looked at` : ''}`] }
 }
 const day = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
-// The round in full, for the answer to the command: the pane only keeps the verdict.
+// The round in full, for the answer to the command (the pane only keeps the verdict). The verdict first, then
+// four questions in the order one asks them: who came in, what is open, what is new, and what was not looked at,
+// so that the blind spots stand in one place instead of hiding in each row.
 export const sayGuard = (g: Guard): string => {
   const v = judge(g)
-  const row = (name: string, text: string): string => `  ${name.padEnd(14)}${text}`
-  const entry = (e: Entry): string => `${e.n} ${e.method} ${e.user} from ${e.from}${e.from === g.from ? ' (here)' : isNear(e.from, g) ? '' : ' (elsewhere)'}`
-  const open = g.ports.filter(p => p.open)
+  const mark = v.level === 'fine' ? '✓' : v.level === 'warn' ? '!' : '✗'
+  const title = (text: string): string => `\n  ${text}`
+  const row = (name: string, text: string): string => `    ${name.padEnd(20)}${text}`
+  const wide = (key: 'user' | 'method'): number => Math.max(0, ...g.entries.map(e => e[key].length)) + 2
+  const entry = (e: Entry): string => `    ${`${e.n}×`.padEnd(7)}${e.user.padEnd(wide('user'))}${e.method.padEnd(wide('method'))}${e.from.padEnd(17)}${whence(e.from, g)}`
+  const at = (reach: Listen['reach']): Listen[] => g.ports.filter(p => p.reach === reach)
+  const unseen = [
+    ...(g.reached ? [] : ['everything inside: the keys, the programs, what listens']),
+    ...(g.reached && !g.logs ? [`the SSH log, so who came in (${g.user} is neither root nor in adm)`] : []),
+    ...(g.blind > 0 ? [`${g.blind} programs of other accounts (only root sees where they run from)`] : []),
+    ...(g.reached && g.user !== 'root' ? ["the firewall's rules and root's own keys (root only)"] : []),
+  ]
   return [
-    `net7 guard · ${g.host || 'this machine'}${g.reached ? ` (${g.user}@${g.name})` : ''}: ${v.level === 'fine' ? v.notes[0] : `${v.notes.length} thing${v.notes.length > 1 ? 's' : ''} to look at`}`,
-    ...(v.level === 'fine' ? [] : v.notes.map(n => `  ${v.level === 'error' ? '!' : '-'} ${n}`)),
-    ...(!g.reached ? [] : [
-      row('came in, 30 d', !g.logs ? 'not readable' : g.entries.length === 0 ? 'nobody' : g.entries.slice(0, 6).map(entry).join(' · ')),
-      ...(!g.logs ? [] : [
-        row('refused', `${g.failed} passwords, ${g.invalid} names that do not exist${g.sources.length === 0 ? '' : ` · most from ${g.sources.map(s => `${s.ip} (${s.n})`).join(', ')}`}`),
-        ...(g.named.length === 0 ? [] : [row('names tried', g.named.map(n => `${n.user} ${n.n}`).join(' · '))]),
-      ]),
+    `net7 guard · ${g.host || 'this machine'}${g.reached ? ` (${g.user}@${g.name})` : ''} · ${v.level === 'fine' ? 'all clear' : v.level === 'warn' ? `${v.notes.length} to fix` : 'alert'}`,
+    ...v.notes.map(n => `  ${mark} ${n}`),
+    ...(!g.reached || !g.logs ? [] : [
+      title('who came in · 30 days'),
+      ...(g.entries.length === 0 ? ['    nobody'] : g.entries.slice(0, 8).map(entry)),
+      `    turned away: ${g.failed} passwords, ${g.invalid} unknown names${g.sources.length === 0 ? '' : ` · most from ${g.sources.map(s => `${s.ip} (${s.n})`).join(', ')}`}`,
+      ...(g.named.length === 0 ? [] : [`    accounts they tried: ${g.named.map(n => `${n.user} ${n.n}`).join(' · ')}`]),
     ]),
-    row('sshd takes', g.offers.length === 0 ? 'no answer (no sshd, or it is closed to here)' : g.offers.join(', ')),
-    ...(g.host === '' ? [] : [row('from outside', g.doors.length === 0 ? `no door answers at ${g.addr || g.host}` : `${g.doors.join(', ')} answer at ${g.addr || g.host}`)]),
+    title('what is open'),
+    row('sshd accepts', g.offers.length === 0 ? 'no answer (no sshd, or closed to here)' : g.offers.join(', ')),
+    ...(g.host === '' ? [] : [row('answers from here', g.doors.length === 0 ? `nothing at ${g.addr || g.host}` : `${g.doors.join(' · ')}  (at ${g.addr || g.host})`)]),
     ...(!g.reached ? [] : [
-      row('keys', g.keys.length === 0 ? 'none readable' : g.keys.map(k => `${k.path}: ${k.count}, changed ${day(k.at)}`).join(' · ')),
-      row('programs', `${g.checked} looked at, ${g.ghosts.length === 0 ? 'none' : g.ghosts.length} from a file that is gone or a temporary folder${g.blind === 0 ? '' : ` · ${g.blind} of other accounts not readable (root would see them)`}`),
-      row('listening', open.length === 0 ? 'nothing beyond the machine itself' : open.map(p => `${p.port}${p.who === '' ? '' : ` ${p.who}`}`).join(' · ')),
-      row('new in 30 d', `${g.fresh.length === 0 ? 'no unit, no cron file' : g.fresh.map(f => f.split('/').pop()).join(' · ')} · ${g.cron} lines in ${g.user}'s crontab`),
+      row('listens to everyone', at('all').length === 0 ? 'nothing' : sayPorts(at('all'))),
+      ...(at('tailnet').length === 0 ? [] : [row('to the tailnet only', sayPorts(at('tailnet')))]),
+      ...(at('one').length === 0 ? [] : [row('on one address only', sayPorts(at('one')))]),
+      title('what is new · 30 days'),
+      row('keys', g.keys.length === 0 ? 'none readable' : g.keys.map(k => `${k.count} in ${k.path.replace(/^\/home\/[^/]+/, '~')}, last changed ${day(k.at)}`).join(' · ')),
+      row('units and cron', `${g.fresh.length === 0 ? 'nothing new' : g.fresh.map(f => f.split('/').pop()).join(' · ')} · ${g.cron} lines in ${g.user}'s crontab`),
+      row('programs', `${g.checked} of ${g.user}'s looked at: ${g.ghosts.length === 0 ? 'none' : g.ghosts.map(p => `${p.pid} ${p.exe}`).join(', ')} from a deleted file or a temporary folder`),
     ]),
+    ...(unseen.length === 0 ? [] : [title('not looked at'), ...unseen.map(u => `    ${u}`)]),
   ].join('\n')
 }
 
@@ -368,7 +419,19 @@ const CYAN = '#00e5ff'
 const RED = '#ff2a6d'
 const AMBER = '#ffb000'
 const GREEN = '#3ddc84'
-const HELP = '/net: open the pane and read the connection · /net now: read again · /net speed: measure the speed (spends about 200 MB at most) · /net lan: count the devices of the home network (needs nmap) · /net guard: who came in over SSH and what is left ajar on this machine · /net guard <host>: the same on a server, with what it shows from outside · /net who: the public address in full · /net off: close the pane'
+const HELP = [
+  'the connection, in a pane',
+  '  /net                open the pane and read the connection',
+  '  /net now            read again',
+  '  /net off            close the pane',
+  'on demand',
+  '  /net speed          measure the speed (spends about 200 MB at most)',
+  '  /net lan            count the devices of the home network (needs nmap)',
+  '  /net who            the public address in full',
+  'the guard',
+  '  /net guard          who came in over SSH and what is open, on this machine',
+  '  /net guard <host>   the same on a server, with what it shows from outside',
+].join('\n')
 // Read only: avatar7 owns it and says which face is on duty; the frame takes its color, as jukebox7's does.
 const tint = { plugin: 'avatar7', key: 'color' } as const
 
@@ -553,7 +616,7 @@ export const register: Register = on => {
       }
       return { text: speed === undefined ? 'net7: the speed test gave nothing (speed.cloudflare.com did not answer).' : `net7: ↓ ${speed.down} Mbit/s · ↑ ${speed.up} Mbit/s, measured against Cloudflare.` }
     }
-    if (args !== '' && args !== 'now') return { text: `net7: ${HELP}` }
+    if (args !== '' && args !== 'now') return { text: `net7\n${HELP}` }
     await show($)
     const b = await read($, board)
     return { text: `net7: ${verdict(b).text} (box ${sayReach(b.box)}, world ${sayReach(b.world[0] ?? NONE)}; read every 30 s while the pane is open, /net off closes it).` }
