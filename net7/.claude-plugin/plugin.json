@@ -1,7 +1,7 @@
 {
   "name": "net7",
   "version": "0.1.0",
-  "description": "The connection in a pane: where a slowness comes from (this machine, the box, the ISP, further), the web's answer times, the ports this machine opens, and a speed test on demand",
+  "description": "The connection in a pane: where a slowness comes from (this machine, the box, the ISP, further), the web's answer times, the ports this machine opens, a speed test on demand, and a guard round: who came in over SSH, what a server shows from outside",
   "license": "MIT",
   "types": "./types/index.d.ts"
 }

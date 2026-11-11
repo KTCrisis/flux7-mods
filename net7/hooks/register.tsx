@@ -1,12 +1,13 @@
 // net7: the connection in a pane. Every half minute while the pane is open, a few pings at four distances (the
 // box, the ISP's first router, two public resolvers) and one small HTTPS page say whether the network is well
 // and, when it is not, where the trouble starts: at home, at the ISP, or further. Under it, the ports this
-// machine opens to the network. A speed test runs only when asked (/net speed): it spends bandwidth.
+// machine opens to the network. A speed test runs only when asked (/net speed): it spends bandwidth. So does the
+// guard (/net guard): who came in over SSH, and what a server shows from outside.
 // Nothing is installed for it: ping, curl, ip and ss do the work, in one shell call per reading.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
-import type { Board, Device, Port, Reach, Say, Speed, Who } from '../types'
+import type { Board, Device, Entry, Guard, Port, Reach, Say, Speed, Who } from '../types'
 
 const PANE = 'net7'
 const READ_MS = 30_000
@@ -22,6 +23,8 @@ let speed: Speed | undefined
 let measuring = false
 // The devices of the home network, counted when asked (/net lan).
 let lan: { at: number; net: string; devices: Device[] } | undefined
+// The last guard round (/net guard), of this machine or of a server.
+let guard: Guard | undefined
 
 // ---- the reading
 
@@ -207,6 +210,144 @@ export const parseSweep = (out: string, gateway: string): { net: string; devices
   return { net: lines.find(l => l.startsWith('@net '))?.slice(5).trim() ?? '', devices: devices.sort((a, b) => last(a.ip) - last(b.ip)), refused: lines.includes('@refused'), missing: lines.includes('@nonmap') }
 }
 
+// ---- the guard
+
+// Who came in, and what is left ajar: one shell on the machine that is looked at, this one or a server reached
+// over SSH. Nothing here asks for root, so what only root can read (the firewall's rules, root's own keys) is not
+// read; and the SSH log is read only by root or by a member of adm or systemd-journal: when it cannot be, the
+// shell says so (@logs no) rather than report a month without a single attempt. The log is boiled down where it
+// lies, a busy server writes tens of megabytes of refused passwords a month.
+const GUARD = `
+echo "@me $(id -un) $(hostname)"
+echo "@from $(echo "$SSH_CONNECTION" | cut -d' ' -f1)"
+ip -o addr show scope global 2>/dev/null | awk '{sub(/\\/.*/, "", $4); print "@self", $4}'
+if [ "$(id -u)" = 0 ] || id -nG | tr ' ' '\\n' | grep -qxE 'adm|systemd-journal'; then
+  echo "@logs yes"
+  seen=$(journalctl -u ssh -u sshd --since "30 days ago" --no-pager -q -o cat 2>/dev/null | awk '
+    /^Accepted /{a[$2" "$4" "$6]++}
+    /^Failed password/{f++; for(i=1;i<=NF;i++){ if($i=="from") s[$(i+1)]++; if($i=="for" && $(i+1)!="invalid") u[$(i+1)]++ }}
+    /^Invalid user/{v++}
+    END{print "@fail", f+0, v+0; for(k in a) print "@in", a[k], k; for(k in s) print "@src", s[k], k; for(k in u) print "@named", u[k], k}')
+  echo "$seen" | grep -E '^@(fail|in) '
+  echo "$seen" | grep '^@src ' | sort -k2,2nr | head -3
+  echo "$seen" | grep '^@named ' | sort -k2,2nr | head -5
+else
+  echo "@logs no"
+fi
+echo "@offers $(ssh -o BatchMode=yes -o PreferredAuthentications=none -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=4 "$(id -un)@127.0.0.1" true 2>&1 | sed -n 's/.*Permission denied (\\(.*\\))\\..*/\\1/p')"
+for f in "$HOME/.ssh/authorized_keys" /root/.ssh/authorized_keys; do
+  [ -r "$f" ] && echo "@keys $f $(grep -cvE '^[[:space:]]*(#|$)' "$f") $(stat -c %Y "$f")"
+done
+for p in /proc/[0-9]*; do
+  e=$(readlink "$p/exe" 2>/dev/null) || continue
+  case "$e" in *" (deleted)"|/tmp/*|/dev/shm/*|/var/tmp/*) echo "@ghost $(basename "$p") $e";; esac
+done
+find /etc/systemd/system /etc/cron.d /etc/cron.hourly /etc/cron.daily "$HOME/.config/systemd/user" -maxdepth 1 -type f ! -name 'snap[.-]*' -mtime -30 2>/dev/null | head -12 | sed 's/^/@new /'
+echo "@cron $(crontab -l 2>/dev/null | grep -cvE '^[[:space:]]*(#|$)')"
+ss -tlnpH 2>/dev/null | sed 's/^/@port /'
+`
+// The doors a server is tried at from here: the usual ones, and those a service left in a hurry tends to keep.
+const DOORS = [21, 22, 23, 25, 80, 443, 3000, 3306, 5000, 5432, 6379, 8000, 8080, 8443, 9000, 9090, 11434, 27017] as const
+// A server is looked at twice. From outside first, which needs no right on it: its address as SSH resolves the
+// name ($0), what its sshd offers to a caller who shows no key, and which doors answer. Then from inside, the
+// shell above passed whole as the remote command ($1). The outside answer on what sshd offers comes first in
+// what is printed, and the first one is kept: it is the one a stranger gets.
+const OUTSIDE = `
+addr=$(ssh -G "$0" 2>/dev/null | awk '$1=="hostname"{print $2; exit}')
+echo "@addr $addr"
+echo "@offers $(ssh -o BatchMode=yes -o PreferredAuthentications=none -o PubkeyAuthentication=no -o ConnectTimeout=6 "$0" true 2>&1 | sed -n 's/.*Permission denied (\\(.*\\))\\..*/\\1/p')"
+for p in ${DOORS.join(' ')}; do (timeout 3 bash -c "exec 3<>/dev/tcp/$addr/$p" 2>/dev/null && echo "@door $p") & done
+wait
+ssh -o BatchMode=yes -o ConnectTimeout=8 "$0" "$1" 2>/dev/null
+`
+// A name SSH can be handed as it is: a host, user@host or an alias of ~/.ssh/config, and nothing that could be
+// read as an option or by a shell.
+export const isHost = (text: string): boolean => /^[A-Za-z0-9_][A-Za-z0-9._@:-]*$/.test(text)
+const quoted = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`
+// This machine when no host is named.
+export const guardArgv = (host: string): string[] => (host === '' ? ['sh', '-c', GUARD] : ['bash', '-c', OUTSIDE, host, `sh -c ${quoted(GUARD)}`])
+
+const tagged = (out: string, name: string): string[] => out.split('\n').filter(l => l.startsWith(`@${name} `)).map(l => l.slice(name.length + 2).trim())
+const counted = (lines: readonly string[]): { n: number; what: string }[] => lines.map(l => ({ n: Number(l.split(' ')[0]), what: l.split(' ').slice(1).join(' ') })).filter(c => Number.isFinite(c.n) && c.what !== '').sort((a, b) => b.n - a.n)
+// The round from what the shells printed. `reached` is false when the inside shell printed nothing (the server
+// let nobody in without a password, or did not answer): what was seen from outside is kept all the same.
+export const parseGuard = (out: string, host: string, at: number): Guard => {
+  const [user = '', name = ''] = (tagged(out, 'me')[0] ?? '').split(' ')
+  const [failed = 0, invalid = 0] = (tagged(out, 'fail')[0] ?? '').split(' ').map(Number)
+  const keys = new Map(tagged(out, 'keys').map(l => l.split(' ')).map(([path = '', count = '0', changed = '0']) => [path, { path, count: Number(count), at: Number(changed) * 1000 }] as const))
+  return {
+    at, host, user, name,
+    reached: user !== '',
+    logs: tagged(out, 'logs')[0] === 'yes',
+    from: tagged(out, 'from')[0] ?? '',
+    self: tagged(out, 'self'),
+    addr: tagged(out, 'addr')[0] ?? '',
+    entries: counted(tagged(out, 'in')).flatMap(c => {
+      const [method = '', who = '', from = ''] = c.what.split(' ')
+      return from === '' ? [] : [{ n: c.n, method, user: who, from }]
+    }),
+    failed, invalid,
+    sources: counted(tagged(out, 'src')).map(c => ({ n: c.n, ip: c.what })),
+    named: counted(tagged(out, 'named')).map(c => ({ n: c.n, user: c.what })),
+    offers: (tagged(out, 'offers').find(l => l !== '') ?? '').split(',').filter(m => m !== ''),
+    keys: [...keys.values()],
+    ghosts: tagged(out, 'ghost').map(l => ({ pid: Number(l.split(' ')[0]), exe: l.split(' ').slice(1).join(' ') })),
+    fresh: tagged(out, 'new'),
+    cron: Number(tagged(out, 'cron')[0] ?? 0),
+    ports: parsePorts(tagged(out, 'port')),
+    doors: tagged(out, 'door').map(Number).filter(Number.isInteger).sort((a, b) => a - b),
+  }
+}
+// An address that is no stranger: this machine or the home network, the tailnet (100.64.0.0/10), the machine
+// that is looked at, or the one the round is made from.
+export const isNear = (ip: string, g: Pick<Guard, 'from' | 'self'>): boolean =>
+  ip === g.from || g.self.includes(ip) || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(ip) || /^(::1$|fe80:|f[cd][0-9a-f]{2}:)/i.test(ip)
+const PUBLIC_DOORS = [22, 80, 443]
+// What the round found, the gravest first: 'error' for someone who came in from elsewhere (or a server that
+// could not be entered at all), 'warn' for what is left ajar or could not be read, 'fine' otherwise. A password
+// that got in from a near address is not an error of its own: it is said by "sshd still takes passwords".
+export const judge = (g: Guard): { level: 'fine' | 'warn' | 'error'; notes: string[] } => {
+  const errors: string[] = [], warns: string[] = []
+  if (!g.reached) errors.push(`${g.host || 'this machine'} could not be looked at from inside (no answer, or no key accepted)`)
+  const far = g.entries.filter(e => !isNear(e.from, g))
+  if (far.length > 0) errors.push(`${far.reduce((n, e) => n + e.n, 0)} SSH entries from elsewhere: ${far.slice(0, 4).map(e => `${e.from} (${e.user}, ${e.method})`).join(', ')}`)
+  if (g.ghosts.length > 0) warns.push(`${g.ghosts.length} programs run from a file that is gone or from a temporary folder: ${g.ghosts.slice(0, 3).map(p => `${p.pid} ${p.exe}`).join(', ')}`)
+  if (g.offers.some(m => m !== 'publickey')) warns.push(`sshd still takes ${g.offers.filter(m => m !== 'publickey').join(' and ')}: a key alone would close it to guesses`)
+  const odd = g.doors.filter(p => !PUBLIC_DOORS.includes(p))
+  if (odd.length > 0) warns.push(`port${odd.length > 1 ? 's' : ''} ${odd.join(', ')} answer${odd.length > 1 ? '' : 's'} from outside`)
+  if (g.reached && !g.logs) warns.push(`the SSH log could not be read (${g.user} is neither root nor in adm): who came in is not known`)
+  const notes = [...errors, ...warns]
+  if (notes.length > 0) return { level: errors.length > 0 ? 'error' : 'warn', notes }
+  const entries = g.entries.reduce((n, e) => n + e.n, 0)
+  return { level: 'fine', notes: [`nothing wrong: ${entries} SSH entries in 30 days, all from near, ${g.failed} passwords refused`] }
+}
+const day = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
+// The round in full, for the answer to the command: the pane only keeps the verdict.
+export const sayGuard = (g: Guard): string => {
+  const v = judge(g)
+  const row = (name: string, text: string): string => `  ${name.padEnd(14)}${text}`
+  const entry = (e: Entry): string => `${e.n} ${e.method} ${e.user} from ${e.from}${e.from === g.from ? ' (here)' : isNear(e.from, g) ? '' : ' (elsewhere)'}`
+  const open = g.ports.filter(p => p.open)
+  return [
+    `net7 guard · ${g.host || 'this machine'}${g.reached ? ` (${g.user}@${g.name})` : ''}: ${v.level === 'fine' ? v.notes[0] : `${v.notes.length} thing${v.notes.length > 1 ? 's' : ''} to look at`}`,
+    ...(v.level === 'fine' ? [] : v.notes.map(n => `  ${v.level === 'error' ? '!' : '-'} ${n}`)),
+    ...(!g.reached ? [] : [
+      row('came in, 30 d', !g.logs ? 'not readable' : g.entries.length === 0 ? 'nobody' : g.entries.slice(0, 6).map(entry).join(' · ')),
+      ...(!g.logs ? [] : [
+        row('refused', `${g.failed} passwords, ${g.invalid} names that do not exist${g.sources.length === 0 ? '' : ` · most from ${g.sources.map(s => `${s.ip} (${s.n})`).join(', ')}`}`),
+        ...(g.named.length === 0 ? [] : [row('names tried', g.named.map(n => `${n.user} ${n.n}`).join(' · '))]),
+      ]),
+    ]),
+    row('sshd takes', g.offers.length === 0 ? 'no answer (no sshd, or it is closed to here)' : g.offers.join(', ')),
+    ...(g.host === '' ? [] : [row('from outside', g.doors.length === 0 ? `no door answers at ${g.addr || g.host}` : `${g.doors.join(', ')} answer at ${g.addr || g.host}`)]),
+    ...(!g.reached ? [] : [
+      row('keys', g.keys.length === 0 ? 'none readable' : g.keys.map(k => `${k.path}: ${k.count}, changed ${day(k.at)}`).join(' · ')),
+      row('listening', open.length === 0 ? 'nothing beyond the machine itself' : open.map(p => `${p.port}${p.who === '' ? '' : ` ${p.who}`}`).join(' · ')),
+      row('new in 30 d', `${g.fresh.length === 0 ? 'no unit, no cron file' : g.fresh.map(f => f.split('/').pop()).join(' · ')} · ${g.cron} lines in ${g.user}'s crontab`),
+    ]),
+  ].join('\n')
+}
+
 // ---- the pane
 
 // The palette the mods share, avatar7's.
@@ -215,7 +356,7 @@ const CYAN = '#00e5ff'
 const RED = '#ff2a6d'
 const AMBER = '#ffb000'
 const GREEN = '#3ddc84'
-const HELP = '/net: open the pane and read the connection · /net now: read again · /net speed: measure the speed (spends about 200 MB at most) · /net lan: count the devices of the home network (needs nmap) · /net who: the public address in full · /net off: close the pane'
+const HELP = '/net: open the pane and read the connection · /net now: read again · /net speed: measure the speed (spends about 200 MB at most) · /net lan: count the devices of the home network (needs nmap) · /net guard: who came in over SSH and what is left ajar on this machine · /net guard <host>: the same on a server, with what it shows from outside · /net who: the public address in full · /net off: close the pane'
 // Read only: avatar7 owns it and says which face is on duty; the frame takes its color, as jukebox7's does.
 const tint = { plugin: 'avatar7', key: 'color' } as const
 
@@ -276,7 +417,8 @@ export const register: Register = on => {
     const curveRows = rows >= 18 ? 2 : 0
     // Under the curve, the devices of the home network once they were counted (two rows are kept for the ports),
     // then the ports.
-    const under = Math.max(0, rows - 12 - curveRows)
+    const under = Math.max(0, rows - 12 - curveRows - (guard === undefined ? 0 : 1))
+    const round = guard === undefined ? undefined : judge(guard)
     const half = Math.max(1, Math.floor((columns - 2) / 40))
     const devices = lan === undefined ? [] : lan.devices.slice(0, Math.max(0, under - 3) * half)
     const deviceRows = lan === undefined ? 0 : 1 + Math.ceil(devices.length / half)
@@ -315,6 +457,12 @@ export const register: Register = on => {
         {curveRows > 0 && curve(b.trail, Math.max(1, columns - 2), curveRows).map((line, y) => (
           <Text key={`c${y}`} backgroundColor={BLACK} color={v.level === 'error' ? RED : accent}>{` ${line}`}</Text>
         ))}
+        {guard !== undefined && round !== undefined && (
+          <Text backgroundColor={BLACK} wrap="truncate-end">
+            <Text dimColor>{` guard ${guard.host || 'this machine'} at ${hour(guard.at)}: `}</Text>
+            <Text color={round.level === 'fine' ? GREEN : round.level === 'warn' ? AMBER : RED}>{round.notes[0]}{round.notes.length > 1 ? ` (+${round.notes.length - 1})` : ''}</Text>
+          </Text>
+        )}
         {lan !== undefined && (
           <Text backgroundColor={BLACK} dimColor wrap="truncate-end">{` ${lan.devices.length} devices on ${lan.net} at ${hour(lan.at)}${devices.length < lan.devices.length ? ` (${lan.devices.length - devices.length} not shown)` : ''}`}</Text>
         )}
@@ -350,7 +498,7 @@ export const register: Register = on => {
   })
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'net', description: 'net7: the connection, where it is slow, the open ports, a speed test (/net, /net now, /net speed, /net lan, /net who, /net off, /net help)' })
+    await $.command.register({ name: 'net', description: 'net7: the connection, where it is slow, the open ports, a speed test, a guard round (/net, /net now, /net speed, /net lan, /net guard [host], /net who, /net off, /net help)' })
     return next(e)
   })
 
@@ -369,6 +517,13 @@ export const register: Register = on => {
       lan = { at: Date.now(), net: got.net, devices: got.devices }
       $.ui.invalidate('ui.render')
       return { text: `net7: ${got.devices.length} devices answered on ${got.net} (this machine not counted):\n${got.devices.map(d => `${d.ip.padEnd(16)}${d.mac}  ${[d.name, d.maker].filter(t => t !== '').join(' · ') || 'unknown'}`).join('\n')}` }
+    }
+    if (args === 'guard' || args.startsWith('guard ')) {
+      const host = args.slice(5).trim()
+      if (host !== '' && !isHost(host)) return { text: 'net7: /net guard takes one host as SSH knows it (a name, user@host, or an alias of ~/.ssh/config).' }
+      guard = parseGuard((await $.process.run(guardArgv(host), { timeoutMs: 60_000 })).stdout, host, Date.now())
+      $.ui.invalidate('ui.render')
+      return { text: sayGuard(guard) }
     }
     if (args === 'who') {
       if (who === undefined) await load($)
