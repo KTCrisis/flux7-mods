@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { draw, isLit, locate, newlyStrong, parseNature, parsePress, parseQuakes, plain, sayPoint, size, sun } from './register'
+import { draw, isLit, locate, newlyStrong, parseCyclones, parseNature, parsePress, parseQuakes, plain, sayPoint, size, settle, sun } from './register'
 
 const near = (got: number, want: number, by: number): boolean => Math.abs(got - want) <= by
 
@@ -20,12 +20,37 @@ test('it is day under the sun, night on the other side, and the pole keeps its s
 
 test('a quake and a natural event come with their place, an area and a broken entry are left out', () => {
   const q = parseQuakes(JSON.stringify({ features: [{ properties: { mag: 4.9, place: '207 km NW of Port-Olry, Vanuatu', time: 1794340458279 }, geometry: { coordinates: [165.5, -13.9, 11.7] } }, { properties: { mag: 5 } }] }))
-  expect(q).toEqual([{ kind: 'quake', source: 'usgs', title: 'M 4.9 · 207 km NW of Port-Olry, Vanuatu', at: 1794340458279, lon: 165.5, lat: -13.9, placed: true, exact: true, mag: 4.9 }])
+  expect(q).toEqual([{ kind: 'quake', source: 'usgs', title: 'M 4.9 · 207 km NW of Port-Olry, Vanuatu', at: 1794340458279, lon: 165.5, lat: -13.9, placed: true, exact: true, mag: 4.9, alert: 0 }])
   const n = parseNature(JSON.stringify({ events: [
     { title: 'Typhoon Cempaka', categories: [{ id: 'severeStorms' }], geometry: [{ type: 'Point', date: '2026-11-09T12:00:00Z', coordinates: [140, 25] }, { type: 'Point', date: '2026-11-10T12:00:00Z', coordinates: [142.1, 26.1] }] },
     { title: 'A fire given as an area', categories: [{ id: 'wildfires' }], geometry: [{ type: 'Polygon', date: '2026-11-10T12:00:00Z', coordinates: [[[1, 2]]] }] },
   ] }))
   expect(n.map(e => [e.kind, e.title, e.lon, e.lat, e.at])).toEqual([['storm', 'Typhoon Cempaka', 142.1, 26.1, Date.UTC(2026, 10, 10, 12)]])
+})
+
+test('a cyclone still running comes with its name, wind and alert; NASA\'s storm for the same one is dropped', () => {
+  const tc = (name: string, iscurrent: string, alertlevel: string, severity: number, coordinates: number[]) => ({ properties: { eventtype: 'TC', name, iscurrent, alertlevel, todate: '2026-11-11T06:00:00', severitydata: { severity } }, geometry: { type: 'Point', coordinates } })
+  const got = parseCyclones(JSON.stringify({ features: [
+    tc('Tropical Cyclone CEMPAKA-26', 'true', 'Green', 175.92, [150.2, 29.1]),
+    tc('Tropical Cyclone MURASU-26', 'false', 'Red', 157.4, [80.2, 15.8]),          // ended: left out
+    tc('Tropical Cyclone 02-20262027-27', 'true', 'Red', 63.3, [50.54, -11.8]),
+    { properties: { eventtype: 'EQ', name: 'not a cyclone', iscurrent: 'true' }, geometry: { coordinates: [1, 2] } },
+  ] }))
+  expect(got.map(e => [e.kind, e.title, e.mag, e.alert, e.at])).toEqual([
+    ['cyclone', 'Cempaka · winds to 176 km/h', 176, 0, Date.UTC(2026, 10, 11, 6)],
+    ['cyclone', 'unnamed cyclone · winds to 63 km/h · red alert', 63, 2, Date.UTC(2026, 10, 11, 6)],
+  ])
+  const storm = (title: string, lon: number, lat: number) => ({ kind: 'storm' as const, source: 'eonet', title, at: 1, lon, lat, placed: true, exact: true, mag: 0, alert: 0 })
+  expect(settle([...got, storm('Typhoon Cempaka', 146.7, 27.7), storm('Tropical Storm Pena', -165.6, 10.5)]).map(e => e.title)).toEqual(['Cempaka · winds to 176 km/h', 'unnamed cyclone · winds to 63 km/h · red alert', 'Tropical Storm Pena'])
+  expect(settle([storm('Typhoon Cempaka', 146.7, 27.7)]).length).toBe(1)             // GDACS silent: the storm stays
+})
+
+test('each kind has its sign on the map, and a cyclone on red alert takes the quake\'s red', () => {
+  const at = (kind: 'volcano' | 'cyclone', lon: number, alert: number) => ({ kind, source: 'x', title: kind, at: 1, lon, lat: 0, placed: true, exact: true, mag: 0, alert })
+  const got = draw(80, 14, [at('volcano', -90, 0), at('cyclone', 60, 0), at('cyclone', 120, 2)], Date.UTC(2026, 2, 20, 12, 0))
+  const cells = got.flatMap(row => row.flatMap(run => [...run.text].map(glyph => ({ glyph, tone: run.tone }))))
+  expect(cells.filter(c => c.glyph === '▲').map(c => c.tone)).toEqual([7])
+  expect(cells.filter(c => c.glyph === '@').map(c => c.tone)).toEqual([7, 8])
 })
 
 test('a headline goes to the country it names first, as a whole word, and nowhere when it names none', () => {
@@ -49,7 +74,7 @@ test('a press feed gives its headlines in plain text, CDATA and entities undone'
 })
 
 test('only a strong quake that was not in the reading before gets a word', () => {
-  const quake = (mag: number, where: string) => ({ kind: 'quake' as const, source: 'usgs', title: `M ${mag} · ${where}`, at: 1, lon: 0, lat: 0, placed: true, exact: true, mag })
+  const quake = (mag: number, where: string) => ({ kind: 'quake' as const, source: 'usgs', title: `M ${mag} · ${where}`, at: 1, lon: 0, lat: 0, placed: true, exact: true, mag, alert: 0 })
   const before = { events: [quake(7.1, 'Tonga')], failed: [], at: 5 }
   const now = { events: [quake(7.1, 'Tonga'), quake(6.8, 'Chile'), quake(5.2, 'Crete')], failed: [], at: 9 }
   expect(newlyStrong(before, now).map(e => e.title)).toEqual(['M 6.8 · Chile'])
@@ -61,13 +86,13 @@ test('the map keeps its proportions in the room it is given, and is bright by da
   expect(size(20, 140)).toEqual({ wide: 86, tall: 15 })                        // a low pane: narrowed, not flattened
   const noon = Date.UTC(2026, 2, 20, 12, 0)                                    // the equinox, noon in Greenwich
   const got = draw(80, 14, [
-    { kind: 'quake', source: 'usgs', title: 'M 6 · under the sun', at: 2, lon: 0, lat: 0, placed: true, exact: true, mag: 6 },
-    { kind: 'news', source: 'bbc', title: 'Japan', at: 1, lon: 139.7, lat: 35.7, placed: true, exact: false, mag: 0 },
-    { kind: 'news', source: 'bbc', title: 'nowhere', at: 3, lon: 0, lat: 0, placed: false, exact: false, mag: 0 },
+    { kind: 'quake', source: 'usgs', title: 'M 6 · under the sun', at: 2, lon: 0, lat: 0, placed: true, exact: true, mag: 6, alert: 0 },
+    { kind: 'news', source: 'bbc', title: 'Japan', at: 1, lon: 139.7, lat: 35.7, placed: true, exact: false, mag: 0, alert: 0 },
+    { kind: 'news', source: 'bbc', title: 'nowhere', at: 3, lon: 0, lat: 0, placed: false, exact: false, mag: 0, alert: 0 },
   ], noon)
   expect([got.length, got[0]?.reduce((n, run) => n + run.text.length, 0)]).toEqual([14, 80])
   const cells = got.flatMap(row => row.flatMap(run => [...run.text].map(glyph => ({ glyph, tone: run.tone }))))
-  expect(cells.filter(c => c.glyph === '●').map(c => c.tone)).toEqual([8])     // the quake, where it was
+  expect(cells.filter(c => c.glyph === '◉').map(c => c.tone)).toEqual([8])     // the quake, where it was, under its sign
   expect(cells.filter(c => c.glyph === '○').map(c => c.tone)).toEqual([6])     // the headline, on its country; the unplaced one is not drawn
   const column = (x: number): number[] => got.map(row => { let seen = 0; for (const run of row) { if (x < seen + run.text.length) return run.tone; seen += run.text.length } return 0 })
   expect(column(40).every(tone => tone !== 1 && tone !== 4)).toBe(true)        // Greenwich at noon: nothing in the night's tones

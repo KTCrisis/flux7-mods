@@ -1,8 +1,8 @@
 // atlas7: the world in a pane. A planisphere in braille dots, wireframe: the coastlines and a sparse graticule,
 // bright where the sun is up and dim where it is night, the line between the two drawn across the oceans. On it,
-// what five public feeds say happened: earthquakes (USGS) and natural events (NASA EONET) where they are,
-// headlines (BBC, France 24, Al Jazeera) on the capital of the country they name. Above it, the same as a wire,
-// the newest first. No service behind it and no key: the feeds are read every ten minutes while the pane is
+// what six public feeds say happened: earthquakes (USGS), tropical cyclones (GDACS) and natural events (NASA
+// EONET) where they are, each kind under its own sign, headlines (BBC, France 24, Al Jazeera) on the capital of
+// the country they name. Above it, the same as a wire, the newest first. No service behind it and no key: the feeds are read every ten minutes while the pane is
 // open, the sun is computed from the hour.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
@@ -15,11 +15,12 @@ const PANE = 'atlas7'
 const WIRE_MS = 600_000
 const EMPTY: Wire = { events: [], failed: [], at: 0 }
 // Change the tag when the wire's fields change: it declines what an earlier version stored.
-const wire = atom({ plugin: 'atlas7', key: 'wire' } as const, EMPTY, { shape: 'wire-1' })
+const wire = atom({ plugin: 'atlas7', key: 'wire' } as const, EMPTY, { shape: 'wire-2' })
 let tick: { cancel: () => void } | undefined
 
 const FEEDS = {
   usgs: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson',
+  gdacs: 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventlist=TC&alertlevel=Green;Orange;Red',
   eonet: 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=7&limit=40',
   bbc: 'https://feeds.bbci.co.uk/news/world/rss.xml',
   f24: 'https://www.france24.com/en/rss',
@@ -55,7 +56,7 @@ export const sayPoint = (p: { lon: number; lat: number }): string =>
 // ---- the feeds
 
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
-const event = (kind: Kind, source: string, title: string, at: number, lon: number, lat: number, placed: boolean, exact: boolean, mag = 0): Event => ({ kind, source, title, at, lon, lat, placed, exact, mag })
+const event = (kind: Kind, source: string, title: string, at: number, lon: number, lat: number, placed: boolean, exact: boolean, mag = 0, alert = 0): Event => ({ kind, source, title, at, lon, lat, placed, exact, mag, alert })
 
 // USGS: every quake of magnitude 4.5 and over in the last day, where it was.
 export const parseQuakes = (text: string): Event[] => {
@@ -66,6 +67,32 @@ export const parseQuakes = (text: string): Event[] => {
     const mag = num(f.properties?.mag)
     return [event('quake', 'usgs', `M ${mag.toFixed(1)} · ${f.properties?.place ?? 'somewhere'}`, num(f.properties?.time), lon, lat, true, true, mag)]
   })
+}
+// GDACS (the alert system of the UN and the European Commission): the tropical cyclones still running, each at
+// its last known point, with the strongest wind it has had (km/h, kept in `mag`) and its alert level (orange or
+// red when people are in its way). The feed also lists the ones that ended: they are left out.
+const ALERT: Record<string, number> = { Orange: 1, Red: 2 }
+export const parseCyclones = (text: string): Event[] => {
+  const got = JSON.parse(text) as { features?: { properties?: { eventtype?: string; name?: string; iscurrent?: unknown; todate?: string; alertlevel?: string; severitydata?: { severity?: number } }; geometry?: { coordinates?: number[] } }[] }
+  return (got.features ?? []).flatMap(f => {
+    const p = f.properties
+    const [lon, lat] = f.geometry?.coordinates ?? []
+    if (p?.eventtype !== 'TC' || String(p.iscurrent) !== 'true' || typeof lon !== 'number' || typeof lat !== 'number') return []
+    const wind = Math.round(num(p.severitydata?.severity))
+    const alert = ALERT[p.alertlevel ?? ''] ?? 0
+    // "Tropical Cyclone CEMPAKA-26" is Cempaka; one that has only a number yet is left unnamed.
+    const raw = (p.name ?? '').replace(/^Tropical Cyclone\s+/i, '').replace(/-\d+$/, '')
+    const name = /[A-Za-z]{3}/.test(raw) ? raw.toLowerCase().replace(/(^|[\s-])[a-z]/g, c => c.toUpperCase()) : 'unnamed cyclone'
+    const title = `${name}${wind > 0 ? ` · winds to ${wind} km/h` : ''}${alert === 2 ? ' · red alert' : alert === 1 ? ' · orange alert' : ''}`
+    return [event('cyclone', 'gdacs', title, Date.parse(`${p.todate ?? ''}Z`) || 0, lon, lat, true, true, wind, alert)]
+  })
+}
+// NASA lists the same cyclones as storms: where GDACS has one, the storm within ten degrees of it is the same
+// one and is dropped. With GDACS silent the storms stay.
+const SAME_DEG = 10
+export const settle = (events: readonly Event[]): Event[] => {
+  const cyclones = events.filter(e => e.kind === 'cyclone')
+  return events.filter(e => e.kind !== 'storm' || !cyclones.some(c => Math.abs(c.lat - e.lat) <= SAME_DEG && Math.abs(((c.lon - e.lon + 540) % 360) - 180) <= SAME_DEG))
 }
 const NATURE: Record<string, Kind> = { severeStorms: 'storm', wildfires: 'fire', volcanoes: 'volcano', seaLakeIce: 'ice' }
 // NASA EONET: the natural events still open, each at its last known point (the ones given as an area are left out).
@@ -139,9 +166,16 @@ const RED = '#ff2a6d'
 const AMBER = '#ffb000'
 const WHITE = '#e8fff4'
 // What a cell of the map holds, the highest winning: nothing, the graticule by night and by day, the line between
-// night and day, the coast by night and by day, a headline, a natural event, an earthquake.
+// night and day, the coast by night and by day, a headline, a natural event, an earthquake (or a cyclone on red
+// alert).
 const TONES = [BLACK, '#2b2152', '#12505c', '#ff3df0', '#6a4fc4', CYAN, WHITE, AMBER, RED] as const
-const MARK: Record<Kind, number> = { news: 6, storm: 7, fire: 7, volcano: 7, ice: 7, other: 7, quake: 8 }
+const MARK: Record<Kind, number> = { news: 6, cyclone: 7, storm: 7, fire: 7, volcano: 7, ice: 7, other: 7, quake: 8 }
+export const toneOf = (e: Event): number => (e.kind === 'cyclone' && e.alert === 2 ? 8 : MARK[e.kind])
+// The sign of each kind, on the map and in the wire: rings for what shakes, a cone for a volcano, a spiral for
+// what turns. Each is one cell wide in JetBrains Mono. A headline is hollow: it is on a country, not on a place.
+const GLYPH: Record<Kind, string> = { quake: '◉', volcano: '▲', cyclone: '@', storm: '@', fire: '✶', ice: '◆', other: '●', news: '○' }
+export const signOf = (e: Event): string => (e.placed ? GLYPH[e.kind] : '·')
+const LEGEND: [string, number, string][] = [['◉', 8, 'quake'], ['▲', 7, 'volcano'], ['@', 7, 'cyclone'], ['✶', 7, 'fire'], ['◆', 7, 'ice'], ['○', 6, 'headline']]
 
 // The planisphere in braille dots (two by four in a cell), at that instant. Each row comes back as runs of one color.
 export const draw = (columns: number, rows: number, events: readonly Event[], ms: number): { tone: number; text: string }[][] => {
@@ -182,15 +216,15 @@ export const draw = (columns: number, rows: number, events: readonly Event[], ms
       for (let k = 0; k <= steps; k++) shaded(ax + ((bx - ax) * k) / steps, ay + ((by - ay) * k) / steps, 4)
     }
   }
-  // The marks, the oldest first so that the newest is the one seen where two fall in a cell: full for a place the
-  // source gave, hollow for a headline put on its country.
+  // The marks, the oldest first so that the newest is the one seen where two fall in a cell, each under the sign
+  // of its kind.
   for (const e of [...events].sort((a, b) => a.at - b.at)) {
     if (!e.placed) continue
     const [x, y] = at(e.lon, e.lat)
-    const r = Math.round(y) >> 2, c = Math.round(x) >> 1, tone = MARK[e.kind]
+    const r = Math.round(y) >> 2, c = Math.round(x) >> 1, tone = toneOf(e)
     const row = marks[r], shade = tones[r]
     if (row === undefined || shade === undefined || c < 0 || c >= columns || ((shade[c] ?? 0) > tone && row[c] !== '')) continue
-    row[c] = e.exact ? '●' : '○'
+    row[c] = signOf(e)
     shade[c] = tone
   }
   return bits.map((row, y) => {
@@ -208,8 +242,8 @@ export const draw = (columns: number, rows: number, events: readonly Event[], ms
 
 // ---- the pane
 
-const HELP = 'opens with the session · /atlas: open the planisphere (the lit half of the Earth, quakes, natural events, headlines) · /atlas off: close it · /atlas now: read the feeds again'
-const TAG: Record<Kind, string> = { quake: 'quake', storm: 'storm', fire: 'fire', volcano: 'volc.', ice: 'ice', other: 'event', news: '' }
+const HELP = 'opens with the session · /atlas: open the planisphere (the lit half of the Earth, quakes, cyclones, natural events, headlines) · /atlas off: close it · /atlas now: read the feeds again'
+const TAG: Record<Kind, string> = { quake: 'quake', cyclone: 'cycl.', storm: 'storm', fire: 'fire', volcano: 'volc.', ice: 'ice', other: 'event', news: '' }
 // Read only: avatar7 owns it and says which face is on duty; the frame takes its color, as jukebox7's does.
 const tint = { plugin: 'avatar7', key: 'color' } as const
 
@@ -221,6 +255,7 @@ const load = async ($: Engine): Promise<void> => {
   const before = await read($, wire)
   const parsers: Record<keyof typeof FEEDS, (text: string) => Event[]> = {
     usgs: parseQuakes,
+    gdacs: parseCyclones,
     eonet: parseNature,
     bbc: t => parsePress('bbc', t),
     f24: t => parsePress('f24', t),
@@ -239,7 +274,7 @@ const load = async ($: Engine): Promise<void> => {
       }
     }),
   )
-  const now: Wire = { events: got.flat().sort((a, b) => b.at - a.at), failed, at: Date.now() }
+  const now: Wire = { events: settle(got.flat()).sort((a, b) => b.at - a.at), failed, at: Date.now() }
   await update($, wire, () => now)
   for (const q of newlyStrong(before, now)) await say($, 'watch', `a strong earthquake was just reported: ${q.title}`)
 }
@@ -269,8 +304,8 @@ export const register: Register = on => {
     const now = Date.now()
     const spot = size(rows, columns)
     const chart = spot.wide < 40 ? [] : draw(spot.wide, spot.tall, b.events, now)
-    // The wire has what the map leaves: its two borders and its last row come out of it.
-    const room = Math.max(1, rows - chart.length - 3)
+    // The wire has what the map leaves: its two borders, its last row and the legend come out of it.
+    const room = Math.max(1, rows - chart.length - 4)
     const shown = b.events.slice(0, room)
     const inner = Math.max(30, columns - 4)
     const counts = `${b.events.filter(x => x.kind === 'quake').length} quakes · ${b.events.filter(x => x.kind !== 'quake' && x.kind !== 'news').length} natural events · ${b.events.filter(x => x.kind === 'news').length} headlines`
@@ -280,7 +315,7 @@ export const register: Register = on => {
           {shown.map((x, i) => (
             <Text key={String(i)} backgroundColor={BLACK}>
               <Text dimColor>{`${x.at === 0 ? '  ·  ' : hour(x.at)} `}</Text>
-              <Text color={TONES[MARK[x.kind]] ?? WHITE} dimColor={!x.placed}>{`${x.placed ? (x.exact ? '●' : '○') : '·'} ${(x.kind === 'news' ? x.source : TAG[x.kind]).padEnd(6)}`}</Text>
+              <Text color={TONES[toneOf(x)] ?? WHITE} dimColor={!x.placed}>{`${signOf(x)} ${(x.kind === 'news' ? x.source : TAG[x.kind]).padEnd(6)}`}</Text>
               <Text>{x.title.slice(0, inner - 14)}</Text>
             </Text>
           ))}
@@ -289,6 +324,14 @@ export const register: Register = on => {
             <Text color={CYAN}>{b.at === 0 ? '--:--' : hour(b.at)}</Text>
             {` · ${counts} · sun over ${sayPoint(sun(now))}`}
             {b.failed.length > 0 && <Text color={AMBER}>{` · silent: ${b.failed.join(', ')}`}</Text>}
+          </Text>
+          <Text backgroundColor={BLACK} dimColor>
+            {LEGEND.map(([sign, tone, name], i) => (
+              <Text key={name}>
+                <Text color={TONES[tone] ?? WHITE}>{`${i > 0 ? '  ' : ''}${sign}`}</Text>
+                {` ${name}`}
+              </Text>
+            ))}
           </Text>
         </Box>
         {chart.length > 0 && (
