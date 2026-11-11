@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Engine, Register } from 'claude-code'
+import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import type { Decision, Health, Pending, Say, Verdict } from '../types'
 
@@ -13,10 +13,21 @@ const pending = atom({ plugin: 'mesh7-pane', key: 'pending' } as const, [] as Pe
 const health = atom({ plugin: 'mesh7-pane', key: 'health' } as const, { isUp: true, version: '', halt: '' } as Health)
 const isAll = atom({ plugin: 'mesh7-pane', key: 'isAll' } as const, false)
 
+// The palette the mods share, avatar7's: its moods are these (watch, deny, error, wait).
+const BLACK = '#000000'
+const CYAN = '#00e5ff'
+const RED = '#ff2a6d'
+const VIOLET = '#7a5cff'
+const GREEN = '#3ddc84'
+const GREY = '#7f8fa6'
+// Read only: avatar7 owns it and says which face is on duty; the frame takes its color, as jukebox7's does.
+const tint = { plugin: 'avatar7', key: 'color' } as const
+
+// A call held for a human is violet, as the face that waits for one.
 const LOOK: Record<Verdict, { label: string; color: string }> = {
-  allow: { label: 'ALLOW', color: '#3ddc84' },
-  deny: { label: 'DENY ', color: '#ff2a6d' },
-  human_approval: { label: 'HUMAN', color: '#ffb000' },
+  allow: { label: 'ALLOW', color: GREEN },
+  deny: { label: 'DENY ', color: RED },
+  human_approval: { label: 'HUMAN', color: VIOLET },
 }
 
 type Trace = {
@@ -218,60 +229,69 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
     const list = await read($, decisions)
     const waiting = await read($, pending)
     const state = await read($, health)
     const wide = await read($, isAll)
     const now = Date.now()
-    const room = Math.max(3, (e.viewport?.rows ?? 30) - 8 - waiting.length)
+    // The look the mods share (jukebox7's): black, what matters now in a frame lit in the color of the avatar on
+    // duty, the running list under it.
+    const { value: color } = await $.state.get(tint)
+    const accent = typeof color === 'string' && color !== '' ? color : CYAN
+    const rows = e.props.scroll?.bodyRows ?? e.viewport?.rows ?? 30
+    // The frame's two borders, its title and its scope; the stop when there is one; the calls held, their title
+    // and how to resolve them.
+    const frameRows = 4 + (state.halt !== '' ? 1 : 0) + (waiting.length > 0 ? waiting.length + 2 : 0)
+    const room = Math.max(3, rows - frameRows)
+    const scope = (all: boolean): void => {
+      void update($, isAll, () => all).then(() => { isFirst = true })
+    }
 
     return (
-      <Box flexDirection="column" flexGrow={1} width="100%" height={e.viewport?.rows ?? 30} backgroundColor="#000000">
-        <Text backgroundColor="#000000" wrap="truncate-end">
-          <Text bold color="#00e5ff">mesh7</Text>
-          <Text dimColor> {state.version} · {wide ? 'all sessions' : 'this session'} · </Text>
-          {state.isUp ? <Text color="#3ddc84">up</Text> : <Text bold color="#ff2a6d">DOWN, tools fail closed</Text>}
-        </Text>
-
-        {state.halt !== '' && (
-          <Text bold color="#000000" backgroundColor="#ff2a6d" wrap="truncate-end">
-            {` EMERGENCY STOP  ${state.halt} `}
+      <Box flexDirection="column" width="100%" height={rows > 0 ? rows : undefined} backgroundColor={BLACK}>
+        <Box flexDirection="column" borderStyle="round" borderColor={accent} paddingX={1} backgroundColor={BLACK}>
+          <Text backgroundColor={BLACK} wrap="truncate-end">
+            <Text color={state.isUp ? accent : RED}>{state.isUp ? '● ' : '■ '}</Text>
+            <Text bold color={accent}>mesh7</Text>
+            <Text dimColor>{` ${state.version} · `}</Text>
+            {state.isUp ? <Text color={GREEN}>up</Text> : <Text bold color={RED}>DOWN, tools fail closed</Text>}
           </Text>
-        )}
 
-        {waiting.length > 0 && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold color="#ffb000">Waiting for a human ({waiting.length})</Text>
-            {waiting.map(p => (
-              <Text wrap="truncate-end">
-                <Text color="#ffb000">{p.id.slice(0, 8)} </Text>
-                <Text>{p.tool} </Text>
-                <Text dimColor>
-                  {wide ? `${p.agent} · ` : ''}
-                  {p.rule} · {ago(p.since, now)}
-                </Text>
-              </Text>
-            ))}
-            <Text dimColor wrap="truncate-end">resolve: mesh approve|deny {'<id>'}, or /mesh-approve</Text>
+          {state.halt !== '' && (
+            <Text bold color={BLACK} backgroundColor={RED} wrap="truncate-end">
+              {` EMERGENCY STOP  ${state.halt} `}
+            </Text>
+          )}
+
+          {waiting.length > 0 && <Text bold color={VIOLET} backgroundColor={BLACK}>{`Waiting for a human (${waiting.length})`}</Text>}
+          {waiting.map(p => (
+            <Text key={p.id} backgroundColor={BLACK} wrap="truncate-end">
+              <Text color={VIOLET}>{`${p.id.slice(0, 8)} `}</Text>
+              <Text>{`${p.tool} `}</Text>
+              <Text dimColor>{`${wide ? `${p.agent} · ` : ''}${p.rule} · ${ago(p.since, now)}`}</Text>
+            </Text>
+          ))}
+          {waiting.length > 0 && <Text dimColor backgroundColor={BLACK} wrap="truncate-end">{'resolve: mesh approve|deny <id>, or /mesh-approve'}</Text>}
+
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2} backgroundColor={BLACK}>
+            <Button key="session" label="this session" plain dimColor={wide} onPress={() => scope(false)} />
+            <Button key="all" label="all sessions" plain dimColor={!wide} onPress={() => scope(true)} />
           </Box>
-        )}
+        </Box>
 
-        <Box flexDirection="column" marginTop={1}>
-          {list.length === 0 && <Text dimColor>No decision yet in this scope.</Text>}
+        <Box flexDirection="column" flexGrow={1} paddingX={1} backgroundColor={BLACK}>
+          {list.length === 0 && <Text dimColor backgroundColor={BLACK}>No decision yet in this scope.</Text>}
           {list.slice(0, room).map(d => (
-            <Text wrap="truncate-end">
-              <Text dimColor>{clock(d.at)} </Text>
+            <Text key={d.id} backgroundColor={BLACK} wrap="truncate-end">
+              <Text dimColor>{`${clock(d.at)} `}</Text>
               <Text bold={d.verdict !== 'allow'} color={LOOK[d.verdict].color}>
                 {LOOK[d.verdict].label}
               </Text>
-              <Text> {d.tool} </Text>
-              {d.approval !== '' && <Text color="#ffb000">[{d.approval}] </Text>}
-              {wide && <Text color="#7f8fa6">{d.agent} </Text>}
-              <Text dimColor>
-                {d.verdict === 'allow' ? '' : `${d.rule} · `}
-                {d.hint}
-              </Text>
+              <Text>{` ${d.tool} `}</Text>
+              {d.approval !== '' && <Text color={VIOLET}>{`[${d.approval}] `}</Text>}
+              {wide && <Text color={GREY}>{`${d.agent} `}</Text>}
+              <Text dimColor>{`${d.verdict === 'allow' ? '' : `${d.rule} · `}${d.hint}`}</Text>
             </Text>
           ))}
         </Box>

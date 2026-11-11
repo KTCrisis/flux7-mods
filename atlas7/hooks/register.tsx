@@ -132,10 +132,11 @@ export const size = (rows: number, columns: number): { wide: number; tall: numbe
   return { wide: Math.max(0, Math.min(columns - 2, Math.round(tall / ROWS_PER_COLUMN))), tall }
 }
 
+// The palette the mods share, avatar7's.
 const BLACK = '#000000'
-const CYAN = '#2ee6e6'
-const RED = '#ff4d5e'
-const AMBER = '#ffb347'
+const CYAN = '#00e5ff'
+const RED = '#ff2a6d'
+const AMBER = '#ffb000'
 const WHITE = '#e8fff4'
 // What a cell of the map holds, the highest winning: nothing, the graticule by night and by day, the line between
 // night and day, the coast by night and by day, a headline, a natural event, an earthquake.

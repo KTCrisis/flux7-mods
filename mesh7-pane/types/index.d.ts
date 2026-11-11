@@ -37,5 +37,7 @@ declare module 'claude-code' {
       isAll: boolean
       say: Say
     }
+    // Read only: avatar7 owns it and says which face is on duty; the frame takes its color.
+    avatar7: { color: string }
   }
 }

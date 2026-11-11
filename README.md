@@ -18,7 +18,7 @@ each writes under its own name, and whoever cares listens to the write.
 | --- | --- | --- | --- |
 | `<mod>.announce` | atelier-bell, usage-bell | avatar7 | voice my toasts, in this mood, from this event |
 | `<mod>.say` | mesh7-pane, jukebox7, atlas7 | avatar7 | say this now, no toast needed |
-| `avatar7.avatar`, `color`, `station` | avatar7 | jukebox7, atlas7 (`color`) | the persona on duty, its color, its music |
+| `avatar7.avatar`, `color`, `station` | avatar7 | jukebox7, atlas7 and mesh7-pane (`color`) | the persona on duty, its color, its music |
 | `avatar7.isVoicing` | avatar7 | jukebox7 | a line is being heard: lower the music |
 
 The mod gives the fact; the persona gives the voice. avatar7 picks the face
@@ -86,11 +86,23 @@ Four loops close through it:
 To give a new mod a voice, see
 [avatar7/README.md, Giving a mod a voice](avatar7/README.md#giving-a-mod-a-voice).
 
+### The look
+
+The panes share one look, jukebox7's and avatar7's. Nothing is imported: each mod repeats it.
+
+- Black behind everything, on every row.
+- What matters now sits in a round frame lit in the color of the avatar on duty (`avatar7.color`, cyan when
+  avatar7 is not loaded); what runs (a list, a map, the rain) goes under it, without a frame.
+- One palette, avatar7's moods: cyan `#00e5ff` (watch), red `#ff2a6d` (deny, cut, quake), amber `#ffb000`
+  (error, disturbed, natural event), violet `#7a5cff` (waiting for a human), green `#3ddc84` (allowed, up),
+  white `#e8fff4` (a mark that must stand out).
+- Controls are plain buttons in a wrapping row, the choice not taken dimmed.
+
 ## Mods
 
 | Mod | What it does |
 | --- | --- |
-| `mesh7-pane` | mesh7 decisions live, polled from `localhost:9090` every 1.5 s: ALLOW / DENY / HUMAN per call with rule and parameters, approvals waiting for a human, emergency stop banner, status line counts, a toast on each new deny or approval request. In "this session" scope it shows the session's built-in calls and its MCP calls, whose traces carry the MCP connection's id, learned by matching a call to its trace. With avatar7 loaded it says refusals, holds and the human's decisions, read from the traces. Read-only. `/mesh7` opens the pane, `/mesh7 all` widens to every agent and session, `/mesh7 session` narrows back. |
+| `mesh7-pane` | mesh7 decisions live, polled from `localhost:9090` every 1.5 s: ALLOW / DENY / HUMAN per call with rule and parameters, approvals waiting for a human, emergency stop banner, status line counts, a toast on each new deny or approval request. In "this session" scope it shows the session's built-in calls and its MCP calls, whose traces carry the MCP connection's id, learned by matching a call to its trace. With avatar7 loaded it says refusals, holds and the human's decisions, read from the traces. Read-only. `/mesh7` opens the pane, `/mesh7 all` widens to every agent and session, `/mesh7 session` narrows back; the pane has a button for each. |
 | `avatar7` | A machine face that watches tool calls and comments on them in the voice of a chosen avatar (SHODAN, HAL, GLaDOS, Ada, duck7, Pod 042, Kaneda, the Commis, Fox, the Adjutant, Morte, the PDA, Lain, a Tachikoma, Nova), framed like a comm window over a backdrop of its world; it waits with you while a human decides, answers a poke, gives its opinion on the session when asked (`/avatar-ask`), reacts to the slash commands that change the session (`/clear`, `/compact`, `/rewind`...), announces the toasts of any mod that publishes an `announce` (atelier-bell, usage-bell), and speaks the `say` of any mod (mesh7-pane, jukebox7). See [avatar7/README.md](avatar7/README.md): how it works, and how to make an avatar (portrait, bake, personality). |
 | `atelier-bell` | Tells you when an atelier finishes: flux7-studio renders as toasts and a status line (`studio: rendering`, `studio: last …`), `/bell` for the state. See [atelier-bell/README.md](atelier-bell/README.md). |
 | `usage-bell` | Rings when the session nears a limit: context fill (70/85/95 %), the 5 h and 7 d rate-limit windows (80/95 %), the auto-memory index the engine cuts at 200 lines or 25 kB. A status line (`ctx 62% · 5h 41% · 7d 12% · mem 145/200`), `/usage7` for the detail. See [usage-bell/README.md](usage-bell/README.md). |
