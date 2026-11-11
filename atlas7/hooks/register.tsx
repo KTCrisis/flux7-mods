@@ -2,7 +2,8 @@
 // bright where the sun is up and dim where it is night, the line between the two drawn across the oceans. On it,
 // what six public feeds say happened: earthquakes (USGS), tropical cyclones (GDACS) and natural events (NASA
 // EONET) where they are, each kind under its own sign, headlines (BBC, France 24, Al Jazeera) on the capital of
-// the country they name. Above it, the same as a wire, the newest first. No service behind it and no key: the feeds are read every ten minutes while the pane is
+// the country they name. Above it, the quakes and natural events as a wire, the newest first; under it, the
+// headlines running past on one row, as on a market ticker. No service behind it and no key: the feeds are read every ten minutes while the pane is
 // open, the sun is computed from the hour.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
@@ -17,6 +18,11 @@ const EMPTY: Wire = { events: [], failed: [], at: 0 }
 // Change the tag when the wire's fields change: it declines what an earlier version stored.
 const wire = atom({ plugin: 'atlas7', key: 'wire' } as const, EMPTY, { shape: 'wire-2' })
 let tick: { cancel: () => void } | undefined
+// The ticker: one column to the left every TICKER_MS while the pane is open. The count is the module's own, not
+// the session's: nothing but the drawing reads it.
+const TICKER_MS = 150
+let roll: { cancel: () => void } | undefined
+let step = 0
 
 const FEEDS = {
   usgs: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson',
@@ -153,9 +159,9 @@ const NORTH = 84
 const SOUTH = -60
 // A degree east is as wide on the screen as a degree north is tall: the rows a map of that many columns takes.
 const ROWS_PER_COLUMN = (NORTH - SOUTH) / (360 * CELL)
-// The largest map the pane has room for, the wire keeping at least five rows above it.
+// The largest map the pane has room for, the wire keeping at least five rows above it and the ticker one under.
 export const size = (rows: number, columns: number): { wide: number; tall: number } => {
-  const tall = Math.max(0, Math.min(Math.round((columns - 2) * ROWS_PER_COLUMN), rows - 5))
+  const tall = Math.max(0, Math.min(Math.round((columns - 2) * ROWS_PER_COLUMN), rows - 6))
   return { wide: Math.max(0, Math.min(columns - 2, Math.round(tall / ROWS_PER_COLUMN))), tall }
 }
 
@@ -240,6 +246,36 @@ export const draw = (columns: number, rows: number, events: readonly Event[], ms
   })
 }
 
+// ---- the ticker
+
+// The headlines end to end, each cell with its tone: 0 the gap, 1 the feed's name, 2 the headline, 3 the mark of
+// one that is on the map. Cut by character, not by code unit, so that nothing is split in two.
+export const tape = (headlines: readonly Event[]): { glyph: string; tone: number }[] =>
+  headlines.flatMap(e => [
+    ...[...(e.placed ? '○ ' : '')].map(glyph => ({ glyph, tone: 3 })),
+    ...[...e.source.toUpperCase()].map(glyph => ({ glyph, tone: 1 })),
+    ...[...` ${e.title}`].map(glyph => ({ glyph, tone: 2 })),
+    ...[...'   ·   '].map(glyph => ({ glyph, tone: 0 })),
+  ])
+// What a row of that many columns shows of the tape after that many steps, as runs of one tone. The tape comes
+// in from the right and goes round without an end.
+export const ticker = (cells: readonly { glyph: string; tone: number }[], columns: number, steps: number): { tone: number; text: string }[] => {
+  const runs: { tone: number; text: string }[] = []
+  if (cells.length === 0) return runs
+  for (let x = 0; x < columns; x++) {
+    const i = steps - columns + x
+    const cell = i < 0 ? { glyph: ' ', tone: 0 } : cells[i % cells.length] ?? { glyph: ' ', tone: 0 }
+    const last = runs[runs.length - 1]
+    if (last !== undefined && last.tone === cell.tone) last.text += cell.glyph
+    else runs.push({ tone: cell.tone, text: cell.glyph })
+  }
+  return runs
+}
+// What is drawn several times a second is kept between two drawings: the tape as long as the reading is the
+// same, the map as long as the reading, the minute and the room are.
+let taped: { at: number; cells: { glyph: string; tone: number }[] } | undefined
+let charted: { key: string; chart: { tone: number; text: string }[][] } | undefined
+
 // ---- the pane
 
 const HELP = 'opens with the session · /atlas: open the planisphere (the lit half of the Earth, quakes, cyclones, natural events, headlines) · /atlas off: close it · /atlas now: read the feeds again'
@@ -280,6 +316,11 @@ const load = async ($: Engine): Promise<void> => {
 }
 const watch = ($: Engine): void => {
   if (tick === undefined) tick = $.clock.every(WIRE_MS, () => void load($))
+  if (roll === undefined) roll = $.clock.every(TICKER_MS, () => { step += 1; $.ui.invalidate('ui.render') })
+}
+const rest = (): void => {
+  tick?.cancel(); tick = undefined
+  roll?.cancel(); roll = undefined
 }
 // The pane opened, the timer set, the feeds read once.
 const show = async ($: Engine): Promise<void> => {
@@ -303,10 +344,16 @@ export const register: Register = on => {
     const columns = e.props.bodyColumns ?? 80
     const now = Date.now()
     const spot = size(rows, columns)
-    const chart = spot.wide < 40 ? [] : draw(spot.wide, spot.tall, b.events, now)
-    // The wire has what the map leaves: its two borders, its last row and the legend come out of it.
-    const room = Math.max(1, rows - chart.length - 4)
-    const shown = b.events.slice(0, room)
+    const key = `${spot.wide}x${spot.tall}:${b.at}:${Math.floor(now / 60_000)}`
+    if (charted?.key !== key) charted = { key, chart: spot.wide < 40 ? [] : draw(spot.wide, spot.tall, b.events, now) }
+    const chart = charted.chart
+    if (taped?.at !== b.at) taped = { at: b.at, cells: tape(b.events.filter(x => x.kind === 'news')) }
+    const running = ticker(taped.cells, Math.max(0, columns - 2), step)
+    // The wire has what the map leaves: its two borders, its last row, the legend and the ticker come out of it.
+    // The headlines run on the ticker, so the wire lists the rest.
+    const room = Math.max(1, rows - chart.length - 4 - (running.length > 0 ? 1 : 0))
+    const shown = b.events.filter(x => x.kind !== 'news').slice(0, room)
+    const TICKER = [BLACK, accent, WHITE, WHITE]
     const inner = Math.max(30, columns - 4)
     const counts = `${b.events.filter(x => x.kind === 'quake').length} quakes · ${b.events.filter(x => x.kind !== 'quake' && x.kind !== 'news').length} natural events · ${b.events.filter(x => x.kind === 'news').length} headlines`
     return (
@@ -315,7 +362,7 @@ export const register: Register = on => {
           {shown.map((x, i) => (
             <Text key={String(i)} backgroundColor={BLACK}>
               <Text dimColor>{`${x.at === 0 ? '  ·  ' : hour(x.at)} `}</Text>
-              <Text color={TONES[toneOf(x)] ?? WHITE} dimColor={!x.placed}>{`${signOf(x)} ${(x.kind === 'news' ? x.source : TAG[x.kind]).padEnd(6)}`}</Text>
+              <Text color={TONES[toneOf(x)] ?? WHITE}>{`${signOf(x)} ${TAG[x.kind].padEnd(6)}`}</Text>
               <Text>{x.title.slice(0, inner - 14)}</Text>
             </Text>
           ))}
@@ -347,12 +394,22 @@ export const register: Register = on => {
             ))}
           </Box>
         )}
+        {running.length > 0 && (
+          <Text backgroundColor={BLACK} wrap="truncate-end">
+            {' '}
+            {running.map((run, i) => (
+              <Text key={String(i)} color={TICKER[run.tone] ?? WHITE} bold={run.tone === 1} dimColor={run.tone === 0}>
+                {run.text}
+              </Text>
+            ))}
+          </Text>
+        )}
       </Box>
     )
   })
 
   on('ui.close', async ($, e, next) => {
-    if (e.id === PANE) { tick?.cancel(); tick = undefined }
+    if (e.id === PANE) rest()
     return next(e)
   })
 
@@ -366,7 +423,7 @@ export const register: Register = on => {
     const args = e.args.trim()
     if (args === 'help') return { text: `atlas7: ${HELP}` }
     if (args === 'off') {
-      tick?.cancel(); tick = undefined
+      rest()
       await $.ui.close({ id: PANE })
       return { text: 'atlas7: the planisphere is closed (/atlas opens it again).' }
     }

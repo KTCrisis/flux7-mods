@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { draw, isLit, locate, newlyStrong, parseCyclones, parseNature, parsePress, parseQuakes, plain, sayPoint, size, settle, sun } from './register'
+import { draw, isLit, locate, newlyStrong, parseCyclones, parseNature, parsePress, parseQuakes, plain, sayPoint, size, settle, sun, tape, ticker } from './register'
 
 const near = (got: number, want: number, by: number): boolean => Math.abs(got - want) <= by
 
@@ -83,7 +83,7 @@ test('only a strong quake that was not in the reading before gets a word', () =>
 
 test('the map keeps its proportions in the room it is given, and is bright by day, dim by night', () => {
   expect(size(53, 140)).toEqual({ wide: 138, tall: 24 })                       // a full screen: the whole width
-  expect(size(20, 140)).toEqual({ wide: 86, tall: 15 })                        // a low pane: narrowed, not flattened
+  expect(size(20, 140)).toEqual({ wide: 80, tall: 14 })                        // a low pane: narrowed, not flattened
   const noon = Date.UTC(2026, 2, 20, 12, 0)                                    // the equinox, noon in Greenwich
   const got = draw(80, 14, [
     { kind: 'quake', source: 'usgs', title: 'M 6 · under the sun', at: 2, lon: 0, lat: 0, placed: true, exact: true, mag: 6, alert: 0 },
@@ -98,4 +98,14 @@ test('the map keeps its proportions in the room it is given, and is bright by da
   expect(column(40).every(tone => tone !== 1 && tone !== 4)).toBe(true)        // Greenwich at noon: nothing in the night's tones
   expect(column(2).every(tone => tone !== 2 && tone !== 5)).toBe(true)         // the date line: nothing in the day's
   expect(cells.some(c => c.tone === 3)).toBe(true)                             // the line between the two is drawn
+})
+
+test('the headlines run past from the right, one column a step, and come round again', () => {
+  const news = (source: string, title: string, placed: boolean) => ({ kind: 'news' as const, source, title, at: 1, lon: 0, lat: 0, placed, exact: false, mag: 0, alert: 0 })
+  const cells = tape([news('bbc', 'Ab', true), news('alj', 'Cd', false)])
+  expect(cells.map(c => c.glyph).join('')).toBe('○ BBC Ab   ·   ALJ Cd   ·   ')
+  const text = (steps: number): string => ticker(cells, 10, steps).map(run => run.text).join('')
+  expect([text(0), text(3), text(10), text(cells.length + 10)]).toEqual(['          ', '       ○ B', '○ BBC Ab  ', '○ BBC Ab  '])
+  expect(ticker(cells, 10, 10).map(run => run.tone)).toEqual([3, 1, 2, 0])      // the mark, the feed, the headline, the gap
+  expect(ticker([], 10, 4)).toEqual([])                                        // no headline: no row
 })
