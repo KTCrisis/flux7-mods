@@ -479,8 +479,8 @@ async function summarize($: Engine, at: MemoryAt, agent: string, voice: Persona,
   const r = await $.model.complete({
     model: 'haiku',
     system: personalize(voice.persona, userName, voice.nobody) + styleFor(voice),
-    prompt: journalPrompt(episodes, userName !== '' ? userName : 'the user'),
-    maxTokens: 200,
+    prompt: journalPrompt(episodes, userName !== '' ? userName : 'the user', journals[0]?.value ?? ''),
+    maxTokens: 320,
     timeoutMs: 30_000,
   })
   await used($, 'haiku', r)

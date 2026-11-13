@@ -10,7 +10,7 @@ import { hdFrame, hdKey, hdSize, isSettled, PX, SETTLE_FRAMES, type Hd, type HdV
 import { follows, givesOnEnd, newRelay, parseRemote, wantedMove } from './relay'
 import { answered, ask as askFace, calm, hold, react, release, stage, tick } from './mood'
 import { begin, end, HOLD_FRAMES, isHeard, restored, silent, start, typeOn, voiced } from './line'
-import { episodeOf, journalFrom, journalsFor, memoryAt, memoryNote, namedIn, parseContext, parseRecall, queryFor, recalls, rpcArgv, storeBody, unsummed, visitsWith, withVisits } from './memory'
+import { episodeOf, journalFrom, journalPrompt, journalsFor, memoryAt, memoryNote, namedIn, parseContext, parseRecall, queryFor, recalls, rpcArgv, storeBody, unsummed, visitsWith, withVisits } from './memory'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -824,4 +824,14 @@ test('the visits recalled for a name come first, each once', () => {
   expect(got.map(v => v.key)).toEqual(['pda.ep.3', 'pda.ep.1'])
   const hits = [m('pda.ep.1', 'Visit with GLaDOS:\nPDA: one', '2026-11-09'), m('pda.ep.9', 'User: salut', '2026-11-10')]
   expect(withVisits(got, hits).map(v => v.key)).toEqual(['pda.ep.3', 'pda.ep.1', 'pda.ep.9'])
+})
+
+test('a journal is asked what is new since the last one, and a line per persona met', () => {
+  const ep = [{ key: 'pda.ep.1', value: 'Visit with SHODAN:\nPDA: seal holds', updated: '2026-11-12T01:31:00Z' }]
+  const p = journalPrompt(ep, 'Marc', 'Marc holds every release key.')
+  expect(p.startsWith('Your last journal said:\nMarc holds every release key.')).toBe(true)
+  expect(p).toContain('never again what your last journal already said')
+  expect(p).toContain('"With <name>:"')
+  expect(p).toContain('(2026-11-12) Visit with SHODAN:')
+  expect(journalPrompt(ep, 'Marc').startsWith('Here are your exchanges')).toBe(true)
 })
