@@ -19,6 +19,11 @@ export const RECALL_JOURNALS = 2
 // And older journals that match what was said: past two sessions, an
 // exchange is gone in 30 days, and only its journal still holds it.
 export const RECALL_OLD_JOURNALS = 2
+// And the last visits with each persona the line names, found by name rather
+// than by search: a French question finds no word of an English visit.
+export const RECALL_VISITS = 2
+// How far back the visits are scanned for a name.
+export const VISIT_SCAN = 60
 // An exchange recalled is cut to this many characters, a journal to more:
 // it is already the short form.
 export const RECALL_CHARS = 300
@@ -158,6 +163,32 @@ export const episodeOf = (ask: Ask, name: string, text: string): { value: string
   if ('consult' in ask) return { value: `User asked your opinion: ${ask.consult}\n${name}: ${text}`, kind: 'consult' }
   if ('answer' in ask) return { value: `${name} asked: ${ask.question}\nUser: ${ask.answer}\n${name}: ${text}`, kind: 'answer' }
   return null
+}
+
+// The words of a text, lowercased and without accents.
+const wordsOf = (s: string): string[] =>
+  s.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+
+// The names a line speaks of: each name whose words follow one another in
+// it, or whose words joined are one of its words ("pod042" for "Pod 042").
+export const namedIn = (text: string, names: string[]): string[] => {
+  const w = wordsOf(text)
+  return names.filter(name => {
+    const n = wordsOf(name)
+    if (n.length === 0) return false
+    if (w.includes(n.join(''))) return true
+    return w.some((_, i) => n.every((x, k) => w[i + k] === x))
+  })
+}
+
+// The last visits with that persona, most recent first, from a recall of visits.
+export const visitsWith = (visits: Memory[], name: string, n = RECALL_VISITS): Memory[] =>
+  visits.filter(v => v.value.startsWith(`Visit with ${name}:`)).slice(0, n)
+
+// Episodes for a line: the visits first, then the search hits not already there.
+export const withVisits = (visits: Memory[], episodes: Memory[]): Memory[] => {
+  const seen = new Set(visits.map(v => v.key))
+  return [...visits, ...episodes.filter(e => !seen.has(e.key))]
 }
 
 // A visit, kept whole by each of the two at its last line, each in its own memory.

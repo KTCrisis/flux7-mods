@@ -39,6 +39,7 @@ import {
   journalPrompt,
   memoryAt,
   memoryNote,
+  namedIn,
   parseContext,
   parseRecall,
   queryFor,
@@ -52,6 +53,9 @@ import {
   storeBody,
   unsummed,
   visitOf,
+  visitsWith,
+  VISIT_SCAN,
+  withVisits,
   CONSOLIDATE_MAX,
   type MemoryAt,
 } from './memory'
@@ -416,6 +420,8 @@ type Stage = {
   openQuestion: { text: string; at: number } | null
   chats: Map<string, string[]>
   recent: string[]
+  // Each persona's display name by id, read from its persona.json.
+  names: Record<string, string>
 }
 
 async function loadGuest($: Engine, id: string): Promise<Guest | null> {
@@ -441,12 +447,15 @@ async function mem7($: Engine, at: MemoryAt, body: string): Promise<string> {
 
 // What the persona remembers for a line: its last journals, and the
 // exchanges that match what was said.
-async function remembered($: Engine, at: MemoryAt, agent: string, query: string): Promise<string> {
+// The other personas named in what was said bring back their last visits.
+async function remembered($: Engine, at: MemoryAt, agent: string, query: string, others: string[]): Promise<string> {
   const latest = parseRecall(await mem7($, at, recallBody(agent, ['journal'], RECALL_JOURNALS)))
   if (query.trim() === '') return memoryNote(latest, [])
   const matched = parseContext(await mem7($, at, contextBody(agent, query, ['journal'], RECALL_JOURNALS + RECALL_OLD_JOURNALS)))
   const episodes = parseContext(await mem7($, at, contextBody(agent, query, ['episode'], RECALL_EPISODES)))
-  return memoryNote(journalsFor(latest, matched), episodes)
+  const named = namedIn(query, others)
+  const visits = named.length === 0 ? [] : parseRecall(await mem7($, at, recallBody(agent, ['visit'], VISIT_SCAN)))
+  return memoryNote(journalsFor(latest, matched), withVisits(named.flatMap(n => visitsWith(visits, n)), episodes))
 }
 
 async function keep($: Engine, at: MemoryAt, agent: string, value: string, tags: string[]): Promise<void> {
@@ -519,7 +528,7 @@ async function speak($: Engine, stage: Stage, ask: Ask, c: Speaking): Promise<vo
       const other = c.isGuestTurn ? c.host : (stage.guest?.persona.name ?? 'a visitor')
       const prompt = promptFor(ask, { voice: c.voice, other, conversation, chatPast: stage.chats.get(c.voiceId) ?? [], asked: c.asked, recent: stage.recent })
       if (prompt === null) return typeof ask === 'object' && 'greet' in ask ? ask.greet : ''
-      const past = c.memory !== null && recalls(ask) ? await remembered($, c.memory, c.voiceId, queryFor(ask, c.asked, other)) : ''
+      const past = c.memory !== null && recalls(ask) ? await remembered($, c.memory, c.voiceId, queryFor(ask, c.asked, other), Object.values(stage.names).filter(n => n !== c.voice.name)) : ''
       const r = await $.model.complete({
         model: 'haiku',
         system: personalize(c.voice.persona, c.userName, c.voice.nobody) + styleFor(c.voice),
@@ -604,7 +613,7 @@ export const register: Register = (on, options) => {
   let face: Face = calm
   // What speaking changes: the line, the queue, the guest, the open question,
   // the chats and the last lines (Stage); speak() takes it whole.
-  const stage: Stage = { typing: silent, queue: [], guest: null, isGuestShown: false, openQuestion: null, chats: new Map(), recent: [] }
+  const stage: Stage = { typing: silent, queue: [], guest: null, isGuestShown: false, openQuestion: null, chats: new Map(), recent: [], names: {} }
   // The remote voice, its own state (relay.ts); relay.session is '' in a
   // background session.
   const relay = newRelay()
@@ -659,8 +668,8 @@ export const register: Register = (on, options) => {
   let isConsulting = false
   // The field where the user talks to the avatar personally.
   let isChatting = false
-  // Display names for the picker, read from each persona.json.
-  const names: Record<string, string> = {}
+  // Display names for the picker and the recall, read from each persona.json.
+  const names = stage.names
   let lastModel = ''
 
   // The face's frame, as draw.ts takes it: whoever is shown (the guest
