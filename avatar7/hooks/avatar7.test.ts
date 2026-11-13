@@ -10,7 +10,7 @@ import { hdFrame, hdKey, hdSize, isSettled, PX, SETTLE_FRAMES, type Hd, type HdV
 import { follows, givesOnEnd, newRelay, parseRemote, wantedMove } from './relay'
 import { answered, ask as askFace, calm, hold, react, release, stage, tick } from './mood'
 import { begin, end, HOLD_FRAMES, isHeard, restored, silent, start, typeOn, voiced } from './line'
-import { episodeOf, journalFrom, journalsFor, memoryAt, memoryNote, parseContext, parseRecall, queryFor, recalls, rpcArgv, storeBody, unsummed } from './memory'
+import { episodeOf, journalFrom, journalsFor, memoryAt, memoryNote, namedIn, parseContext, parseRecall, queryFor, recalls, rpcArgv, storeBody, unsummed, visitsWith, withVisits } from './memory'
 
 // The engine beneath: the shell reports `kind` as CLAUDE_CODE_SESSION_KIND,
 // no file can be read, and each registered command and opened pane is kept.
@@ -802,4 +802,26 @@ test('a persona speaks English unless it says "fr"', () => {
   expect(styleFor({ lang: 'en' })).toBe(STYLE)
   expect(styleFor({ lang: 'fr' })).toContain('you always answer in French')
   expect(styleFor({ lang: 'fr' })).toContain('no em dash')
+})
+
+test('a line names a persona whatever its language, case and accents', () => {
+  const names = ['GLaDOS', 'Ada', 'Pod 042', 'HAL 9000']
+  expect(namedIn('quel est ta mémoire sur glados par exemple', names)).toEqual(['GLaDOS'])
+  expect(namedIn('tu te souviens de pod 042 et de HAL 9000 ?', names)).toEqual(['Pod 042', 'HAL 9000'])
+  expect(namedIn('et pod042 ?', names)).toEqual(['Pod 042'])
+  expect(namedIn('un adapter réseau', names)).toEqual([])
+})
+
+test('the visits recalled for a name come first, each once', () => {
+  const m = (key: string, value: string, updated: string) => ({ key, value, updated })
+  const visits = [
+    m('pda.ep.3', 'Visit with GLaDOS:\nPDA: three', '2026-11-13'),
+    m('pda.ep.2', 'Visit with Ada:\nPDA: two', '2026-11-12'),
+    m('pda.ep.1', 'Visit with GLaDOS:\nPDA: one', '2026-11-09'),
+    m('pda.ep.0', 'Visit with GLaDOS:\nPDA: zero', '2026-10-17'),
+  ]
+  const got = visitsWith(visits, 'GLaDOS')
+  expect(got.map(v => v.key)).toEqual(['pda.ep.3', 'pda.ep.1'])
+  const hits = [m('pda.ep.1', 'Visit with GLaDOS:\nPDA: one', '2026-11-09'), m('pda.ep.9', 'User: salut', '2026-11-10')]
+  expect(withVisits(got, hits).map(v => v.key)).toEqual(['pda.ep.3', 'pda.ep.1', 'pda.ep.9'])
 })
