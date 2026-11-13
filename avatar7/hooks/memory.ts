@@ -27,7 +27,7 @@ export const VISIT_SCAN = 60
 // An exchange recalled is cut to this many characters, a journal to more:
 // it is already the short form.
 export const RECALL_CHARS = 300
-export const JOURNAL_CHARS = 700
+export const JOURNAL_CHARS = 900
 // At most this many exchanges summed up in one journal.
 export const CONSOLIDATE_MAX = 40
 
@@ -211,12 +211,17 @@ export const unsummed = (episodes: Memory[], journals: Memory[]): Memory[] => {
 // The model's answer when there is nothing to keep.
 export const NOTHING = 'NOTHING'
 
-export const journalPrompt = (episodes: Memory[], user: string): string =>
+// The last journal goes along so the new one does not say it again: pda wrote
+// "Marc holds every key" in 15 journals of 19 and kept little else. Each
+// persona met gets its own line, or the visits leave no trace past 30 days.
+export const journalPrompt = (episodes: Memory[], user: string, last = ''): string =>
+  (last.trim() !== '' ? `Your last journal said:\n${last.trim()}\n\n` : '') +
   `Here are your exchanges since your last journal, oldest first:\n` +
   episodes.map(e => `(${e.updated.slice(0, 10)}) ${e.value}`).join('\n\n') +
-  `\n\nWrite your journal entry: two or three sentences, first person, in English, on what you learned about ${user} ` +
-  `and what happened between you and the others. Keep what would matter next time; drop the small talk. ` +
-  `Never write about money, family or health, even if they came up. If nothing is worth keeping, answer only ${NOTHING}.`
+  `\n\nWrite your journal entry, first person, in English. First, two or three sentences on what you learned about ${user}; ` +
+  `say only what is new, never again what your last journal already said. Then one line for each other persona you met here, ` +
+  `at most four, each starting "With <name>:" and under twenty words, on what happened that would matter next time. ` +
+  `Drop the small talk. Never write about money, family or health, even if they came up. If nothing is worth keeping, answer only ${NOTHING}.`
 
 export const journalFrom = (r: { isAnswered: true; text: string } | { isAnswered: false }): string | null => {
   if (!r.isAnswered) return null
