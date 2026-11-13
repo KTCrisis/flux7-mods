@@ -434,6 +434,19 @@ test('a line waits for its voice, then types over the length of the audio; a lat
   expect(voiced(t, 1, '', 120, 66)).toEqual({ t, wav: '', ms: 0 })
 })
 
+test('a voiced line keeps pace with its voice on the wall clock, however few frames come', () => {
+  const t = start(silent, 'Hello there.', false, 100)
+  // 12 characters over 0.66 s, the WAV starting 5 frames of 66 ms after 10 000 ms.
+  const { t: v } = voiced(t, 1, '/tmp/x.wav\n0.66\n', 120, 66, 10_000)
+  expect([v.fromMs, v.durMs]).toEqual([10_330, 660])
+  expect(typeOn(v, 121, 10_300)).toBe(v)
+  // One frame only, half-way through the audio: half the line, not 1.2 characters.
+  expect(typeOn(v, 126, 10_660).typed).toBe(6)
+  expect(typeOn(v, 127, 11_500).typed).toBe(12)
+  // A new line forgets the old timing.
+  expect(start(v, 'Next.', false, 130).durMs).toBe(0)
+})
+
 test('a muted line types at once; a line kept across a reload shows whole; the slot opens and closes', () => {
   expect(start(silent, 'Quiet.', true, 50).from).toBe(50)
   const kept = restored(silent, 'From before.')
