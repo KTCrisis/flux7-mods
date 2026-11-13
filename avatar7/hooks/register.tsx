@@ -575,7 +575,7 @@ async function speak($: Engine, stage: Stage, ask: Ask, c: Speaking): Promise<vo
         stdin: text,
         timeoutMs: 30_000,
       })
-      const heard = voiced(stage.typing, seq, made.stdout, c.now(), FRAME_MS)
+      const heard = voiced(stage.typing, seq, made.stdout, c.now(), FRAME_MS, Date.now())
       stage.typing = heard.t
       const { wav, ms } = heard
       if (wav !== '') {
@@ -1020,7 +1020,7 @@ export const register: Register = (on, options) => {
         ambT += ((AMBIENT_FRAMES * FRAME_MS) / 1000) * (face.mood === 'deny' || face.mood === 'error' ? 2 : face.mood === 'wait' ? 0.5 : 1)
         for (const each of ambientBlits()) void $.ui.blit(each)
       }
-      const typedOn = typeOn(stage.typing, frame)
+      const typedOn = typeOn(stage.typing, frame, Date.now())
       if (typedOn !== stage.typing) {
         stage.typing = typedOn
         $.ui.invalidate('ui.render')
