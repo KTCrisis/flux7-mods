@@ -40,6 +40,7 @@ type Trace = {
   policy_rule: string
   timestamp: string
   approval_status?: string
+  client_session?: string
 }
 
 type Approval = { id: string; agent_id: string; tool: string; policy_rule: string; status: string; created_at: string }
@@ -91,10 +92,17 @@ export const claudeName = (tool: string): string =>
 // What a fresh decision of this session tells avatar7, or undefined: a
 // refusal, or an MCP call held for a human (a held Bash call is Claude
 // Code's own permission prompt, which avatar7 already sees).
-export const verdictSay = (d: { tool: string; verdict: Verdict; rule: string; hint: string }): Omit<Say, 'at'> | undefined => {
+export const verdictSay = (d: { tool: string; verdict: Verdict; rule: string; hint: string; approval?: string }): Omit<Say, 'at'> | undefined => {
   const tool = claudeName(d.tool)
   const what = d.hint === '' ? d.tool : `${d.tool} ${d.hint.slice(0, 60)}`
   if (d.verdict === 'deny') return { mood: 'deny', event: `mesh7 DENIED ${what}, by rule ${d.rule}`, tool }
+  // A trace that already carries its decision is not a new hold: mesh7 keeps
+  // policy human_approval on the run of an approved call, and on a call sup7
+  // settled within the wait. It ends the wait instead; without this, the face
+  // waited for a release that had already happened, until the 15 min cap.
+  if (d.verdict === 'human_approval' && d.approval !== undefined && d.approval !== '' && d.approval !== 'pending') {
+    return { mood: d.approval === 'approved' ? 'watch' : 'deny', event: `approval ${d.approval}: ${d.tool}`, tool, release: true }
+  }
   if (d.verdict === 'human_approval' && d.tool.includes('.')) {
     return { mood: 'wait', event: `mesh7 holds ${what} for a human, by rule ${d.rule}`, tool, hold: true }
   }
@@ -144,7 +152,10 @@ export const register: Register = on => {
           )
           if (match?.session_id !== undefined) mcpSession = match.session_id
         }
-        const mine = (t: Trace): boolean => t.session_id === session || (mcpSession !== '' && t.session_id === mcpSession)
+        // client_session (mesh7 >= v0.22.0-3) names this Claude session directly,
+        // and survives a daemon restart that changes mesh7's own session id
+        const mine = (t: Trace): boolean =>
+          t.session_id === session || t.client_session === session || (mcpSession !== '' && t.session_id === mcpSession)
         const traces = all.filter(t => wide || mine(t))
         const mineIds = new Set(traces.filter(mine).map(t => t.trace_id))
         const approvals = ap.ok ? (JSON.parse(ap.text) as Approval[]) : []
