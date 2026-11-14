@@ -121,7 +121,7 @@ test('the guard names what is left ajar, and an entry from elsewhere before anyt
   // An unread log is said, never taken for a quiet month.
   const blind = parseGuard(round({ logs: false }), 'web1', 1)
   expect([blind.entries, blind.failed, judge(blind)]).toEqual([[], 0, { level: 'warn', notes: ['the SSH log could not be read (deploy is neither root nor in adm): who came in is not known'] }])
-  const broken = judge(parseGuard(round({ entries: ['@in 2 password root 192.0.2.50', '@in 5 password deploy 100.101.49.13', '@in 1 publickey deploy 203.0.113.7'], offers: 'publickey,password' }), 'web1', 1))
+  const broken = judge(parseGuard(round({ entries: ['@in 2 password root 192.0.2.50', '@in 5 password deploy 100.64.0.13', '@in 1 publickey deploy 203.0.113.7'], offers: 'publickey,password' }), 'web1', 1))
   expect(broken).toEqual({ level: 'error', notes: ['2 SSH entries from elsewhere: 192.0.2.50 (root, password)', 'sshd still takes password: a key alone would close it to guesses'] })
   // The server that lets nobody in: what it shows from outside is kept.
   const shut = parseGuard(round({ inside: false, doors: [22] }), 'web1', 1)
@@ -130,7 +130,7 @@ test('the guard names what is left ajar, and an entry from elsewhere before anyt
 
 test('near is home, the tailnet, the server itself and where the round comes from', () => {
   const g = { from: '198.51.100.4', self: ['203.0.113.7'] }
-  expect(['192.168.1.20', '10.0.0.1', '172.20.0.3', '100.101.49.13', '127.0.0.1', '198.51.100.4', '203.0.113.7', 'fd7a:115c:a1e0::1', '::1'].map(ip => isNear(ip, g))).toEqual(Array(9).fill(true))
+  expect(['192.168.1.20', '10.0.0.1', '172.20.0.3', '100.64.0.13', '127.0.0.1', '198.51.100.4', '203.0.113.7', 'fd7a:115c:a1e0::1', '::1'].map(ip => isNear(ip, g))).toEqual(Array(9).fill(true))
   expect(['192.0.2.50', '100.128.0.1', '172.32.0.1', '2001:db8::1'].map(ip => isNear(ip, g))).toEqual(Array(4).fill(false))
 })
 
@@ -153,7 +153,7 @@ test('what listens is sorted by who can knock, neighbours said as one stretch', 
   expect(sayPorts(ports.filter(p => p.reach === 'tailnet'))).toBe('8443–8444 · 8797 python3')
   expect(sayPorts([{ port: 54321, who: '' }, { port: 54322, who: '' }, { port: 54324, who: '' }, { port: 22, who: 'ssh' }])).toBe('22 ssh · 54321–54322 · 54324')
   const g = { from: '198.51.100.4', self: ['203.0.113.7'] }
-  expect(['198.51.100.4', '203.0.113.7', '100.101.49.13', '192.168.1.9', '192.0.2.50'].map(ip => whence(ip, g))).toEqual(['here', 'this machine', 'tailnet', 'home network', 'elsewhere'])
+  expect(['198.51.100.4', '203.0.113.7', '100.64.0.13', '192.168.1.9', '192.0.2.50'].map(ip => whence(ip, g))).toEqual(['here', 'this machine', 'tailnet', 'home network', 'elsewhere'])
 })
 
 test('the round is told as a verdict and four questions, the blind spots in one place', () => {
