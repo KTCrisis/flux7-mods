@@ -23,6 +23,11 @@ test('a refusal and an MCP hold are told, a Bash hold and an allow are not; a de
     tool: 'Bash',
   })
   expect(verdictSay({ tool: 'gmail.send', verdict: 'human_approval', rule: 'mail', hint: '' })?.hold).toBe(true)
+  // the run of an approved call, or a call sup7 settled in the wait: a release, not a new hold
+  const ran = verdictSay({ tool: 'filesystem.write_file', verdict: 'human_approval', rule: 'claude', hint: '', approval: 'approved' })
+  expect(ran?.hold).toBeUndefined()
+  expect(ran?.release).toBe(true)
+  expect(verdictSay({ tool: 'gmail.send', verdict: 'human_approval', rule: 'mail', hint: '', approval: 'pending' })?.hold).toBe(true)
   expect(verdictSay({ tool: 'Bash', verdict: 'human_approval', rule: 'x', hint: '' })).toBeUndefined()
   expect(verdictSay({ tool: 'Read', verdict: 'allow', rule: 'x', hint: '' })).toBeUndefined()
   expect(decisionSay({ tool: 'gmail.send', status: 'denied' })).toEqual({
